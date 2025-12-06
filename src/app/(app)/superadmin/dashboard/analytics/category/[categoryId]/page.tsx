@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { tickets, categories, users, ticket_statuses } from "@/db/schema";
+import { tickets, ticket_activity, ticket_statuses, categories, users } from "@/db";
 import type { TicketMetadata } from "@/db/inferred-types";
 import { eq, desc, isNull, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -234,12 +234,12 @@ export default async function CategoryAnalyticsDetailPage({
   const avgResolutionHours =
     resolvedWithTime.length > 0
       ? Math.round(
-          resolvedWithTime.reduce((sum, ticket) => {
-            const hours =
-              ((ticket.resolved_at as Date).getTime() - (ticket.created_at as Date).getTime()) / (1000 * 60 * 60);
-            return sum + hours;
-          }, 0) / resolvedWithTime.length,
-        )
+        resolvedWithTime.reduce((sum, ticket) => {
+          const hours =
+            ((ticket.resolved_at as Date).getTime() - (ticket.created_at as Date).getTime()) / (1000 * 60 * 60);
+          return sum + hours;
+        }, 0) / resolvedWithTime.length,
+      )
       : 0;
 
   const unassignedTickets = allTickets.filter((ticket) => !ticket.assigned_to).length;

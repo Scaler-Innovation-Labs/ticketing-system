@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { tickets, categories, users, domains, scopes, admin_profiles, ticket_statuses } from "@/db/schema";
+import { tickets, categories, users, domains, scopes, admin_profiles, ticket_statuses } from "@/db";
 import type { TicketMetadata } from "@/db/inferred-types";
 import type { Ticket } from "@/db/types-only";
 import { eq, desc, inArray, gte, and } from "drizzle-orm";
@@ -146,7 +146,7 @@ export default async function AdminDetailPage({
       const reopenedAt = ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null;
       const slaBreachedAt = ticketMetadata.sla_breached_at ? new Date(ticketMetadata.sla_breached_at) : null;
       const lastEscalationAt = ticketMetadata.last_escalation_at ? new Date(ticketMetadata.last_escalation_at) : null;
-      
+
       return {
         id: t.id,
         title: t.title,

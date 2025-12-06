@@ -163,8 +163,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
   const statusDisplay: TicketStatusDisplay | null = ticket.status
 
-    ? { value: ticket.status.value, label: ticket.status.label, badge_color: ticket.status.badge_color }
-
+    ? { value: ticket.status.value, label: ticket.status.label, color: ticket.status.color, badge_color: ticket.status.color }
     : null;
 
 
@@ -185,19 +184,19 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
   // Extract date fields from metadata for timeline
 
-  const acknowledged_at = metadata.acknowledged_at 
+  const acknowledged_at = metadata.acknowledged_at
 
     ? (typeof metadata.acknowledged_at === 'string' ? new Date(metadata.acknowledged_at) : metadata.acknowledged_at instanceof Date ? metadata.acknowledged_at : null)
 
     : null;
 
-  const resolved_at = metadata.resolved_at 
+  const resolved_at = metadata.resolved_at
 
     ? (typeof metadata.resolved_at === 'string' ? new Date(metadata.resolved_at) : metadata.resolved_at instanceof Date ? metadata.resolved_at : null)
 
     : null;
 
-  const reopened_at = metadata.reopened_at 
+  const reopened_at = metadata.reopened_at
 
     ? (typeof metadata.reopened_at === 'string' ? new Date(metadata.reopened_at) : metadata.reopened_at instanceof Date ? metadata.reopened_at : null)
 
@@ -235,7 +234,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
     student ? { hostel_id: student.hostel_id, hostel_name: student.hostel_name, room_no: student.room_no } : undefined,
 
-    creator ? { name: creator.name, email: creator.email } : undefined
+    creator ? { name: creator.full_name || 'Unknown', email: creator.email } : undefined
 
   );
 
@@ -354,17 +353,12 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
                   normalizedValue = String(f.value);
 
                 }
-
                 return {
-
                   ...f,
-
+                  name: creator?.full_name || 'Unknown',
                   type: f.fieldType || 'text',
-
                   value: normalizedValue,
-
                 };
-
               })}
 
             />
@@ -421,7 +415,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
                         const commentCreatedAt = comment.createdAt || comment.created_at;
 
-                        
+
 
                         // For internal notes, use card style
 
@@ -501,7 +495,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
                         const isAdmin = !isStudent;
 
-                        
+
 
                         return (
 

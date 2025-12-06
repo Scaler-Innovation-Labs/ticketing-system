@@ -51,19 +51,36 @@ export function useTicketSubmission(
           ? form.profile.hostel.trim()
           : undefined;
 
+      // Get description from either top-level form.description or from details.description
+      // (subcategories with dynamic description field store it in details)
+      const description = form.description?.trim()
+        || (form.details?.description as string)?.trim()
+        || '';
+
+      // Generate a title from description since we don't have a title field
+      const title = description.length > 50
+        ? description.substring(0, 47) + "..."
+        : description || "Support Request";
+
       const payload = {
-        categoryId: form.categoryId,
-        subcategoryId: form.subcategoryId,
-        description: form.description,
+        title,
+        category_id: form.categoryId,
+        subcategory_id: form.subcategoryId || undefined,
+        description,
         details: detailsWithoutImages,
         images: images.length > 0 ? images : undefined,
         location: derivedLocation,
         profile: cleanProfile,
+        priority: 'medium', // Default priority
       };
 
-      const response = await api.post<{ id?: number; ticket?: { id: number } }>(endpoints.tickets, payload);
-      const ticket = response.data;
-      const ticketId = ticket?.id || ticket?.ticket?.id;
+      const response = await api.post<any>(endpoints.tickets.create, payload);
+
+      // Handle both { data: { ticket: ... } } and direct { ticket: ... } structures
+      const responseData = response.data || response;
+      const ticket = responseData.ticket || responseData;
+
+      const ticketId = ticket?.id;
 
       if (!ticketId) {
         throw new Error("Ticket created but no ID returned");
@@ -79,7 +96,7 @@ export function useTicketSubmission(
       router.push(`/student/dashboard/ticket/${ticketId}`);
       return;
     } catch (err: unknown) {
-      logger.error("Ticket create error", err, { component: "TicketForm", action: "submit" });
+      logger.error({ component: "TicketForm", action: "submit", error: err }, "Ticket create error");
       const errorMessage = err instanceof Error ? err.message : "Failed to create ticket";
 
       toast.dismiss(loadingToastId);

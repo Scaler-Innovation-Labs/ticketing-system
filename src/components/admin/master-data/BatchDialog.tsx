@@ -18,8 +18,8 @@ interface BatchDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	editingBatch: Batch | null;
-	formData: { batch_year: string; is_active: boolean };
-	onFormChange: (data: { batch_year: string; is_active: boolean }) => void;
+	formData: { batch_year: string; name: string; is_active: boolean };
+	onFormChange: (data: { batch_year: string; name: string; is_active: boolean }) => void;
 	onSubmit: () => Promise<void>;
 	loading: boolean;
 }
@@ -43,6 +43,15 @@ export function BatchDialog({
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
+					<div>
+						<Label htmlFor="batch-name">Batch Name</Label>
+						<Input
+							id="batch-name"
+							value={formData.name}
+							onChange={(e) => onFormChange({ ...formData, name: e.target.value })}
+							placeholder="e.g., Class of 2028"
+						/>
+					</div>
 					<div>
 						<Label htmlFor="batch-year">Batch Year</Label>
 						<Input

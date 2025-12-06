@@ -116,9 +116,12 @@ export async function withRetry<T>(
       
       // Exponential backoff
       const delay = delayMs * Math.pow(2, attempt - 1);
-      logger.warn(`Retry attempt ${attempt}/${maxAttempts} after ${delay}ms`, {
+      logger.warn({
         error: error instanceof Error ? error.message : String(error),
-      });
+        attempt,
+        maxAttempts,
+        delay,
+      }, `Retry attempt ${attempt}/${maxAttempts} after ${delay}ms`);
       
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -144,7 +147,7 @@ export async function withParallelTransaction<T extends readonly any[]>(
   operations: { [K in keyof T]: (txn: DbTransaction) => Promise<T[K]> }
 ): Promise<T> {
   return withTransaction(async (txn) => {
-    return Promise.all(operations.map(op => op(txn))) as Promise<T>;
+    return Promise.all(operations.map(op => op(txn))) as unknown as Promise<T>;
   });
 }
 

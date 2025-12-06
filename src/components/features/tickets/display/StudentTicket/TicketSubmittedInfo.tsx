@@ -24,15 +24,16 @@ export function TicketSubmittedInfo({
   dynamicFields,
 }: TicketSubmittedInfoProps) {
   // Filter out TAT-related fields
+  // Filter out TAT-related fields
   const filteredFields = dynamicFields.filter((field) => {
-    const keyLower = field.key.toLowerCase();
-    const labelLower = field.label.toLowerCase();
-    return !keyLower.includes('tat') && 
-           !labelLower.includes('tat') &&
-           !keyLower.includes('tat_set') &&
-           !labelLower.includes('tat set') &&
-           !keyLower.includes('tat_extensions') &&
-           !labelLower.includes('tat extensions');
+    const keyLower = (field.key || '').toLowerCase();
+    const labelLower = (field.label || '').toLowerCase();
+    return !keyLower.includes('tat') &&
+      !labelLower.includes('tat') &&
+      !keyLower.includes('tat_set') &&
+      !labelLower.includes('tat set') &&
+      !keyLower.includes('tat_extensions') &&
+      !labelLower.includes('tat extensions');
   });
 
   return (

@@ -29,7 +29,7 @@ export function MasterDataManagement({
 	initialHostels,
 }: MasterDataManagementProps) {
 	const router = useRouter();
-	
+
 	const [sections] = useState<ClassSection[]>(initialSections);
 	const [sectionDialog, setSectionDialog] = useState(false);
 	const [sectionForm, setSectionForm] = useState({ name: "" });
@@ -38,7 +38,7 @@ export function MasterDataManagement({
 
 	const [batches] = useState<Batch[]>(initialBatches);
 	const [batchDialog, setBatchDialog] = useState(false);
-	const [batchForm, setBatchForm] = useState({ batch_year: "", is_active: true });
+	const [batchForm, setBatchForm] = useState({ batch_year: "", name: "", is_active: true });
 	const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
 	const [batchLoading, setBatchLoading] = useState(false);
 
@@ -141,6 +141,11 @@ export function MasterDataManagement({
 			return;
 		}
 
+		if (!batchForm.name.trim()) {
+			toast.error("Please enter batch name");
+			return;
+		}
+
 		const year = parseInt(batchForm.batch_year);
 		if (isNaN(year) || year < 2000 || year > 2100) {
 			toast.error("Please enter a valid year");
@@ -154,7 +159,8 @@ export function MasterDataManagement({
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						batch_year: year,
+						year: year,
+						name: batchForm.name,
 						is_active: batchForm.is_active,
 					}),
 				});
@@ -172,7 +178,8 @@ export function MasterDataManagement({
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						batch_year: year,
+						year: year,
+						name: batchForm.name,
 						is_active: batchForm.is_active,
 					}),
 				});
@@ -216,10 +223,10 @@ export function MasterDataManagement({
 	const openBatchDialog = (batch?: Batch) => {
 		if (batch) {
 			setEditingBatch(batch);
-			setBatchForm({ batch_year: batch.batch_year.toString(), is_active: true });
+			setBatchForm({ batch_year: batch.batch_year.toString(), name: batch.name || "", is_active: true });
 		} else {
 			setEditingBatch(null);
-			setBatchForm({ batch_year: "", is_active: true });
+			setBatchForm({ batch_year: "", name: "", is_active: true });
 		}
 		setBatchDialog(true);
 	};
@@ -227,7 +234,7 @@ export function MasterDataManagement({
 	const closeBatchDialog = () => {
 		setBatchDialog(false);
 		setEditingBatch(null);
-		setBatchForm({ batch_year: "", is_active: true });
+		setBatchForm({ batch_year: "", name: "", is_active: true });
 	};
 
 	const handleHostelSubmit = async () => {

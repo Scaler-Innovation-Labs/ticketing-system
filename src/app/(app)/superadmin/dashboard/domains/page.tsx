@@ -4,7 +4,7 @@ import { DomainsManagement } from "@/components/admin/domains";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { hostels, class_sections, batches } from "@/db/schema";
+import { domains, scopes } from "@/db";
 
 // Use ISR - revalidate every 5 minutes (master data changes infrequently)
 export const revalidate = 300;
@@ -34,13 +34,18 @@ export default async function DomainsPage() {
 
     const activeBatches = await db.query.batches.findMany({
         where: (batches, { eq }) => eq(batches.is_active, true),
-        orderBy: (batches, { asc }) => [asc(batches.batch_year)],
+        orderBy: (batches, { asc }) => [asc(batches.year)],
     });
 
     const masterData = {
+        domains: allDomains.map(d => ({
+            ...d,
+            created_at: d.created_at.toISOString(),
+            description: d.description || null
+        })),
         hostels: activeHostels.map(h => ({ id: h.id, name: h.name })),
         classSections: activeClassSections.map(s => ({ id: s.id, name: s.name })),
-        batches: activeBatches.map(b => ({ id: b.id, batch_year: b.batch_year })),
+        batches: activeBatches.map(b => ({ id: b.id, batch_year: b.year })),
     };
 
     return (
@@ -60,7 +65,7 @@ export default async function DomainsPage() {
                 </Button>
             </div>
 
-            <DomainsManagement 
+            <DomainsManagement
                 initialDomains={allDomains}
                 initialScopes={allScopes}
                 masterData={masterData}

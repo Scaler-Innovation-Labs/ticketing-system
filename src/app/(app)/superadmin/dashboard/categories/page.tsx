@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { categories } from "@/db/schema";
+import { categories } from "@/db";
 import { eq, asc, desc } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,7 +55,7 @@ export default async function CategoriesPage() {
       .from(categories)
       .where(eq(categories.is_active, true))
       .orderBy(asc(categories.display_order), desc(categories.created_at));
-    
+
     // Transform to match Category interface (map is_active to active, ensure numbers)
     allCategories = categoriesData.map(cat => ({
       id: cat.id,

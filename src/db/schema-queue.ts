@@ -10,6 +10,7 @@
 import {
   pgTable,
   serial,
+  uuid,
   varchar,
   text,
   integer,
@@ -96,7 +97,7 @@ export const idempotency_keys = pgTable('idempotency_keys', {
 
 export const api_rate_limits = pgTable('api_rate_limits', {
   id: serial('id').primaryKey(),
-  user_id: varchar('user_id', { length: 100 }).notNull(),
+  user_id: uuid('user_id').notNull(),
   endpoint: varchar('endpoint', { length: 100 }).notNull(),
   timestamp: timestamp('timestamp').notNull().defaultNow(),
 }, (table) => ({

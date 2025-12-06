@@ -23,7 +23,7 @@ async function getStudentProfile(dbUserId: string) {
       class_section_id: students.class_section_id,
       class_section_name: class_sections.name,
       batch_id: students.batch_id,
-      batch_year: batches.batch_year,
+      batch_year: batches.year,
       blood_group: students.blood_group,
       created_at: students.created_at,
       updated_at: students.updated_at,
@@ -40,7 +40,7 @@ async function getStudentProfile(dbUserId: string) {
 
 export default async function StudentProfilePage() {
   const { userId } = await auth();
-  
+
   if (!userId) {
     redirect("/sign-in");
   }

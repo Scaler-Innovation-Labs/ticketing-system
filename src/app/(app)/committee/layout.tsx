@@ -29,7 +29,9 @@ export default async function CommitteeLayout({
 
   // Redirect non-committee users to their appropriate dashboard
   if (role !== "committee") {
-    if (role === "admin") {
+    if (role === "snr_admin") {
+      redirect("/snr-admin/dashboard");
+    } else if (role === "admin") {
       redirect("/admin/dashboard");
     } else if (role === "super_admin") {
       redirect("/superadmin/dashboard");

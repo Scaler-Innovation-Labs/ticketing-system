@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { DomainsList } from "./DomainsList";
 import { DomainsForm } from "./DomainsForm";
+import { slugify } from "@/lib/utils";
 
 interface Domain {
     id: number;
@@ -50,15 +51,15 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
 
     // Scope dialog state
     const [scopeDialog, setScopeDialog] = useState(false);
-    const [scopeForm, setScopeForm] = useState({ 
-        name: "", 
-        description: "", 
+    const [scopeForm, setScopeForm] = useState({
+        name: "",
+        description: "",
         domain_id: "",
         student_field_key: "" as string | null
     });
     const [editingScope, setEditingScope] = useState<Scope | null>(null);
     const [scopeLoading, setScopeLoading] = useState(false);
-    
+
     // Delete dialog state
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [deletingItem, setDeletingItem] = useState<{ type: "domain" | "scope"; id: number; name: string } | null>(null);
@@ -81,7 +82,10 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
                 const res = await fetch(`/api/superadmin/domains/${editingDomain.id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(domainForm),
+                    body: JSON.stringify({
+                        ...domainForm,
+                        slug: slugify(domainForm.name),
+                    }),
                 });
 
                 if (res.ok) {
@@ -97,7 +101,10 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
                 const res = await fetch("/api/superadmin/domains", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(domainForm),
+                    body: JSON.stringify({
+                        ...domainForm,
+                        slug: slugify(domainForm.name),
+                    }),
                 });
 
                 if (res.ok) {
@@ -149,6 +156,7 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
                         description: scopeForm.description,
                         domain_id: parseInt(scopeForm.domain_id),
                         student_field_key: scopeForm.student_field_key || null,
+                        slug: slugify(scopeForm.name),
                     }),
                 });
 
@@ -170,6 +178,7 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
                         description: scopeForm.description,
                         domain_id: parseInt(scopeForm.domain_id),
                         student_field_key: scopeForm.student_field_key || null,
+                        slug: slugify(scopeForm.name),
                     }),
                 });
 
@@ -199,9 +208,9 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
                 student_field_key: scope.student_field_key || null,
             });
         } else {
-            setScopeForm({ 
-                name: "", 
-                description: "", 
+            setScopeForm({
+                name: "",
+                description: "",
                 domain_id: selectedDomain?.toString() || "",
                 student_field_key: null,
             });
@@ -220,7 +229,7 @@ export function DomainsManagement({ initialDomains, initialScopes, masterData }:
         if (!deletingItem) return;
 
         try {
-            const endpoint = deletingItem.type === "domain" 
+            const endpoint = deletingItem.type === "domain"
                 ? `/api/superadmin/domains/${deletingItem.id}`
                 : `/api/superadmin/scopes/${deletingItem.id}`;
 

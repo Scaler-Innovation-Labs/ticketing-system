@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, categories, domains } from "@/db";
+import { db, tickets, categories, users, roles, ticket_statuses, domains } from "@/db";
 import { eq, inArray } from "drizzle-orm";
 import { TicketCard } from "@/components/layout/TicketCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,8 +24,9 @@ import {
   applyDateRangeFilter,
   applyTATFilter,
   calculateTicketStats,
+  getStatusValue,
 } from "@/lib/ticket/filters/adminTicketFilters";
-import { parseTicketMetadata } from "@/db/inferred-types";
+import { parseTicketMetadata } from "@/lib/ticket/validation/parseTicketMetadata";
 import { isOpenStatus, normalizeStatus } from "@/lib/ticket/utils/normalizeStatus";
 import type { TicketStatusValue } from "@/conf/constants";
 
@@ -93,8 +94,8 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const categoryIds = [...new Set(allTickets.map(t => t.category_id).filter(Boolean) as number[])];
   if (categoryIds.length > 0) {
     const categoryRecords = await db
-      .select({ 
-        id: categories.id, 
+      .select({
+        id: categories.id,
         name: categories.name,
         domainName: domains.name,
       })
@@ -108,7 +109,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
 
   // Get domains from categories this admin is assigned to
   const { getAdminAssignedCategoryDomains } = await import("@/lib/assignment/admin-assignment");
-  const assignedCategoryDomains = adminUserId 
+  const assignedCategoryDomains = adminUserId
     ? await getAdminAssignedCategoryDomains(adminUserId)
     : [];
 
@@ -135,7 +136,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
         }
         return true; // Always show tickets assigned to this admin (if no scope restriction)
       }
-      
+
       // Priority 2: Tickets in domains from categories admin is assigned to
       const ticketCategoryInfo = t.category_id ? categoryMap.get(t.category_id) : null;
       if (ticketCategoryInfo?.domain && assignedCategoryDomains.includes(ticketCategoryInfo.domain)) {
@@ -149,7 +150,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
         // No scope restriction, show all tickets in this domain
         return true;
       }
-      
+
       // Priority 3: Unassigned tickets matching admin's domain/scope
       if (!t.assigned_to && hasAssignment) {
         const ticketCategory = ticketCategoryInfo?.name || null;
@@ -158,7 +159,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
           adminAssignment
         );
       }
-      
+
       return false;
     });
   } else {
@@ -191,22 +192,21 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   startOfToday.setHours(0, 0, 0, 0);
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
-  
+
   const todayPending = allTickets.filter(t => {
     // Must be open (not final status)
-    const status = t.status || t.status_value;
-    if (!isOpenStatus(status, finalStatusValues)) return false;
-    
+    if (!isOpenStatus(getStatusValue(t) || '')) return false;
+
     // Must have TAT date due today
     const metadata = parseTicketMetadata(t.metadata);
     const tatDateStr = metadata.tatDate;
     if (!tatDateStr || typeof tatDateStr !== 'string') return false;
-    
+
     const tatDate = new Date(tatDateStr);
     if (isNaN(tatDate.getTime())) return false;
-    
-    return tatDate.getTime() >= startOfToday.getTime() && 
-           tatDate.getTime() <= endOfToday.getTime();
+
+    return tatDate.getTime() >= startOfToday.getTime() &&
+      tatDate.getTime() <= endOfToday.getTime();
   }).length;
 
   return (
@@ -292,38 +292,35 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {allTickets.map((ticket) => {
                   // Transform to TicketCard expected format with proper types
-                  const ticketForCard: Ticket & { 
-                    status?: string | null; 
-                    category_name?: string | null; 
-                    creator_name?: string | null; 
-                    creator_email?: string | null;
-                  } = {
-                    id: ticket.id,
-                    title: ticket.title,
+                  const ticketForCard = {
+                    ...ticket,
+                    status: getStatusValue(ticket) || 'open',
+                    category_name: ticket.category_name || undefined,
+                    creator_name: ticket.creator_full_name || undefined,
+                    creator_email: ticket.creator_email || undefined,
+                    // Add missing fields from ticket (AdminTicketRow)
+                    ticket_number: ticket.ticket_number,
+                    priority: ticket.priority,
+                    group_id: ticket.group_id,
+                    escalated_at: ticket.escalated_at,
                     description: ticket.description,
                     location: ticket.location,
                     status_id: ticket.status_id ?? 0,
-                    category_id: ticket.category_id ?? null,
-                    subcategory_id: ticket.subcategory_id ?? null,
-                    scope_id: null,
-                    created_by: ticket.created_by,
-                    assigned_to: ticket.assigned_to,
+                    category_id: ticket.category_id,
                     escalation_level: ticket.escalation_level ?? 0,
-                    acknowledgement_due_at: ticket.acknowledgement_due_at,
-                    resolution_due_at: ticket.resolution_due_at,
-                    metadata: ticket.metadata,
-                    created_at: ticket.created_at,
-                    updated_at: ticket.updated_at,
-                    status: ticket.status || ticket.status_value || null,
-                    category_name: ticket.category_name || null,
-                    creator_name: ticket.creator_full_name || null,
-                    creator_email: ticket.creator_email || null,
+                    forward_count: ticket.forward_count ?? 0,
+                    reopen_count: ticket.reopen_count ?? 0,
+                    reopened_at: ticket.reopened_at,
+                    tat_extensions: 0, // Stub or parse if needed
+                    resolved_at: ticket.resolved_at,
+                    closed_at: ticket.closed_at,
+                    attachments: [], // Stub
                   };
                   return (
-                    <TicketCard 
-                      key={ticket.id} 
-                      ticket={ticketForCard} 
-                      basePath="/admin/dashboard" 
+                    <TicketCard
+                      key={ticket.id}
+                      ticket={ticketForCard}
+                      basePath="/admin/dashboard"
                     />
                   );
                 })}

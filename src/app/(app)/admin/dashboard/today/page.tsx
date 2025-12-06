@@ -6,6 +6,7 @@ import { Calendar, AlertTriangle, CheckCircle2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getCachedAdminUser, getCachedAdminAssignment, getCachedTicketStatuses, getCachedAdminTickets } from "@/lib/cache/cached-queries";
+import { tickets, categories, users, roles, ticket_statuses } from "@/db";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
 import type { Ticket } from "@/db/types-only";
 

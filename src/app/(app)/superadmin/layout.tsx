@@ -27,7 +27,9 @@ export default async function SuperAdminLayout({
 
   // Redirect non-super_admin users to their appropriate dashboard
   if (role !== "super_admin") {
-    if (role === "committee") {
+    if (role === "snr_admin") {
+      redirect("/snr-admin/dashboard");
+    } else if (role === "committee") {
       redirect("/committee/dashboard");
     } else if (role === "admin") {
       redirect("/admin/dashboard");

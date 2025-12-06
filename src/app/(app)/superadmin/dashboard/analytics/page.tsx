@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { tickets, categories, users, roles, ticket_statuses } from "@/db/schema";
+import { tickets, categories, users, roles, ticket_statuses } from "@/db";
 import { sql, inArray, eq } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Clock, CheckCircle2, AlertCircle, TrendingUp, Users, ArrowLeft, Zap, Target, Activity } from "lucide-react";
@@ -52,7 +52,7 @@ export default async function SuperAdminAnalyticsPage() {
         ticketMetadata = t.metadata as Record<string, unknown>;
       }
       const resolvedAt = ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at as string) : null;
-      
+
       return {
         id: t.id,
         status: t.status_value || null,
@@ -184,7 +184,7 @@ export default async function SuperAdminAnalyticsPage() {
     console.error('[Super Admin Analytics] Error fetching admin stats:', error);
     // Continue with empty array
   }
-  
+
   const adminStats: AdminStat[] = adminStatsRaw.map(stat => ({
     staff_id: stat.staff_id,
     staff_name: [stat.staff_first_name, stat.staff_last_name].filter(Boolean).join(' ').trim() || null,
@@ -228,7 +228,7 @@ export default async function SuperAdminAnalyticsPage() {
     console.error('[Super Admin Analytics] Error fetching category stats:', error);
     // Continue with empty array
   }
-  
+
   const categoryStats: CategoryStat[] = categoryStatsRaw.map(stat => ({
     category_id: stat.category_id,
     category_name: stat.category_name,

@@ -26,14 +26,14 @@ export const revalidate = 30;
 export default async function StudentDashboardPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
     // Get auth from Clerk - layout already verified userId exists
     // We need to get userId for DB queries, but layout already guarded this page
     const session = await auth();
     const userId = session?.userId;
-    
+
     // This should never happen - layout.tsx already verified, but type safety
     if (!userId) {
       return (
@@ -46,16 +46,17 @@ export default async function StudentDashboardPage({
         </Alert>
       );
     }
-    
+
     const dbUser = await getCachedUser(userId);
     if (!dbUser) {
       throw new Error("User not found in database");
     }
 
     // -----------------------------
-    // 2. Parse URL params
+    // 2. Parse URL params (await searchParams in Next.js 16)
     // -----------------------------
-    const params = searchParams ?? {};
+    const resolvedParams = await searchParams;
+    const params = resolvedParams ?? {};
     const getParam = (value: string | string[] | undefined) =>
       Array.isArray(value) ? value[0] ?? "" : value ?? "";
 
@@ -68,8 +69,7 @@ export default async function StudentDashboardPage({
     const page = parseInt(getParam(params.page) || "1", 10);
 
     // Build dynamic filters from params
-    const safeParams = params && typeof params === "object" && !Array.isArray(params) ? params : {};
-    const dynamicFilters = Object.entries(safeParams)
+    const dynamicFilters = Object.entries(params)
       .filter(([key]) => key.startsWith("f_"))
       .map(([key, value]) => ({ key, value: Array.isArray(value) ? value[0] ?? "" : value || "" }))
       .filter((f) => f.value);
@@ -108,19 +108,19 @@ export default async function StudentDashboardPage({
 
     const ticketStatuses = Array.isArray(ticketStatusesResult)
       ? ticketStatusesResult.map((status) => {
-          if (!status || typeof status !== 'object') return null;
-          return {
-            id: (status as { id?: number }).id ?? 0,
-            value: (status as { value?: string }).value ?? '',
-            label: (status as { label?: string }).label ?? '',
-            description: (status as { description?: string | null }).description ?? null,
-            progress_percent: (status as { progress_percent?: number }).progress_percent ?? 0,
-            badge_color: (status as { badge_color?: string | null }).badge_color ?? null,
-            is_active: (status as { is_active?: boolean }).is_active ?? true,
-            is_final: (status as { is_final?: boolean }).is_final ?? false,
-            display_order: (status as { display_order?: number }).display_order ?? 0,
-          };
-        }).filter((s): s is NonNullable<typeof s> => s !== null)
+        if (!status || typeof status !== 'object') return null;
+        return {
+          id: (status as { id?: number }).id ?? 0,
+          value: (status as { value?: string }).value ?? '',
+          label: (status as { label?: string }).label ?? '',
+          description: (status as { description?: string | null }).description ?? null,
+          progress_percent: (status as { progress_percent?: number }).progress_percent ?? 0,
+          badge_color: (status as { badge_color?: string | null }).badge_color ?? null,
+          is_active: (status as { is_active?: boolean }).is_active ?? true,
+          is_final: (status as { is_final?: boolean }).is_final ?? false,
+          display_order: (status as { display_order?: number }).display_order ?? 0,
+        };
+      }).filter((s): s is NonNullable<typeof s> => s !== null)
       : [];
 
     // Test serialization before rendering to catch any issues early
@@ -194,7 +194,7 @@ export default async function StudentDashboardPage({
         ) : (
           <>
             <TicketList tickets={allTickets} />
-            
+
             {/* Pagination */}
             {ticketsResult.pagination.totalPages > 1 && (
               <PaginationControls

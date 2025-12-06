@@ -9,33 +9,39 @@ import { TicketGrouping } from "./TicketGrouping";
 import { Users, X } from "lucide-react";
 import type { Ticket } from "@/db/types-only";
 
-interface SelectableTicketListProps {
+export interface SelectableTicketListProps {
   tickets: Ticket[];
   basePath?: string;
+  selectedIds: number[];
+  onSelectionChange: (ids: number[]) => void;
 }
 
-export function SelectableTicketList({ tickets, basePath = "/admin/dashboard" }: SelectableTicketListProps) {
-  const [selectedTicketIds, setSelectedTicketIds] = useState<number[]>([]);
+export function SelectableTicketList({
+  tickets,
+  basePath = "/admin/dashboard",
+  selectedIds,
+  onSelectionChange
+}: SelectableTicketListProps) {
 
   const toggleTicket = (ticketId: number) => {
-    setSelectedTicketIds((prev) =>
-      prev.includes(ticketId)
-        ? prev.filter((id) => id !== ticketId)
-        : [...prev, ticketId]
+    onSelectionChange(
+      selectedIds.includes(ticketId)
+        ? selectedIds.filter((id) => id !== ticketId)
+        : [...selectedIds, ticketId]
     );
   };
 
   const selectAll = () => {
-    if (selectedTicketIds.length === tickets.length) {
-      setSelectedTicketIds([]);
+    if (selectedIds.length === tickets.length) {
+      onSelectionChange([]);
     } else {
-      setSelectedTicketIds(tickets.map((t) => t.id));
+      onSelectionChange(tickets.map((t) => t.id));
     }
   };
 
   return (
     <div className="space-y-6">
-      {selectedTicketIds.length > 0 && (
+      {selectedIds.length > 0 && (
         <Card className="border-primary bg-primary/5">
           <CardContent className="py-4">
             <div className="flex items-center justify-between">
@@ -43,18 +49,18 @@ export function SelectableTicketList({ tickets, basePath = "/admin/dashboard" }:
                 <Users className="w-5 h-5 text-primary" />
                 <div>
                   <p className="font-semibold">
-                    {selectedTicketIds.length} ticket{selectedTicketIds.length !== 1 ? "s" : ""} selected
+                    {selectedIds.length} ticket{selectedIds.length !== 1 ? "s" : ""} selected
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Create a group to manage these tickets together
+                    Use the toolbar above to create a group or perform actions
                   </p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={selectAll}>
-                  {selectedTicketIds.length === tickets.length ? "Deselect All" : "Select All"}
+                  {selectedIds.length === tickets.length ? "Deselect All" : "Select All"}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setSelectedTicketIds([])}>
+                <Button variant="outline" size="sm" onClick={() => onSelectionChange([])}>
                   <X className="w-4 h-4 mr-2" />
                   Clear
                 </Button>
@@ -64,18 +70,11 @@ export function SelectableTicketList({ tickets, basePath = "/admin/dashboard" }:
         </Card>
       )}
 
-      {selectedTicketIds.length > 0 && (
-        <TicketGrouping
-          selectedTicketIds={selectedTicketIds}
-          onGroupCreated={() => setSelectedTicketIds([])}
-        />
-      )}
-
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Checkbox
-              checked={selectedTicketIds.length === tickets.length && tickets.length > 0}
+              checked={selectedIds.length === tickets.length && tickets.length > 0}
               onCheckedChange={selectAll}
             />
             <span className="text-sm text-muted-foreground">
@@ -88,12 +87,12 @@ export function SelectableTicketList({ tickets, basePath = "/admin/dashboard" }:
           {tickets.map((ticket) => (
             <div key={ticket.id} className="relative">
               <Checkbox
-                checked={selectedTicketIds.includes(ticket.id)}
+                checked={selectedIds.includes(ticket.id)}
                 onCheckedChange={() => toggleTicket(ticket.id)}
                 className="absolute top-4 right-4 z-10 bg-background border-2"
               />
               <div
-                className={selectedTicketIds.includes(ticket.id) ? "ring-2 ring-primary rounded-lg" : ""}
+                className={selectedIds.includes(ticket.id) ? "ring-2 ring-primary rounded-lg" : ""}
                 onClick={() => toggleTicket(ticket.id)}
               >
                 <TicketCard ticket={ticket} basePath={basePath} disableLink />

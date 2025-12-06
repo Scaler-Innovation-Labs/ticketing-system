@@ -1,27 +1,16 @@
 import { MasterDataManagement } from "@/components/admin/master-data";
+import { db, class_sections, batches, hostels } from "@/db";
 
 // Use ISR - revalidate every 5 minutes (master data changes infrequently)
 export const revalidate = 300;
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-
 export default async function MasterDataPage() {
-  // Fetch all master data from API in parallel
-  const [sectionsRes, batchesRes, hostelsRes] = await Promise.all([
-    fetch(`${API_BASE_URL}/master/class-sections`, {
-      next: { revalidate: 300 },
-    }),
-    fetch(`${API_BASE_URL}/master/batches`, {
-      next: { revalidate: 300 },
-    }),
-    fetch(`${API_BASE_URL}/master/hostels`, {
-      next: { revalidate: 300 },
-    }),
+  // Fetch all master data from DB in parallel
+  const [sections, batchesList, hostelsList] = await Promise.all([
+    db.select().from(class_sections),
+    db.select().from(batches),
+    db.select().from(hostels),
   ]);
-
-  const sections = sectionsRes.ok ? await sectionsRes.json() : [];
-  const batchesList = batchesRes.ok ? await batchesRes.json() : [];
-  const hostelsList = hostelsRes.ok ? await hostelsRes.json() : [];
 
   return (
     <MasterDataManagement

@@ -37,7 +37,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
     if (onCommentAdded) {
       onCommentAdded(optimisticComment);
     }
-    
+
     if (action === "question" && onStatusChanged) {
       onStatusChanged("awaiting_student_response");
     }
@@ -48,7 +48,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
     try {
       if (action === "question") {
         const statusResponse = await fetch(`/api/tickets/${ticketId}/status`, {
-          method: "PATCH",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "awaiting_student_response" }),
         });
@@ -82,7 +82,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
       router.refresh();
       toast.success(action === "question" ? "Question sent to student" : "Comment added");
     } catch (error) {
-      logger.error("Comment composer error", error, { component: "AdminCommentComposer", ticketId });
+      logger.error({ error, component: "AdminCommentComposer", ticketId }, "Comment composer error");
       toast.error(error instanceof Error ? error.message : "Something went wrong");
       // Restore message on error
       setMessage(messageText);

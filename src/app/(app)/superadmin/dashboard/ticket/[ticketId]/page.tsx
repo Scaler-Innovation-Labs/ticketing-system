@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TicketStatusBadge } from "@/components/features/tickets/display/TicketStatusBadge";
-import type { TicketMetadata } from "@/db/inferred-types";
+import type { TicketMetadata } from "@/db/types-only";
 import { buildTimeline } from "@/lib/ticket/formatting/buildTimeline";
 import { normalizeStatusForComparison } from "@/lib/utils";
 import { getCachedTicketStatuses } from "@/lib/cache/cached-queries";
@@ -73,7 +73,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
       id: tickets.id,
       status_value: ticket_statuses.value,
       status_label: ticket_statuses.label,
-      status_badge_color: ticket_statuses.badge_color,
+      status_badge_color: ticket_statuses.color,
       description: tickets.description,
       location: tickets.location,
       created_by: tickets.created_by,
@@ -99,7 +99,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     .limit(1);
 
   if (ticketRows.length === 0) notFound();
-  
+
   // Parse metadata to extract slack_thread_id
   let slackThreadId: string | null = null;
   try {
@@ -116,10 +116,10 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
   const statusValue = ticketRows[0].status_value;
   const statusDisplay = statusValue
     ? {
-        value: statusValue,
-        label: ticketRows[0].status_label || statusValue,
-        badge_color: ticketRows[0].status_badge_color || "default",
-      }
+      value: statusValue,
+      label: ticketRows[0].status_label || statusValue,
+      badge_color: ticketRows[0].status_badge_color || "default",
+    }
     : null;
 
   const ticket = {
@@ -143,12 +143,12 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
       .leftJoin(hostels, eq(hostels.id, students.hostel_id))
       .where(eq(students.user_id, ticket.created_by!))
       .limit(1),
-    
+
     // Fetch profile fields configuration
     ticket.category_id
       ? getCategoryProfileFields(ticket.category_id)
       : Promise.resolve([]),
-    
+
     // Fetch category schema for dynamic fields
     ticket.category_id
       ? getCategorySchema(ticket.category_id)
@@ -195,26 +195,33 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
 
 
   // Extract dynamic fields from metadata (after metadata is initialized)
+  console.log('[Super Admin Ticket] Metadata for dynamic fields:', {
+    type: typeof metadata,
+    isNull: metadata === null,
+    isUndefined: metadata === undefined,
+    value: metadata
+  });
   const dynamicFields = extractDynamicFields(metadata as Record<string, unknown>, categorySchema || {});
 
   // Normalize status for comparisons
-  const statusValueStr = typeof ticket.status === 'string' 
-    ? ticket.status 
+  const statusValueStr = typeof ticket.status === 'string'
+    ? ticket.status
     : (ticket.status && typeof ticket.status === 'object' && 'value' in ticket.status ? ticket.status.value : null);
   const normalizedStatus = normalizeStatusForComparison(statusValueStr);
 
   // Build progress map from statuses (already fetched above)
-  const progressMap = Array.isArray(ticketStatuses) && ticketStatuses.length > 0 
-    ? buildProgressMap(ticketStatuses) 
+  const progressMap = Array.isArray(ticketStatuses) && ticketStatuses.length > 0
+    ? buildProgressMap(ticketStatuses)
     : {};
-  const ticketProgress = (progressMap && typeof progressMap === 'object' && normalizedStatus && progressMap[normalizedStatus]) 
-    ? progressMap[normalizedStatus] 
+  const ticketProgress = (progressMap && typeof progressMap === 'object' && normalizedStatus && progressMap[normalizedStatus])
+    ? progressMap[normalizedStatus]
     : 0;
 
   // Extract timestamps from metadata
   let ticketMetadata: TicketMetadata = {};
-  if (ticket.metadata && typeof ticket.metadata === 'object' && !Array.isArray(ticket.metadata)) {
-    ticketMetadata = ticket.metadata as TicketMetadata;
+  const rawMeta = ticket.metadata as any;
+  if (rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)) {
+    ticketMetadata = rawMeta as TicketMetadata;
   }
   const resolvedAt = ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at) : null;
   const reopenedAt = ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null;
@@ -229,7 +236,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     reopened_at: reopenedAt,
     escalation_level: ticket.escalation_level,
     status: statusValueStr,
-  }, normalizedStatus);
+  }, normalizedStatus) as any[];
 
   // Add TAT set entry if TAT was set
   const tatSetAt = metadata?.tatSetAt;
@@ -268,7 +275,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     const tatDateObj = new Date(tatDate);
     const now = new Date();
     const isResolved = normalizedStatus === "resolved" || normalizedStatus === "closed" || ticketProgress === 100;
-    
+
     if (!isNaN(tatDateObj.getTime()) && tatDateObj.getTime() < now.getTime() && !isResolved) {
       timelineEntries.push({
         title: "Overdue",
@@ -502,14 +509,14 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                   const keyLower = field.key.toLowerCase();
                   const labelLower = field.label.toLowerCase();
                   // Exclude TAT-related fields
-                  return !keyLower.includes('tat') && 
-                         !labelLower.includes('tat') &&
-                         !keyLower.includes('tat_set') &&
-                         !labelLower.includes('tat set') &&
-                         !keyLower.includes('tat_extensions') &&
-                         !labelLower.includes('tat extensions');
+                  return !keyLower.includes('tat') &&
+                    !labelLower.includes('tat') &&
+                    !keyLower.includes('tat_set') &&
+                    !labelLower.includes('tat set') &&
+                    !keyLower.includes('tat_extensions') &&
+                    !labelLower.includes('tat extensions');
                 });
-                
+
                 return filteredFields.length > 0 ? (
                   <div className="space-y-3">
                     {filteredFields.map((field) => (
@@ -592,10 +599,10 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                       const commentAuthor = (typeof comment.author === 'string' ? comment.author : typeof comment.created_by === 'string' ? comment.created_by : 'Unknown') || 'Unknown';
                       const commentSource = typeof comment.source === 'string' ? comment.source : null;
                       const rawTimestamp = comment.createdAt || comment.created_at;
-                      const commentCreatedAt = rawTimestamp && 
-                        (typeof rawTimestamp === 'string' || rawTimestamp instanceof Date) 
+                      const commentCreatedAt = rawTimestamp &&
+                        (typeof rawTimestamp === 'string' || rawTimestamp instanceof Date)
                         ? rawTimestamp : null;
-                      
+
                       // For internal notes, keep card style; for regular comments, use chat style
                       if (isInternal) {
                         return (
@@ -635,7 +642,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                       // Chat-style for regular comments
                       const isStudent = commentSource === "website";
                       const isAdmin = !isStudent;
-                      
+
                       return (
                         <div key={idx} className={`flex gap-3 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                           <div className={`flex gap-3 max-w-[80%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>

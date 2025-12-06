@@ -31,7 +31,7 @@ export default async function NewTicketPage() {
         hostel_id: students.hostel_id,
         room_no: students.room_no,
         class_section_name: class_sections.name,
-        batch_year: batches.batch_year,
+        batch_year: batches.year,
       })
       .from(students)
       .leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
@@ -101,7 +101,7 @@ export default async function NewTicketPage() {
         required: f.required ?? false,
         placeholder: f.placeholder ?? null,
         help_text: f.help_text ?? null,
-        validation_rules: (f.validation_rules || null) as Record<string, unknown> | null,
+        validation_rules: (f.validation_rules ?? {}) as Record<string, unknown>,
         display_order: f.display_order ?? 0,
         subcategory_id: sub.id,
         options: (f.options || []).map((opt, index) => ({
@@ -174,7 +174,7 @@ export default async function NewTicketPage() {
     <TicketForm
       dbUserId={dbUser.id}
       student={normalizedStudent}
-      categories={categoriesFromHierarchy as Array<{ id: number; name: string; [key: string]: unknown }>}
+      categories={categoriesFromHierarchy as Array<{ id: number; name: string;[key: string]: unknown }>}
       subcategories={subcategoriesWithSubs}
       profileFields={standardProfileFields}
       dynamicFields={mappedCategoryFields}

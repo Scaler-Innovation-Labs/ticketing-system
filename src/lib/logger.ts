@@ -1,104 +1,108 @@
 /**
  * Application Logger
  * 
- * Structured logging using Pino for better observability.
- * - JSON format in production
- * - Pretty-printed in development
- * - Includes request context and error tracking
+ * Simple console-based logger that works in Next.js without worker threads.
+ * Provides structured logging with levels.
  */
 
-import pino from 'pino';
-import { isDevelopment } from '@/conf/config';
+const isDev = process.env.NODE_ENV !== 'production';
 
-// Create logger instance
-export const logger = pino({
-  level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
-  
-  // Pretty print in development
-  transport: isDevelopment
-    ? {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'HH:MM:ss Z',
-          ignore: 'pid,hostname',
-        },
-      }
-    : undefined,
-  
-  // Base context
-  base: {
-    env: process.env.NODE_ENV,
-  },
-  
-  // Serialize errors properly
-  serializers: {
-    error: pino.stdSerializers.err,
-    req: pino.stdSerializers.req,
-    res: pino.stdSerializers.res,
-  },
-});
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+interface LogContext {
+  [key: string]: unknown;
+}
+
+function formatMessage(level: LogLevel, context: LogContext, message: string): string {
+  const timestamp = new Date().toISOString();
+  const contextStr = Object.keys(context).length > 0
+    ? ` ${JSON.stringify(context)}`
+    : '';
+  return `[${timestamp}] ${level.toUpperCase()}: ${message}${contextStr}`;
+}
+
+function createLogMethod(level: LogLevel) {
+  return (contextOrMessage: LogContext | string, message?: string) => {
+    if (typeof contextOrMessage === 'string') {
+      // Called with just a message
+      console[level === 'debug' ? 'log' : level](formatMessage(level, {}, contextOrMessage));
+    } else {
+      // Called with context and message
+      console[level === 'debug' ? 'log' : level](formatMessage(level, contextOrMessage, message || ''));
+    }
+  };
+}
+
+export const logger = {
+  debug: createLogMethod('debug'),
+  info: createLogMethod('info'),
+  warn: createLogMethod('warn'),
+  error: createLogMethod('error'),
+
+  child: (context: LogContext) => ({
+    debug: (ctx: LogContext | string, msg?: string) => {
+      const fullContext = typeof ctx === 'string' ? context : { ...context, ...ctx };
+      const message = typeof ctx === 'string' ? ctx : msg || '';
+      if (isDev) console.log(formatMessage('debug', fullContext, message));
+    },
+    info: (ctx: LogContext | string, msg?: string) => {
+      const fullContext = typeof ctx === 'string' ? context : { ...context, ...ctx };
+      const message = typeof ctx === 'string' ? ctx : msg || '';
+      console.info(formatMessage('info', fullContext, message));
+    },
+    warn: (ctx: LogContext | string, msg?: string) => {
+      const fullContext = typeof ctx === 'string' ? context : { ...context, ...ctx };
+      const message = typeof ctx === 'string' ? ctx : msg || '';
+      console.warn(formatMessage('warn', fullContext, message));
+    },
+    error: (ctx: LogContext | string, msg?: string) => {
+      const fullContext = typeof ctx === 'string' ? context : { ...context, ...ctx };
+      const message = typeof ctx === 'string' ? ctx : msg || '';
+      console.error(formatMessage('error', fullContext, message));
+    },
+  }),
+};
 
 /**
  * Create a child logger with additional context
- * 
- * @example
- * const log = createLogger({ module: 'tickets', userId: '123' });
- * log.info('Ticket created');
  */
-export function createLogger(context: Record<string, any>) {
+export function createLogger(context: LogContext) {
   return logger.child(context);
 }
 
 /**
  * Log with execution time
- * 
- * @example
- * const timer = startTimer();
- * // ... do work
- * timer.end('Operation completed', { ticketId: 123 });
  */
 export function startTimer() {
   const start = Date.now();
-  
+
   return {
-    end: (message: string, context?: Record<string, any>) => {
+    end: (message: string, context?: LogContext) => {
       const duration = Date.now() - start;
-      logger.info({
-        ...context,
-        duration,
-      }, message);
+      logger.info({ ...context, duration }, message);
     },
   };
 }
 
 /**
  * Log error with proper serialization
- * 
- * @example
- * try {
- *   // ... code
- * } catch (error) {
- *   logError(error, 'Failed to create ticket', { ticketId: 123 });
- * }
  */
 export function logError(
   error: unknown,
   message: string,
-  context?: Record<string, any>
+  context?: LogContext
 ) {
   const errorObj = error instanceof Error ? error : new Error(String(error));
-  
+
   logger.error({
     ...context,
-    error: errorObj,
+    error: errorObj.message,
     stack: errorObj.stack,
   }, message);
 }
 
 /**
  * Request logger middleware helper
- * Creates child logger with request context
  */
 export function createRequestLogger(requestId: string, path: string, method: string) {
   return createLogger({

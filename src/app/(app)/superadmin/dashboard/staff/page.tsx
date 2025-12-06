@@ -32,7 +32,7 @@ async function getStaffMembers() {
   const committeeMembers = staffMembers.filter(s => s.role === "committee");
   const committeeMemberIds = committeeMembers.map(s => s.id);
   const committeesMap = new Map<string, { id: number; name: string; description: string | null }>();
-  
+
   if (committeeMemberIds.length > 0) {
     const committeeRecords = await db
       .select({
@@ -43,7 +43,7 @@ async function getStaffMembers() {
       })
       .from(committees)
       .where(inArray(committees.head_id, committeeMemberIds));
-    
+
     for (const committee of committeeRecords) {
       if (committee.head_id) {
         committeesMap.set(committee.head_id, {
@@ -56,8 +56,8 @@ async function getStaffMembers() {
   }
 
   const formattedStaff = staffMembers.map((staff) => {
-    const committee = staff.role === "committee" 
-      ? committeesMap.get(staff.id) 
+    const committee = staff.role === "committee"
+      ? committeesMap.get(staff.id)
       : null;
     return {
       id: staff.id,
@@ -120,7 +120,7 @@ async function getMasterData() {
 
   return {
     hostels: hostelsList,
-    batches: batchesList,
+    batches: batchesList.map(b => ({ id: b.id, batch_year: b.year })),
     class_sections: classSectionsList,
     domains: formattedDomains,
     roles: formattedRoles,
@@ -135,7 +135,7 @@ export default async function StaffPage() {
   ]);
 
   return (
-    <StaffManagement 
+    <StaffManagement
       initialStaff={staff}
       initialMasterData={masterData}
     />

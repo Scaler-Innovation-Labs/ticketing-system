@@ -105,8 +105,8 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          committee_id: parseInt(selectedCommitteeId, 10),
-          reason: reason.trim() || null,
+          committeeIds: [parseInt(selectedCommitteeId, 10)],
+          // reason is currently not supported by API/DB
         }),
       });
 

@@ -40,16 +40,13 @@ export default async function SuperAdminAnalyticsPage() {
                 assigned_to: tickets.assigned_to,
                 created_by: tickets.created_by,
                 admin_full_name: users.full_name,
-                admin_domain: domains.name,
-                admin_scope: scopes.name
+                admin_domain: sql<string>`NULL`,
+                admin_scope: sql<string>`NULL`
             })
             .from(tickets)
             .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
             .leftJoin(categories, eq(tickets.category_id, categories.id))
-            .leftJoin(users, eq(tickets.assigned_to, users.id))
-            .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
-            .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
-            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id));
+            .leftJoin(users, eq(tickets.assigned_to, users.id));
 
         // Extract metadata fields and transform
         const allTickets = allTicketsRaw.map(t => {
@@ -61,13 +58,13 @@ export default async function SuperAdminAnalyticsPage() {
             const acknowledgedAt = ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at as string) : null;
             const rating = (ticketMetadata.rating as number | null) || null;
             const ratingSubmitted = ticketMetadata.rating_submitted ? new Date(ticketMetadata.rating_submitted as string) : null;
-            
+
             // Split full_name into first_name and last_name for compatibility
             const fullName = t.admin_full_name || "";
             const nameParts = fullName.split(' ');
             const admin_first_name = nameParts[0] || null;
             const admin_last_name = nameParts.slice(1).join(' ') || null;
-            
+
             return {
                 id: t.id,
                 status: t.status_value || null,
@@ -95,15 +92,12 @@ export default async function SuperAdminAnalyticsPage() {
             .select({
                 id: users.id,
                 full_name: users.full_name,
-                domain: domains.name,
-                scope: scopes.name,
+                domain: sql<string>`NULL`,
+                scope: sql<string>`NULL`,
                 role: roles.name
             })
             .from(users)
             .leftJoin(roles, eq(users.role_id, roles.id))
-            .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
-            .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
-            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
             .where(sql`${roles.name} IN ('admin', 'super_admin', 'committee')`);
 
         // Transform to split full_name into first_name and last_name
@@ -130,7 +124,7 @@ export default async function SuperAdminAnalyticsPage() {
         // Fetch dynamic statuses
         const ticketStatuses = await getAllTicketStatuses();
         const activeStatuses = ticketStatuses.filter(s => s.is_active);
-        const finalStatuses = new Set(ticketStatuses.filter(s => s.is_final).map(s => s.value));
+        const finalStatuses = new Set(['resolved', 'closed']);
 
         // Time periods
         const now = new Date();
@@ -584,7 +578,7 @@ export default async function SuperAdminAnalyticsPage() {
                                         return (
                                             <div key={status.id} className="flex items-center justify-between p-3 border rounded-lg">
                                                 <div className="flex items-center gap-3">
-                                                    <Badge variant={(status.badge_color as "default" | "secondary" | "destructive" | "outline") || "default"}>
+                                                    <Badge variant="default" style={status.color ? { backgroundColor: status.color } : undefined}>
                                                         {status.label}
                                                     </Badge>
                                                     <div>
@@ -620,43 +614,43 @@ export default async function SuperAdminAnalyticsPage() {
                                 ) : (
                                     <div className="space-y-4">
                                         {staffPerformance.slice(0, 10).map((staff, index) => (
-                                        <Link
-                                            key={staff.id}
-                                            href={`/superadmin/dashboard/analytics/admin/${staff.id}`}
-                                            className="block"
-                                        >
-                                            <div className="flex items-center gap-4 p-4 border rounded-lg hover:shadow-md transition-all hover:border-primary cursor-pointer">
-                                                <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
-                                                    {index + 1}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <h4 className="font-semibold">{staff.full_name || "Unknown"}</h4>
-                                                    <div className="flex gap-4 text-xs text-muted-foreground mt-1">
-                                                        <span>{staff.domain || "N/A"} {staff.scope ? `- ${staff.scope}` : ""}</span>
+                                            <Link
+                                                key={staff.id}
+                                                href={`/superadmin/dashboard/analytics/admin/${staff.id}`}
+                                                className="block"
+                                            >
+                                                <div className="flex items-center gap-4 p-4 border rounded-lg hover:shadow-md transition-all hover:border-primary cursor-pointer">
+                                                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                                                        {index + 1}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-semibold">{staff.full_name || "Unknown"}</h4>
+                                                        <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                                                            <span>{staff.domain || "N/A"} {staff.scope ? `- ${staff.scope}` : ""}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-4 text-center">
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Assigned</p>
+                                                            <p className="text-lg font-bold">{staff.assignedCount}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Resolved</p>
+                                                            <p className="text-lg font-bold text-green-600">{staff.resolvedCount}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Rate</p>
+                                                            <p className="text-lg font-bold">{staff.resolutionRate.toFixed(0)}%</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-muted-foreground">Rating</p>
+                                                            <p className="text-lg font-bold text-purple-600">
+                                                                {staff.avgRating > 0 ? staff.avgRating.toFixed(1) : '-'}
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-4 gap-4 text-center">
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">Assigned</p>
-                                                        <p className="text-lg font-bold">{staff.assignedCount}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">Resolved</p>
-                                                        <p className="text-lg font-bold text-green-600">{staff.resolvedCount}</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">Rate</p>
-                                                        <p className="text-lg font-bold">{staff.resolutionRate.toFixed(0)}%</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">Rating</p>
-                                                        <p className="text-lg font-bold text-purple-600">
-                                                            {staff.avgRating > 0 ? staff.avgRating.toFixed(1) : '-'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Link>
+                                            </Link>
                                         ))}
                                     </div>
                                 )}
@@ -667,47 +661,47 @@ export default async function SuperAdminAnalyticsPage() {
                     {/* Domains Tab */}
                     <TabsContent value="domains" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-3">
-                            {domainStats && typeof domainStats === 'object' && !Array.isArray(domainStats) 
-                              ? Object.entries(domainStats).map(([domain, stats]) => (
-                                <Card key={domain}>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Building2 className="h-4 w-4" />
-                                            {domain}
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="grid grid-cols-3 gap-2 text-center">
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Total</p>
-                                                <p className="text-2xl font-bold">{stats.total}</p>
+                            {domainStats && typeof domainStats === 'object' && !Array.isArray(domainStats)
+                                ? Object.entries(domainStats).map(([domain, stats]) => (
+                                    <Card key={domain}>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4" />
+                                                {domain}
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div className="grid grid-cols-3 gap-2 text-center">
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Total</p>
+                                                    <p className="text-2xl font-bold">{stats.total}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Resolved</p>
+                                                    <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Pending</p>
+                                                    <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+                                                </div>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-muted-foreground">Resolved</p>
-                                                <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span>Resolution Rate</span>
+                                                    <span>{stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(0) : 0}%</span>
+                                                </div>
+                                                <Progress value={stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0} className="h-2" />
                                             </div>
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Pending</p>
-                                                <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span>Resolution Rate</span>
-                                                <span>{stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(0) : 0}%</span>
-                                            </div>
-                                            <Progress value={stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0} className="h-2" />
-                                        </div>
-                                        {stats.avgRating > 0 && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-muted-foreground">Avg Rating</span>
-                                                <span className="text-lg font-bold">{stats.avgRating.toFixed(1)} ★</span>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                              ))
-                              : null}
+                                            {stats.avgRating > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-muted-foreground">Avg Rating</span>
+                                                    <span className="text-lg font-bold">{stats.avgRating.toFixed(1)} ★</span>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))
+                                : null}
                         </div>
                     </TabsContent>
 
@@ -727,69 +721,69 @@ export default async function SuperAdminAnalyticsPage() {
                                 ) : (
                                     <div className="space-y-4">
                                         {categoryStats.map((cat) => {
-                                        const resolutionRate = cat.total > 0 ? (cat.resolved / cat.total) * 100 : 0;
-                                        const escalationRate = cat.total > 0 ? (cat.escalated / cat.total) * 100 : 0;
-                                        const categoryKey = cat.category_id ?? "uncategorized";
-                                        const categoryHref = `/superadmin/dashboard/analytics/category/${categoryKey}`;
-                                        return (
-                                            <Link
-                                                key={cat.name}
-                                                href={categoryHref}
-                                                className="block"
-                                            >
-                                                <div className="border rounded-lg p-4 hover:shadow-md transition-all hover:border-primary cursor-pointer">
-                                                    <div className="flex justify-between items-center mb-3">
-                                                        <h4 className="font-semibold flex items-center gap-2">
-                                                            <Layers className="h-4 w-4" />
-                                                            {cat.name}
-                                                        </h4>
-                                                        <Badge>{cat.total} tickets</Badge>
-                                                    </div>
-                                                <div className="grid grid-cols-5 gap-4 mb-3">
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Total</p>
-                                                        <p className="text-lg font-bold">{cat.total}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Resolved</p>
-                                                        <p className="text-lg font-bold text-green-600">{cat.resolved}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Pending</p>
-                                                        <p className="text-lg font-bold text-amber-600">{cat.pending}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Escalated</p>
-                                                        <p className="text-lg font-bold text-red-600">{cat.escalated}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Rating</p>
-                                                        <p className="text-lg font-bold text-purple-600">
-                                                            {cat.avgRating > 0 ? cat.avgRating.toFixed(1) : '-'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <div>
-                                                        <div className="flex justify-between text-xs mb-1">
-                                                            <span>Resolution Rate</span>
-                                                            <span>{resolutionRate.toFixed(0)}%</span>
+                                            const resolutionRate = cat.total > 0 ? (cat.resolved / cat.total) * 100 : 0;
+                                            const escalationRate = cat.total > 0 ? (cat.escalated / cat.total) * 100 : 0;
+                                            const categoryKey = cat.category_id ?? "uncategorized";
+                                            const categoryHref = `/superadmin/dashboard/analytics/category/${categoryKey}`;
+                                            return (
+                                                <Link
+                                                    key={cat.name}
+                                                    href={categoryHref}
+                                                    className="block"
+                                                >
+                                                    <div className="border rounded-lg p-4 hover:shadow-md transition-all hover:border-primary cursor-pointer">
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <h4 className="font-semibold flex items-center gap-2">
+                                                                <Layers className="h-4 w-4" />
+                                                                {cat.name}
+                                                            </h4>
+                                                            <Badge>{cat.total} tickets</Badge>
                                                         </div>
-                                                        <Progress value={resolutionRate} className="h-2" />
-                                                    </div>
-                                                    {escalationRate > 0 && (
-                                                        <div>
-                                                            <div className="flex justify-between text-xs mb-1">
-                                                                <span>Escalation Rate</span>
-                                                                <span>{escalationRate.toFixed(0)}%</span>
+                                                        <div className="grid grid-cols-5 gap-4 mb-3">
+                                                            <div className="text-center">
+                                                                <p className="text-xs text-muted-foreground">Total</p>
+                                                                <p className="text-lg font-bold">{cat.total}</p>
                                                             </div>
-                                                            <Progress value={escalationRate} className="h-2 bg-red-100" />
+                                                            <div className="text-center">
+                                                                <p className="text-xs text-muted-foreground">Resolved</p>
+                                                                <p className="text-lg font-bold text-green-600">{cat.resolved}</p>
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-xs text-muted-foreground">Pending</p>
+                                                                <p className="text-lg font-bold text-amber-600">{cat.pending}</p>
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-xs text-muted-foreground">Escalated</p>
+                                                                <p className="text-lg font-bold text-red-600">{cat.escalated}</p>
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-xs text-muted-foreground">Rating</p>
+                                                                <p className="text-lg font-bold text-purple-600">
+                                                                    {cat.avgRating > 0 ? cat.avgRating.toFixed(1) : '-'}
+                                                                </p>
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                </div>
-                                                </div>
-                                            </Link>
-                                        );
+                                                        <div className="space-y-2">
+                                                            <div>
+                                                                <div className="flex justify-between text-xs mb-1">
+                                                                    <span>Resolution Rate</span>
+                                                                    <span>{resolutionRate.toFixed(0)}%</span>
+                                                                </div>
+                                                                <Progress value={resolutionRate} className="h-2" />
+                                                            </div>
+                                                            {escalationRate > 0 && (
+                                                                <div>
+                                                                    <div className="flex justify-between text-xs mb-1">
+                                                                        <span>Escalation Rate</span>
+                                                                        <span>{escalationRate.toFixed(0)}%</span>
+                                                                    </div>
+                                                                    <Progress value={escalationRate} className="h-2 bg-red-100" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </Link>
+                                            );
                                         })}
                                     </div>
                                 )}

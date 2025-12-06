@@ -35,9 +35,9 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
     setLoading(true);
     try {
       const response = await fetch(`/api/tickets/${ticketId}/status`, {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "REOPENED" }),
+        body: JSON.stringify({ status: "reopened" }),
       });
 
       if (response.ok) {
@@ -48,7 +48,7 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         toast.error(error.error || "Failed to reopen ticket");
       }
     } catch (error) {
-      logger.error("Error reopening ticket", error, { component: "StudentActions", action: "reopen", ticketId });
+      logger.error({ error, component: "StudentActions", action: "reopen", ticketId }, "Error reopening ticket");
       toast.error("Failed to reopen ticket. Please try again.");
     } finally {
       setLoading(false);
@@ -62,9 +62,9 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
     try {
       // Use CLOSED status when students close their own tickets
       const response = await fetch(`/api/tickets/${ticketId}/status`, {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "CLOSED" }),
+        body: JSON.stringify({ status: "closed" }),
       });
 
       if (response.ok) {
@@ -75,7 +75,7 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         toast.error(error.error || "Failed to close ticket");
       }
     } catch (error) {
-      logger.error("Error closing ticket", error, { component: "StudentActions", action: "close", ticketId });
+      logger.error({ error, component: "StudentActions", action: "close", ticketId }, "Error closing ticket");
       toast.error("Failed to close ticket. Please try again.");
     } finally {
       setLoading(false);
@@ -95,8 +95,8 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
               {canClose && !canReopen
                 ? "Close Ticket"
                 : canReopen && !canClose
-                ? "Reopen Ticket"
-                : "Manage Ticket"}
+                  ? "Reopen Ticket"
+                  : "Manage Ticket"}
             </h3>
             <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
               {canClose && !canReopen &&

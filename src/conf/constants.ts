@@ -11,6 +11,7 @@
 
 export const USER_ROLES = {
   SUPER_ADMIN: 'super_admin',
+  SNR_ADMIN: 'snr_admin',
   ADMIN: 'admin',
   COMMITTEE: 'committee',
   STUDENT: 'student',
@@ -33,6 +34,7 @@ export const TICKET_STATUS = {
 } as const;
 
 export type TicketStatus = typeof TICKET_STATUS[keyof typeof TICKET_STATUS];
+export type TicketStatusValue = TicketStatus;
 
 // ============================================
 // Business Rules
@@ -45,19 +47,19 @@ export const LIMITS = {
   MAX_LOCATION_LENGTH: 500,
   MAX_ATTACHMENTS: 5,
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
-  
+
   // Rate limiting
   API_REQUESTS_PER_MINUTE: 10,
   TICKET_CREATIONS_PER_MINUTE: 5,
-  
+
   // Pagination
   DEFAULT_PAGE_SIZE: 20,
   MAX_PAGE_SIZE: 100,
-  
+
   // TAT (Turn Around Time)
   DEFAULT_TAT_HOURS: 48,
   MAX_TAT_EXTENSIONS: 3,
-  
+
   // Escalation
   MAX_ESCALATION_LEVELS: 3,
   MAX_FORWARD_COUNT: 3,
@@ -175,3 +177,22 @@ export const EVENT_TYPES = {
 } as const;
 
 export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
+
+// ============================================
+// Ratings & Feedback
+// ============================================
+
+export const RATING = {
+  BAD: 1,
+  POOR: 2,
+  AVERAGE: 3,
+  GOOD: 4,
+  EXCELLENT: 5,
+} as const;
+
+export const FEEDBACK_TYPE = {
+  BUG: 'bug',
+  FEATURE: 'feature',
+  IMPROVEMENT: 'improvement',
+  OTHER: 'other',
+} as const;

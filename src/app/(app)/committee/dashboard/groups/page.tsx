@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, tickets, ticket_groups } from "@/db";
+import { tickets, categories, users, roles, ticket_statuses } from "@/db";
 
 import { eq, isNotNull } from "drizzle-orm";
 

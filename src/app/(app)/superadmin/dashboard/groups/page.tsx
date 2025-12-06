@@ -1,15 +1,14 @@
 import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
 import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
-import { TicketGrouping, SelectableTicketList } from "@/components/admin/tickets";
+import { TicketGroupsManager } from "@/components/admin/tickets/TicketGroupsManager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
-import { AdminTicketFilters } from "@/components/admin/tickets";
-import type { Ticket } from "@/db/types-only";
-import type { TicketMetadata } from "@/db/inferred-types";
+
+import type { Ticket, TicketMetadata } from "@/db/types-only";
 
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 // Removed force-dynamic to allow revalidation to work
@@ -69,7 +68,7 @@ export default async function SuperAdminGroupsPage({
 
   // Fetch all tickets for super admin with proper joins
   const creatorUser = aliasedTable(users, "creator");
-  
+
   const allTicketRows = await db
     .select({
       id: tickets.id,
@@ -121,7 +120,7 @@ export default async function SuperAdminGroupsPage({
     .select()
     .from(ticket_groups);
 
-  const activeGroupsCount = allGroups.filter(g => !g.is_archived).length;
+  const activeGroupsCount = allGroups.filter(g => g.is_active).length;
 
   return (
     <div className="space-y-6">
@@ -179,7 +178,7 @@ export default async function SuperAdminGroupsPage({
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Active Groups</p>
                 <p className="text-2xl font-bold mt-1">{activeGroupsCount}</p>
-                <p className="text-xs text-muted-foreground mt-1">Non-archived groups</p>
+                <p className="text-xs text-muted-foreground mt-1">Active groups</p>
               </div>
               <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
                 <Users className="w-6 h-6 text-emerald-500" />
@@ -203,75 +202,29 @@ export default async function SuperAdminGroupsPage({
         </Card>
       </div>
 
-      {/* Existing Groups */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Existing Groups
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TicketGrouping selectedTicketIds={[]} />
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AdminTicketFilters />
-        </CardContent>
-      </Card>
-      
-      {/* Select Tickets to Group */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <CardTitle>Select Tickets to Group</CardTitle>
-            <Badge variant="secondary" className="text-sm w-fit">
-              {allTicketRows.length} {allTicketRows.length === 1 ? "ticket" : "tickets"} available
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {allTicketRows.length === 0 ? (
-            <div className="py-12 text-center">
-              <Package className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-              <p className="text-muted-foreground font-medium">No tickets available for grouping</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Create tickets first to start grouping them
-              </p>
-            </div>
-          ) : (
-            <SelectableTicketList
-              tickets={allTicketRows.map(t => {
-                let ticketMetadata: TicketMetadata = {};
-                if (t.metadata && typeof t.metadata === 'object' && !Array.isArray(t.metadata)) {
-                  ticketMetadata = t.metadata as TicketMetadata;
-                }
-                return {
-                  ...t,
-                  status: t.status_value || null,
-                  status_id: t.status_id || null,
-                  scope_id: null,
-                  resolved_at: ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at) : null,
-                  reopened_at: ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null,
-                  acknowledged_at: ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null,
-                  rating: ticketMetadata.rating as number | null || null,
-                  feedback: ticketMetadata.feedback as string | null || null,
-                  category_name: t.category_name || null,
-                  creator_name: t.creator_full_name || null,
-                  creator_email: t.creator_email || null,
-                };
-              }) as unknown as Ticket[]}
-              basePath="/superadmin/dashboard"
-            />
-          )}
-        </CardContent>
-      </Card>
+      <TicketGroupsManager
+        tickets={allTicketRows.map(t => {
+          let ticketMetadata: TicketMetadata = {};
+          if (t.metadata && typeof t.metadata === 'object' && !Array.isArray(t.metadata)) {
+            ticketMetadata = t.metadata as TicketMetadata;
+          }
+          return {
+            ...t,
+            status: t.status_value || null,
+            status_id: t.status_id || null,
+            scope_id: null,
+            resolved_at: ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at) : null,
+            reopened_at: ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null,
+            acknowledged_at: ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null,
+            rating: ticketMetadata.rating as number | null || null,
+            feedback: ticketMetadata.feedback as string | null || null,
+            category_name: t.category_name || null,
+            creator_name: t.creator_full_name || null,
+            creator_email: t.creator_email || null,
+          };
+        }) as unknown as Ticket[]}
+        basePath="/superadmin/dashboard"
+      />
     </div>
   );
 }

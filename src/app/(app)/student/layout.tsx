@@ -58,11 +58,13 @@ export default async function StudentLayout({
 
   // Only redirect if role is explicitly set to non-student AND we successfully got it
   // This prevents redirect loops when DB queries fail
-  if (role && role !== "student" && role !== "snr_admin") {
+  if (role && role !== "student") {
     if (role === "committee") {
       redirect("/committee/dashboard");
     } else if (role === "admin") {
       redirect("/admin/dashboard");
+    } else if (role === "snr_admin") {
+      redirect("/snr-admin/dashboard");
     } else if (role === "super_admin") {
       redirect("/superadmin/dashboard");
     }

@@ -3,6 +3,7 @@ export { TicketGrouping } from "./TicketGrouping";
 export { AdminTicketFilters } from "./AdminTicketFilters";
 export { ManageGroupTicketsDialog } from "./ManageGroupTicketsDialog";
 export { SelectableTicketList } from "./SelectableTicketList";
+export { TicketGroupManager } from "./TicketGroupManager";
 
 // Ticket Grouping Components
 export { GroupList } from "./GroupList";

@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import type { TicketMetadata } from "@/db/inferred-types";
 import { TicketCard } from "@/components/layout/TicketCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { tickets, categories, users, roles, ticket_statuses } from "@/db";
 import { AlertTriangle, TrendingUp, Calendar, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export default async function CommitteeEscalatedPage() {
       ticketMetadata = t.metadata as TicketMetadata;
     }
     const lastEscalationAt = ticketMetadata.last_escalation_at ? new Date(ticketMetadata.last_escalation_at) : null;
-    
+
     return {
       ...t,
       status: t.status || null,

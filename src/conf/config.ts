@@ -8,38 +8,37 @@
 import { z } from 'zod';
 import * as dotenv from 'dotenv';
 
-// Load environment variables
-dotenv.config({
-  path: '.env.local',
-});
+// Load environment variables (load .env first, then .env.local which can override)
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local' });
 
 // Define configuration schema
 const configSchema = z.object({
   // Environment
   nodeEnv: z.enum(['development', 'production', 'test']).default('development'),
-  
+
   // Application
   appUrl: z.string().url().default('http://localhost:3000'),
-  
+
   // Database
   databaseUrl: z.string().min(1, 'DATABASE_URL is required'),
-  
+
   // Clerk Authentication
   clerk: z.object({
     publishableKey: z.string().optional(),
     secretKey: z.string().optional(),
     webhookSecret: z.string().optional(),
   }),
-  
-  // Cron Jobs
-  cronSecret: z.string().min(10, 'CRON_SECRET must be at least 10 characters'),
-  
+
+  // Cron Jobs (optional in development)
+  cronSecret: z.string().optional().default(''),
+
   // Optional: External Services
   slack: z.object({
     botToken: z.string().optional(),
     signingSecret: z.string().optional(),
   }).optional(),
-  
+
   // Optional: Email
   email: z.object({
     smtpHost: z.string().optional(),
@@ -78,7 +77,7 @@ function loadConfig() {
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error('❌ Configuration validation failed:');
-      error.errors.forEach((err) => {
+      (error as z.ZodError).issues.forEach((err: z.ZodIssue) => {
         console.error(`  - ${err.path.join('.')}: ${err.message}`);
       });
       throw new Error('Invalid configuration. Please check your environment variables.');

@@ -61,7 +61,7 @@ export function AdminActions({
 			onStatusChanged("in_progress");
 		}
 		setLoading("mark");
-		
+
 		try {
 			const response = await fetch(`/api/tickets/${ticketId}/tat`, {
 				method: "POST",
@@ -89,7 +89,7 @@ export function AdminActions({
 			if (onStatusChanged) {
 				onStatusChanged(currentStatus);
 			}
-			logger.error("Error marking in progress", error, { component: "AdminActions", action: "markInProgress" });
+			logger.error({ error, component: "AdminActions", action: "markInProgress" }, "Error marking in progress");
 			toast.error("Failed to mark in progress. Please try again.");
 		} finally {
 			setLoading(null);
@@ -118,7 +118,11 @@ export function AdminActions({
 			const response = await fetch(`/api/tickets/${ticketId}/tat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ tat, markInProgress: normalizedStatus !== "in_progress" }),
+				body: JSON.stringify({
+					tat,
+					markInProgress: normalizedStatus !== "in_progress",
+					isExtension: hasTAT
+				}),
 			});
 
 			if (response.ok) {
@@ -128,12 +132,12 @@ export function AdminActions({
 				router.refresh();
 			} else {
 				const errorData = await response.json().catch(() => ({ error: "Failed to set TAT" }));
-				logger.error("TAT API error", errorData, { component: "AdminActions", action: "setTAT" });
+				logger.error({ ...errorData, component: "AdminActions", action: "setTAT" }, "TAT API error");
 				const errorMessage = errorData.error || errorData.details || "Failed to set TAT";
 				toast.error(errorMessage);
 			}
 		} catch (error) {
-			logger.error("Error setting TAT", error, { component: "AdminActions", action: "setTAT" });
+			logger.error({ error, component: "AdminActions", action: "setTAT" }, "Error setting TAT");
 			toast.error("Failed to set TAT. Please try again.");
 		} finally {
 			setLoading(null);
@@ -169,7 +173,7 @@ export function AdminActions({
 			if (statusUpdate) {
 				// First update status
 				await fetch(`/api/tickets/${ticketId}/status`, {
-					method: "PATCH",
+					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ status: statusUpdate }),
 				});
@@ -195,7 +199,7 @@ export function AdminActions({
 				toast.error(error.error || "Failed to add comment");
 			}
 		} catch (error) {
-			logger.error("Error adding comment", error, { component: "AdminActions", action: "addComment" });
+			logger.error({ error, component: "AdminActions", action: "addComment" }, "Error adding comment");
 			toast.error("Failed to add comment. Please try again.");
 		} finally {
 			setLoading(null);
@@ -209,12 +213,12 @@ export function AdminActions({
 			onStatusChanged("RESOLVED");
 		}
 		setLoading("resolved");
-		
+
 		try {
 			const response = await fetch(`/api/tickets/${ticketId}/status`, {
-				method: "PATCH",
+				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ status: "RESOLVED" }),
+				body: JSON.stringify({ status: "resolved" }),
 			});
 
 			if (response.ok) {
@@ -237,7 +241,7 @@ export function AdminActions({
 			if (onStatusChanged) {
 				onStatusChanged(currentStatus);
 			}
-			logger.error("Error marking ticket as resolved", error, { component: "AdminActions", action: "markResolved" });
+			logger.error({ error, component: "AdminActions", action: "markResolved" }, "Error marking ticket as resolved");
 			toast.error("Failed to mark ticket as resolved. Please try again.");
 		} finally {
 			setLoading(null);
@@ -253,7 +257,7 @@ export function AdminActions({
 		try {
 			const body: Record<string, unknown> = { reason: forwardReason || undefined };
 			if (selectedForwardAdmin && selectedForwardAdmin !== "auto") {
-				body.targetAdminId = selectedForwardAdmin;
+				body.targetUserId = selectedForwardAdmin;
 			}
 
 			const response = await fetch(`/api/tickets/${ticketId}/forward`, {
@@ -274,7 +278,7 @@ export function AdminActions({
 				toast.error(error.error || "Failed to forward ticket");
 			}
 		} catch (error) {
-			logger.error("Error forwarding ticket", error, { component: "AdminActions", action: "forward", ticketId });
+			logger.error({ error, component: "AdminActions", action: "forward", ticketId }, "Error forwarding ticket");
 			toast.error("Failed to forward ticket. Please try again.");
 		} finally {
 			setLoading(null);
@@ -440,13 +444,13 @@ export function AdminActions({
 				{/* Reassign - only for super admin */}
 				{isSuperAdmin && (
 					<>
-					<ReassignDialog
-						open={showReassignDialog}
-						onOpenChange={setShowReassignDialog}
-						ticketId={ticketId}
-						currentAssignedTo={currentAssignedTo}
-						onReassigned={() => router.refresh()}
-					/>
+						<ReassignDialog
+							open={showReassignDialog}
+							onOpenChange={setShowReassignDialog}
+							ticketId={ticketId}
+							currentAssignedTo={currentAssignedTo}
+							onReassigned={() => router.refresh()}
+						/>
 						<Button
 							variant="outline"
 							disabled={loading !== null}
