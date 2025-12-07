@@ -312,6 +312,13 @@ export function AddSingleStudentDialog({
 			const data = await response.json();
 
 			if (!response.ok) {
+				if (data.details && Array.isArray(data.details)) {
+					// Handle Zod validation errors
+					const validationErrors = data.details.map((issue: any) =>
+						`${issue.path.join('.')}: ${issue.message}`
+					).join('\n');
+					throw new Error(validationErrors || data.error || "Failed to create student");
+				}
 				throw new Error(data.error || "Failed to create student");
 			}
 

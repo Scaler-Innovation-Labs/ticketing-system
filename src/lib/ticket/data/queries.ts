@@ -60,11 +60,15 @@ export async function getStudentTickets(filters: TicketFilters) {
         );
     }
 
-    // Add status filter
+    // Add status filter - accepts either status_id (number) or status_value (string)
     if (status) {
         const statusId = parseInt(status, 10);
         if (!isNaN(statusId)) {
+            // Numeric status ID
             conditions.push(eq(tickets.status_id, statusId));
+        } else {
+            // Status value string - join with ticket_statuses to filter by value
+            conditions.push(eq(ticket_statuses.value, status.toLowerCase()));
         }
     }
 
@@ -94,13 +98,26 @@ export async function getStudentTickets(filters: TicketFilters) {
         ? asc(tickets.created_at)
         : desc(tickets.created_at);
 
-    // Get total count
-    const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(tickets)
-        .where(and(...conditions));
+    // Check if we need to join ticket_statuses for count query
+    const needsStatusJoin = status && isNaN(parseInt(status, 10));
 
-    const totalCount = Number(countResult[0]?.count || 0);
+    // Get total count - need JOIN if filtering by status value
+    let totalCount = 0;
+    if (needsStatusJoin) {
+        const countResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(tickets)
+            .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+            .where(and(...conditions));
+        totalCount = Number(countResult[0]?.count || 0);
+    } else {
+        const countResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(tickets)
+            .where(and(...conditions));
+        totalCount = Number(countResult[0]?.count || 0);
+    }
+
     const totalPages = Math.ceil(totalCount / limit);
 
     // Get tickets
@@ -122,6 +139,10 @@ export async function getStudentTickets(filters: TicketFilters) {
             subcategory_id: tickets.subcategory_id,
             subcategory_name: subcategories.name,
             escalation_level: tickets.escalation_level,
+            created_by: tickets.created_by,
+            creator_name: users.full_name,
+            creator_email: users.email,
+            resolution_due_at: tickets.resolution_due_at,
             created_at: tickets.created_at,
             updated_at: tickets.updated_at,
             resolved_at: tickets.resolved_at,
@@ -131,6 +152,7 @@ export async function getStudentTickets(filters: TicketFilters) {
         .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
         .leftJoin(categories, eq(tickets.category_id, categories.id))
         .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
+        .leftJoin(users, eq(tickets.created_by, users.id))
         .where(and(...conditions))
         .orderBy(orderBy)
         .limit(limit)

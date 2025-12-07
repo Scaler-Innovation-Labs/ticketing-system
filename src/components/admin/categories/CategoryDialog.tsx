@@ -170,16 +170,16 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
 
       toast.success(category ? "Category updated successfully" : "Category created successfully");
       onClose(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving category:", error);
-      // Error toast is handled by api client
+      toast.error(error.message || "Failed to save category");
     } finally {
       setLoading(false);
     }
   };
 
   // Get filtered scopes for selected domain
-  const filteredScopes = scopes.filter(scope => scope.domain_id === formData.domain_id);
+  const filteredScopes = (scopes || []).filter(scope => scope.domain_id === formData.domain_id);
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose(false)}>

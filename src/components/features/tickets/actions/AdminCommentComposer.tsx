@@ -83,7 +83,22 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
       toast.success(action === "question" ? "Question sent to student" : "Comment added");
     } catch (error) {
       logger.error({ error, component: "AdminCommentComposer", ticketId }, "Comment composer error");
-      toast.error(error instanceof Error ? error.message : "Something went wrong");
+      // Extract error message properly
+      let errorMessage = "Something went wrong";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle API error response objects
+        const errObj = error as Record<string, unknown>;
+        if (typeof errObj.message === 'string') {
+          errorMessage = errObj.message;
+        } else if (typeof errObj.error === 'string') {
+          errorMessage = errObj.error;
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      toast.error(errorMessage);
       // Restore message on error
       setMessage(messageText);
     } finally {

@@ -1,7 +1,27 @@
 
-import { db, tickets, ticket_statuses, categories, subcategories, users, ticket_comments, ticket_activity, ticket_attachments } from '@/db';
+import { db, tickets, ticket_statuses, categories, subcategories, users, ticket_activity, ticket_attachments } from '@/db';
 import { eq, and, desc, asc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
+
+/**
+ * Get default progress percentage based on status value
+ * Used as fallback when progress_percent is not set in ticket_statuses table
+ */
+function getDefaultProgressForStatus(status: string): number {
+    const normalizedStatus = status.toLowerCase();
+    switch (normalizedStatus) {
+        case 'open': return 0;
+        case 'acknowledged': return 20;
+        case 'in_progress': return 50;
+        case 'awaiting_student_response': return 60;
+        case 'resolved': return 90;
+        case 'closed': return 100;
+        case 'reopened': return 10;
+        case 'cancelled': return 100;
+        default: return 0;
+    }
+}
+
 
 export interface StudentTicketViewModel {
     ticket: {
@@ -37,7 +57,7 @@ export interface StudentTicketViewModel {
         avatar_url: string | null;
     } | null;
     ticketProgress: number;
-    normalizedStatus: 'open' | 'in_progress' | 'resolved' | 'closed';
+    normalizedStatus: 'open' | 'in_progress' | 'awaiting_student_response' | 'resolved' | 'closed';
     tatInfo: {
         deadline: Date | null;
         isOverdue: boolean;
@@ -73,15 +93,13 @@ export interface StudentTicketViewModel {
     }[];
     normalizedComments: {
         id: number;
+        text: string;
         content: string;
+        source: string;
         created_at: Date;
+        createdAt: Date;
         is_internal: boolean;
-        author: {
-            name: string;
-            avatar_url: string | null;
-            role: string;
-            is_staff: boolean;
-        };
+        author: string;
     }[];
     resolvedProfileFields: {
         label: string;
@@ -112,28 +130,13 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
 
     const { ticket, status, category, subcategory, assignedTo } = data;
 
-    // 2. Fetch Comments
-    const comments = await db
-        .select({
-            id: ticket_comments.id,
-            comment: ticket_comments.comment,
-            created_at: ticket_comments.created_at,
-            is_internal: ticket_comments.is_internal,
-            user_name: users.full_name,
-            user_avatar: users.avatar_url,
-            user_role_id: users.role_id,
-        })
-        .from(ticket_comments)
-        .leftJoin(users, eq(ticket_comments.user_id, users.id))
-        .where(eq(ticket_comments.ticket_id, ticketId))
-        .orderBy(asc(ticket_comments.created_at));
-
-    // 3. Fetch Activity
+    // 2. Fetch Activity (includes comments)
     const activities = await db
         .select({
             id: ticket_activity.id,
             action: ticket_activity.action,
             details: ticket_activity.details,
+            visibility: ticket_activity.visibility,
             created_at: ticket_activity.created_at,
             user_name: users.full_name,
             user_avatar: users.avatar_url,
@@ -141,21 +144,30 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         .from(ticket_activity)
         .leftJoin(users, eq(ticket_activity.user_id, users.id))
         .where(eq(ticket_activity.ticket_id, ticketId))
-        .orderBy(desc(ticket_activity.created_at));
+        .orderBy(asc(ticket_activity.created_at));
 
-    // 4. Fetch Attachments
+    // Filter activities for student visibility
+    const visibleActivities = activities.filter(a =>
+        a.visibility === 'public' || a.visibility === 'student_visible'
+    );
+
+    // Extract comments from activities (action = 'comment')
+    const commentActivities = visibleActivities.filter(a => a.action === 'comment');
+
+    // 3. Fetch Attachments
     const attachments = await db
         .select()
         .from(ticket_attachments)
         .where(eq(ticket_attachments.ticket_id, ticketId));
 
     // Helper to normalize status
-    const normalizeStatus = (val: string | undefined): 'open' | 'in_progress' | 'resolved' | 'closed' => {
+    const normalizeStatus = (val: string | undefined): 'open' | 'in_progress' | 'awaiting_student_response' | 'resolved' | 'closed' => {
         if (!val) return 'open';
         const v = val.toLowerCase();
         if (v === 'resolved') return 'resolved';
         if (v === 'closed') return 'closed';
         if (v === 'open' || v === 'new') return 'open';
+        if (v === 'awaiting_student_response' || v === 'awaiting_student') return 'awaiting_student_response';
         return 'in_progress';
     };
 
@@ -235,7 +247,8 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
             role: 'Staff', // Simplify for now
             avatar_url: assignedTo.avatar_url,
         } : null,
-        ticketProgress: status?.progress_percent || 0,
+        // Use progress_percent from status, or calculate based on status value as fallback
+        ticketProgress: status?.progress_percent ?? getDefaultProgressForStatus(normalizedStatus),
         normalizedStatus,
         tatInfo: {
             deadline: ticket.resolution_due_at,
@@ -253,18 +266,19 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         })),
         normalizedDynamicFields: dynamicFields,
         timelineEntries,
-        normalizedComments: comments.map(c => ({
-            id: c.id,
-            content: c.comment,
-            created_at: c.created_at,
-            is_internal: c.is_internal,
-            author: {
-                name: c.user_name || 'Unknown',
-                avatar_url: c.user_avatar,
-                role: 'User', // Simplify
-                is_staff: false, // Simplify
-            }
-        })),
+        normalizedComments: commentActivities.map(c => {
+            const details = c.details as { comment?: string; attachments?: any[] } | null;
+            return {
+                id: c.id,
+                text: details?.comment || '',
+                content: details?.comment || '',
+                source: c.user_name ? 'admin' : 'website', // admin comments have user_name
+                created_at: c.created_at,
+                createdAt: c.created_at,
+                is_internal: false, // These are student-visible comments
+                author: c.user_name || 'Admin',
+            };
+        }),
         resolvedProfileFields,
     };
 }

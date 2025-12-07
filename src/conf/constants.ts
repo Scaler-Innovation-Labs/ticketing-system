@@ -27,6 +27,7 @@ export const TICKET_STATUS = {
   OPEN: 'open',
   ACKNOWLEDGED: 'acknowledged',
   IN_PROGRESS: 'in_progress',
+  AWAITING_STUDENT_RESPONSE: 'awaiting_student_response',
   RESOLVED: 'resolved',
   CLOSED: 'closed',
   REOPENED: 'reopened',

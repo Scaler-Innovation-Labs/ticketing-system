@@ -21,6 +21,7 @@ export const endpoints = {
         status: (id: number) => `${API_BASE}/tickets/${id}/status`,
         comments: (id: number) => `${API_BASE}/tickets/${id}/comments`,
         attachments: (id: number) => `${API_BASE}/tickets/${id}/attachments`,
+        reassign: (id: number) => `${API_BASE}/tickets/${id}/reassign`,
     },
     // Categories
     categories: {
@@ -50,6 +51,8 @@ export const endpoints = {
         users: `${API_BASE}/admin/users`,
         stats: `${API_BASE}/admin/stats`,
     },
+    // Top-level helper functions for backward compatibility
+    ticketReassign: (id: number) => `${API_BASE}/tickets/${id}/reassign`,
 } as const;
 
 // Error class for API errors

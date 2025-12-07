@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
-import { db, tickets, categories, users, roles, students, hostels, ticket_statuses } from "@/db";
+import { db, tickets, categories, users, roles, students, hostels, ticket_statuses, ticket_activity } from "@/db";
 import { eq, aliasedTable, desc } from "drizzle-orm";
 import { AdminActions } from "@/components/features/tickets/actions/AdminActions";
 import { CommitteeTagging } from "@/components/admin/committees";
@@ -182,16 +182,51 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
   };
   let metadata: TicketMetadataWithExtras = {};
   let subcategory: string | null = null;
-  let comments: Array<Record<string, unknown>> = [];
 
   try {
     metadata = (ticket.metadata as TicketMetadataWithExtras) || {};
     subcategory = metadata?.subcategory || null;
-    comments = Array.isArray(metadata?.comments) ? metadata.comments : [];
   } catch (error) {
     console.error('[Super Admin Ticket] Error parsing metadata:', error);
     // Continue with empty defaults
   }
+
+  // Fetch comments from ticket_activity (not from metadata)
+  const commentActivities = await db
+    .select({
+      id: ticket_activity.id,
+      action: ticket_activity.action,
+      details: ticket_activity.details,
+      visibility: ticket_activity.visibility,
+      created_at: ticket_activity.created_at,
+      user_id: ticket_activity.user_id,
+      user_name: users.full_name,
+    })
+    .from(ticket_activity)
+    .leftJoin(users, eq(ticket_activity.user_id, users.id))
+    .where(eq(ticket_activity.ticket_id, id))
+    .orderBy(desc(ticket_activity.created_at));
+
+  // Transform comments for display
+  const comments: Array<Record<string, unknown>> = commentActivities
+    .filter(a => a.action === 'comment' || a.action === 'internal_note')
+    .map(a => {
+      const details = a.details as { comment?: string; attachments?: any[] } | null;
+      const isInternal = a.action === 'internal_note' || a.visibility === 'admin_only';
+      const isFromStudent = a.user_id === ticket.created_by;
+      return {
+        id: a.id,
+        text: details?.comment || '',
+        message: details?.comment || '',
+        source: isFromStudent ? 'website' : 'admin',
+        isInternal,
+        type: isInternal ? 'internal_note' : 'comment',
+        author: a.user_name || 'Unknown',
+        created_by: a.user_name || 'Unknown',
+        createdAt: a.created_at,
+        created_at: a.created_at,
+      };
+    });
 
 
   // Extract dynamic fields from metadata (after metadata is initialized)
@@ -244,7 +279,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     const tatSetDate = new Date(tatSetAt);
     if (!isNaN(tatSetDate.getTime())) {
       timelineEntries.push({
-        title: `TAT Set by ${metadata.tatSetBy || 'Admin'}`,
+        title: `TAT Set by ${metadata.tatSetBy || 'Admin'} `,
         icon: "Sparkles",
         date: tatSetDate,
         color: "bg-yellow-100 dark:bg-yellow-900/30",
@@ -259,7 +294,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
       const extendedAt = extension.extendedAt ? new Date(extension.extendedAt as string) : null;
       if (extendedAt && !isNaN(extendedAt.getTime())) {
         timelineEntries.push({
-          title: `TAT Extended (to ${extension.newTAT || 'new date'})`,
+          title: `TAT Extended(to ${extension.newTAT || 'new date'})`,
           icon: "Sparkles",
           date: extendedAt,
           color: "bg-orange-100 dark:bg-orange-900/30",
@@ -412,12 +447,12 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
 
       {/* TAT Alert */}
       {(hasTATDue || isTATToday) && (
-        <Card className={`border-2 ${hasTATDue ? 'border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20'}`}>
+        <Card className={`border - 2 ${hasTATDue ? 'border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20'} `}>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <AlertTriangle className={`w-5 h-5 ${hasTATDue ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`} />
+              <AlertTriangle className={`w - 5 h - 5 ${hasTATDue ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'} `} />
               <div>
-                <p className={`font-semibold ${hasTATDue ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                <p className={`font - semibold ${hasTATDue ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'} `}>
                   {hasTATDue ? 'TAT Overdue' : 'TAT Due Today'}
                 </p>
                 {tatDate && (
@@ -489,7 +524,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                         >
                           <Image
                             src={imageUrl}
-                            alt={`Ticket image ${index + 1}`}
+                            alt={`Ticket image ${index + 1} `}
                             fill
                             className="object-cover"
                             sizes="(max-width: 768px) 50vw, 33vw"
@@ -551,12 +586,12 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                     const entryDate = entry.date instanceof Date ? entry.date : null;
                     return (
                       <div key={index} className="flex items-start gap-4 relative">
-                        <div className={`relative z-10 p-2.5 rounded-full flex-shrink-0 border-2 bg-background ${color}`}>
-                          <IconComponent className={`w-4 h-4 ${textColor}`} />
+                        <div className={`relative z - 10 p - 2.5 rounded - full flex - shrink - 0 border - 2 bg - background ${color} `}>
+                          <IconComponent className={`w - 4 h - 4 ${textColor} `} />
                         </div>
                         <div className="flex-1 min-w-0 pb-4">
                           <div className="p-3 rounded-lg bg-muted/50 border">
-                            <p className={`text-sm font-semibold mb-1.5 break-words ${textColor}`}>{title}</p>
+                            <p className={`text - sm font - semibold mb - 1.5 break-words ${textColor} `}>{title}</p>
                             {entryDate && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Calendar className="w-3.5 h-3.5" />
@@ -644,16 +679,16 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                       const isAdmin = !isStudent;
 
                       return (
-                        <div key={idx} className={`flex gap-3 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`flex gap-3 max-w-[80%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
-                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                        <div key={idx} className={`flex gap - 3 ${isAdmin ? 'justify-end' : 'justify-start'} `}>
+                          <div className={`flex gap - 3 max - w - [80 %] ${isAdmin ? 'flex-row-reverse' : 'flex-row'} `}>
+                            <div className={`flex - shrink - 0 w - 8 h - 8 rounded - full flex items - center justify - center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'} `}>
                               <User className="w-4 h-4" />
                             </div>
-                            <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
-                              <div className={`rounded-2xl px-4 py-3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'}`}>
-                                <p className={`text-sm whitespace-pre-wrap leading-relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''}`}>{commentText}</p>
+                            <div className={`flex flex - col ${isAdmin ? 'items-end' : 'items-start'} `}>
+                              <div className={`rounded - 2xl px - 4 py - 3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'} `}>
+                                <p className={`text - sm whitespace - pre - wrap leading - relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''} `}>{commentText}</p>
                               </div>
-                              <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${isAdmin ? 'flex-row-reverse' : ''}`}>
+                              <div className={`flex items - center gap - 2 text - xs text - muted - foreground mt - 1 px - 1 ${isAdmin ? 'flex-row-reverse' : ''} `}>
                                 {commentCreatedAt ? (
                                   <>
                                     <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>

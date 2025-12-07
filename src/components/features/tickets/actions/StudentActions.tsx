@@ -44,8 +44,16 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         toast.success("Ticket reopened successfully");
         router.refresh();
       } else {
-        const error = await response.json().catch(() => ({ error: "Failed to reopen ticket" }));
-        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to reopen ticket";
+        const errorData = await response.json().catch(() => ({ error: "Failed to reopen ticket" }));
+        // Handle nested error object from API
+        let errorMessage = "Failed to reopen ticket";
+        if (typeof errorData.error === 'string') {
+          errorMessage = errorData.error;
+        } else if (errorData.error?.message) {
+          errorMessage = errorData.error.message;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
         toast.error(errorMessage);
       }
     } catch (error) {
@@ -72,8 +80,16 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         toast.success("Ticket closed successfully");
         router.refresh();
       } else {
-        const error = await response.json().catch(() => ({ error: "Failed to close ticket" }));
-        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to close ticket";
+        const errorData = await response.json().catch(() => ({ error: "Failed to close ticket" }));
+        // Handle nested error object from API
+        let errorMessage = "Failed to close ticket";
+        if (typeof errorData.error === 'string') {
+          errorMessage = errorData.error;
+        } else if (errorData.error?.message) {
+          errorMessage = errorData.error.message;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
         toast.error(errorMessage);
       }
     } catch (error) {

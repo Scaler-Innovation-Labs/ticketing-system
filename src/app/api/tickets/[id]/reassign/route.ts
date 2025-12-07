@@ -10,8 +10,8 @@ import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const ReassignSchema = z.object({
-  assignedTo: z.string().uuid(),
-  reason: z.string().min(1).max(1000),
+  assignedTo: z.union([z.string().uuid(), z.literal('unassigned')]),
+  reason: z.string().max(1000).optional(),
 });
 
 export async function POST(
@@ -38,16 +38,21 @@ export async function POST(
     }
 
     const { assignedTo, reason } = parsed.data;
+    const isUnassigning = assignedTo === 'unassigned';
 
-    // Verify assignee exists
-    const [assignee] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, assignedTo))
-      .limit(1);
+    // Verify assignee exists (unless unassigning)
+    let assignee = null;
+    if (!isUnassigning) {
+      const [found] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, assignedTo))
+        .limit(1);
 
-    if (!assignee) {
-      return NextResponse.json({ error: 'Assignee not found' }, { status: 404 });
+      if (!found) {
+        return NextResponse.json({ error: 'Assignee not found' }, { status: 404 });
+      }
+      assignee = found;
     }
 
     // Update ticket
@@ -67,7 +72,7 @@ export async function POST(
       await tx
         .update(tickets)
         .set({
-          assigned_to: assignedTo,
+          assigned_to: isUnassigning ? null : assignedTo,
           updated_at: new Date(),
         })
         .where(eq(tickets.id, ticketId));
@@ -79,20 +84,20 @@ export async function POST(
         action: 'reassigned',
         details: {
           from: previousAssignee,
-          to: assignedTo,
-          to_name: assignee.full_name,
-          reason,
+          to: isUnassigning ? null : assignedTo,
+          to_name: assignee?.full_name || 'Unassigned',
+          reason: reason || 'No reason provided',
         },
-        visibility: 'internal_note',
+        visibility: 'admin_only',
       });
     });
 
-    logger.info({ ticketId, assignedTo }, 'Ticket reassigned');
+    logger.info({ ticketId, assignedTo: isUnassigning ? null : assignedTo }, 'Ticket reassigned');
 
     return NextResponse.json({
-      message: 'Ticket reassigned successfully',
-      assigned_to: assignedTo,
-      assigned_to_name: assignee.full_name,
+      message: isUnassigning ? 'Ticket unassigned successfully' : 'Ticket reassigned successfully',
+      assigned_to: isUnassigning ? null : assignedTo,
+      assigned_to_name: assignee?.full_name || null,
     });
   } catch (error: any) {
     if (error.message === 'Ticket not found') {

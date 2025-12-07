@@ -213,7 +213,6 @@ export function StaffForm({
                 onValueChange={(value) => {
                   onFormDataChange({ scope: value });
                 }}
-                required
                 disabled={!masterData || !formData.domain}
               >
                 <SelectTrigger id="scope" className={errors.scope ? "border-destructive" : ""}>

@@ -4,15 +4,17 @@
  * Handles adding comments and internal notes to tickets
  */
 
-import { db, ticket_activity, tickets } from '@/db';
+import { db, ticket_activity, tickets, ticket_statuses } from '@/db';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
+import { TICKET_STATUS } from '@/conf/constants';
 
 export interface AddCommentInput {
   comment: string;
   is_internal?: boolean;
+  is_from_student?: boolean; // Flag to indicate if comment is from student
   attachments?: Array<{
     filename: string;
     url: string;
@@ -55,6 +57,63 @@ export async function addTicketComment(
         visibility: input.is_internal ? 'admin_only' : 'student_visible',
       })
       .returning();
+
+    // If student is replying and status is awaiting_student_response, change to in_progress
+    if (input.is_from_student) {
+      logger.info(
+        { ticketId, is_from_student: input.is_from_student, status_id: ticket.status_id },
+        'Student replying - checking status for auto-update'
+      );
+
+      // Get current status
+      const [currentStatus] = await txn
+        .select({ value: ticket_statuses.value })
+        .from(ticket_statuses)
+        .where(eq(ticket_statuses.id, ticket.status_id))
+        .limit(1);
+
+      logger.info(
+        { ticketId, currentStatusValue: currentStatus?.value, awaiting: TICKET_STATUS.AWAITING_STUDENT_RESPONSE },
+        'Current ticket status'
+      );
+
+      if (currentStatus?.value === TICKET_STATUS.AWAITING_STUDENT_RESPONSE) {
+        // Get in_progress status ID
+        const [inProgressStatus] = await txn
+          .select({ id: ticket_statuses.id })
+          .from(ticket_statuses)
+          .where(eq(ticket_statuses.value, TICKET_STATUS.IN_PROGRESS))
+          .limit(1);
+
+        if (inProgressStatus) {
+          await txn
+            .update(tickets)
+            .set({
+              status_id: inProgressStatus.id,
+              updated_at: new Date()
+            })
+            .where(eq(tickets.id, ticketId));
+
+          // Log status change
+          await txn.insert(ticket_activity).values({
+            ticket_id: ticketId,
+            user_id: userId,
+            action: 'status_changed',
+            details: {
+              from: TICKET_STATUS.AWAITING_STUDENT_RESPONSE,
+              to: TICKET_STATUS.IN_PROGRESS,
+              reason: 'Student replied',
+            },
+            visibility: 'student_visible',
+          });
+
+          logger.info(
+            { ticketId, from: 'awaiting_student_response', to: 'in_progress' },
+            'Ticket status auto-updated on student reply'
+          );
+        }
+      }
+    }
 
     // Update ticket's updated_at
     await txn

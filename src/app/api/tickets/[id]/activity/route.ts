@@ -50,10 +50,10 @@ export async function GET(
       .where(eq(ticket_activity.ticket_id, ticketId))
       .orderBy(desc(ticket_activity.created_at));
 
-    // Filter based on user role
+    // Filter based on user role - students see public and student_visible items
     const filteredActivities =
       role === 'student'
-        ? activities.filter((a) => a.visibility === 'public')
+        ? activities.filter((a) => a.visibility === 'public' || a.visibility === 'student_visible')
         : activities;
 
     return NextResponse.json({ activities: filteredActivities });

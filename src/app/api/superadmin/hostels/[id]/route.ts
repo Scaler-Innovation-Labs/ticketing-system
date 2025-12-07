@@ -6,7 +6,6 @@ import { updateHostel, deleteHostel } from '@/lib/master-data/master-data-servic
 const UpdateHostelSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   code: z.string().min(1).max(20).optional(),
-  capacity: z.number().int().positive().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -26,7 +25,7 @@ export async function PATCH(
     const body = await request.json();
     const data = UpdateHostelSchema.parse(body);
 
-    const hostel = await updateHostel(hostelId, data.name, data.code, data.capacity);
+    const hostel = await updateHostel(hostelId, data.name, data.code, data.is_active);
     return NextResponse.json(hostel);
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {

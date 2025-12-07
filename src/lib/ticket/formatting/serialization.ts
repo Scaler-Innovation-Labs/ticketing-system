@@ -18,6 +18,7 @@ export function sanitizeTicket(ticket: any) {
         location: ticket.location || null,
         priority: ticket.priority || 'medium',
         status_id: ticket.status_id,
+        status: ticket.status_value || ticket.status || 'open', // Add status as alias
         status_value: ticket.status_value || 'open',
         status_label: ticket.status_label || 'Open',
         status_color: ticket.status_color || '#3B82F6',
@@ -26,7 +27,18 @@ export function sanitizeTicket(ticket: any) {
         category_icon: ticket.category_icon || '📋',
         subcategory_id: ticket.subcategory_id || null,
         subcategory_name: ticket.subcategory_name || null,
+        creator_name: ticket.creator_name || null, // Add creator fields
+        creator_email: ticket.creator_email || null,
+        created_by: ticket.created_by || null,
+        assigned_to: ticket.assigned_to || null,
         escalation_level: ticket.escalation_level || 0,
+        resolution_due_at: ticket.resolution_due_at instanceof Date
+            ? ticket.resolution_due_at.toISOString()
+            : ticket.resolution_due_at || null,
+        acknowledgement_due_at: ticket.acknowledgement_due_at instanceof Date
+            ? ticket.acknowledgement_due_at.toISOString()
+            : ticket.acknowledgement_due_at || null,
+        metadata: ticket.metadata || {},
         created_at: ticket.created_at instanceof Date
             ? ticket.created_at.toISOString()
             : ticket.created_at || new Date().toISOString(),

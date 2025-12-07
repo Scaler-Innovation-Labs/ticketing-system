@@ -26,14 +26,13 @@ export async function listHostels(activeOnly = false) {
   }
 }
 
-export async function createHostel(name: string, code: string, capacity?: number) {
+export async function createHostel(name: string, code: string) {
   try {
     const [hostel] = await db
       .insert(hostels)
-      .values({ 
-        name: name.trim(), 
+      .values({
+        name: name.trim(),
         code: code.trim().toUpperCase(),
-        capacity 
       })
       .returning();
     logger.info({ hostelId: hostel.id }, 'Hostel created');
@@ -44,13 +43,17 @@ export async function createHostel(name: string, code: string, capacity?: number
   }
 }
 
-export async function updateHostel(id: number, name?: string, code?: string, capacity?: number) {
+export async function updateHostel(id: number, name?: string, code?: string, is_active?: boolean) {
   try {
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name.trim();
     if (code !== undefined) updates.code = code.trim().toUpperCase();
-    if (capacity !== undefined) updates.capacity = capacity;
-    
+    if (is_active !== undefined) updates.is_active = is_active;
+
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No fields to update');
+    }
+
     const [hostel] = await db
       .update(hostels)
       .set(updates)
@@ -116,12 +119,17 @@ export async function createBatch(year: number, name: string) {
   }
 }
 
-export async function updateBatch(id: number, year?: number, name?: string) {
+export async function updateBatch(id: number, year?: number, name?: string, is_active?: boolean) {
   try {
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (year !== undefined) updates.year = year;
     if (name !== undefined) updates.name = name.trim();
-    
+    if (is_active !== undefined) updates.is_active = is_active;
+
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No fields to update');
+    }
+
     const [batch] = await db
       .update(batches)
       .set(updates)
@@ -177,7 +185,7 @@ export async function createClassSection(name: string, department?: string | nul
   try {
     const [section] = await db
       .insert(class_sections)
-      .values({ 
+      .values({
         name: name.trim(),
         department: department?.trim() || null,
         batch_id: batchId || null,
@@ -191,13 +199,18 @@ export async function createClassSection(name: string, department?: string | nul
   }
 }
 
-export async function updateClassSection(id: number, name?: string, department?: string | null, batchId?: number | null) {
+export async function updateClassSection(id: number, name?: string, department?: string | null, batchId?: number | null, is_active?: boolean) {
   try {
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name.trim();
     if (department !== undefined) updates.department = department?.trim() || null;
     if (batchId !== undefined) updates.batch_id = batchId || null;
-    
+    if (is_active !== undefined) updates.is_active = is_active;
+
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No fields to update');
+    }
+
     const [section] = await db
       .update(class_sections)
       .set(updates)
@@ -253,10 +266,10 @@ export async function createDomain(name: string, slug: string, description?: str
   try {
     const [domain] = await db
       .insert(domains)
-      .values({ 
-        name: name.trim(), 
+      .values({
+        name: name.trim(),
         slug: slug.trim().toLowerCase().replace(/\s+/g, '-'),
-        description: description?.trim() || null 
+        description: description?.trim() || null
       })
       .returning();
     logger.info({ domainId: domain.id }, 'Domain created');
@@ -273,7 +286,7 @@ export async function updateDomain(id: number, name?: string, slug?: string, des
     if (name !== undefined) updates.name = name.trim();
     if (slug !== undefined) updates.slug = slug.trim().toLowerCase().replace(/\s+/g, '-');
     if (description !== undefined) updates.description = description?.trim() || null;
-    
+
     const [domain] = await db
       .update(domains)
       .set(updates)
@@ -325,7 +338,7 @@ export async function listScopes(domainId?: number, activeOnly = false) {
     const result = conditions.length > 0
       ? await db.select().from(scopes).where(and(...conditions)).orderBy(scopes.name)
       : await db.select().from(scopes).orderBy(scopes.name);
-    
+
     return result;
   } catch (error) {
     logger.error({ error }, 'Failed to list scopes');

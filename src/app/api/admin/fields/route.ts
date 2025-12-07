@@ -16,7 +16,7 @@ const CreateFieldSchema = z.object({
   subcategory_id: z.number().int().positive(),
   name: z.string().min(1).max(100),
   slug: z.string().min(1).max(100),
-  field_type: z.enum(['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'file']),
+  field_type: z.enum(['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'multi_select', 'file', 'upload', 'boolean']),
   required: z.boolean().default(false),
   placeholder: z.string().max(255).optional(),
   validation: z.record(z.string(), z.any()).optional(),

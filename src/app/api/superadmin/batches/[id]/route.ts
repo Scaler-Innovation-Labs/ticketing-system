@@ -25,7 +25,7 @@ export async function PATCH(
     const body = await request.json();
     const data = UpdateBatchSchema.parse(body);
 
-    const batch = await updateBatch(batchId, data.year, data.name);
+    const batch = await updateBatch(batchId, data.year, data.name, data.is_active);
     return NextResponse.json(batch);
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {

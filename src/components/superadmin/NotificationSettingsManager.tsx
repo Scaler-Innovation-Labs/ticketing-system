@@ -125,7 +125,7 @@ export function NotificationSettingsManager() {
           if (isNaN(categoryIdNum) || categoryIdNum <= 0) {
             return;
           }
-          
+
           const res = await fetch(`/api/admin/subcategories?category_id=${categoryIdNum}`);
           if (res.ok) {
             const data = await res.json();
@@ -207,8 +207,8 @@ export function NotificationSettingsManager() {
         const scopeList = Array.isArray(scopesData)
           ? scopesData
           : Array.isArray(scopesData.scopes)
-          ? scopesData.scopes
-          : [];
+            ? scopesData.scopes
+            : [];
         setScopes(
           scopeList.map((s: { id: number; name: string; domain_id: number }) => ({
             id: s.id,
@@ -277,8 +277,8 @@ export function NotificationSettingsManager() {
       const scopeId = formData.scope_id && formData.scope_id !== "__none__"
         ? parseInt(formData.scope_id, 10)
         : null;
-      const categoryId = formData.category_id && formData.category_id !== "__none__" 
-        ? parseInt(formData.category_id, 10) 
+      const categoryId = formData.category_id && formData.category_id !== "__none__"
+        ? parseInt(formData.category_id, 10)
         : null;
       const subcategoryId = formData.subcategory_id && formData.subcategory_id !== "__none__"
         ? parseInt(formData.subcategory_id, 10)
@@ -308,6 +308,7 @@ export function NotificationSettingsManager() {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: "Failed to save" }));
+        console.error("Notification Config API Error:", error);
         throw new Error(error.error || "Failed to save");
       }
 
@@ -346,10 +347,10 @@ export function NotificationSettingsManager() {
 
   const filteredSubcategories = formData.category_id && formData.category_id !== "__none__"
     ? (() => {
-        const categoryIdNum = parseInt(formData.category_id, 10);
-        if (isNaN(categoryIdNum) || categoryIdNum <= 0) return [];
-        return subcategories.filter((s) => s.category_id === categoryIdNum);
-      })()
+      const categoryIdNum = parseInt(formData.category_id, 10);
+      if (isNaN(categoryIdNum) || categoryIdNum <= 0) return [];
+      return subcategories.filter((s) => s.category_id === categoryIdNum);
+    })()
     : [];
 
   const getScopeLabel = (config: NotificationConfig) => {
@@ -670,7 +671,7 @@ export function NotificationSettingsManager() {
                       // This ensures each admin checkbox is independent
                       const slackUserId = admin.slackUserId || "";
                       const isChecked = Boolean(slackUserId && formData.slack_cc_user_ids.includes(slackUserId));
-                      
+
                       return (
                         <div key={admin.id} className="flex items-center space-x-2">
                           <Checkbox
@@ -678,7 +679,7 @@ export function NotificationSettingsManager() {
                             checked={isChecked}
                             onCheckedChange={(checked) => {
                               if (!slackUserId) return; // Skip if no slackUserId
-                              
+
                               setFormData((prev) => {
                                 const currentIds = prev.slack_cc_user_ids || [];
                                 if (checked) {

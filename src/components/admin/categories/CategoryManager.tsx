@@ -21,12 +21,18 @@ interface Category {
   color: string | null;
   sla_hours: number;
   display_order: number;
-  active: boolean;
+  active?: boolean;
+  is_active?: boolean; // API may return is_active instead of active
   default_authority?: number | null;
   domain_id?: number | null;
   created_at: Date | null;
   updated_at: Date | null;
 }
+
+// Helper to check if category is active (handles both field names)
+const isCategoryActive = (category: Category) =>
+  category.active === true || category.is_active === true;
+
 
 interface CategoryManagerProps {
   initialCategories: Category[];
@@ -214,7 +220,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold">{category.name}</h4>
-                        {!category.active && (
+                        {!isCategoryActive(category) && (
                           <Badge variant="secondary">Inactive</Badge>
                         )}
                       </div>

@@ -26,7 +26,7 @@ export async function PATCH(
     const body = await request.json();
     const data = UpdateClassSectionSchema.parse(body);
 
-    const section = await updateClassSection(sectionId, data.name, data.department, data.batch_id);
+    const section = await updateClassSection(sectionId, data.name, data.department, data.batch_id, data.is_active);
     return NextResponse.json(section);
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
@@ -51,7 +51,9 @@ export async function DELETE(
 
     const { id } = await params;
     const sectionId = parseInt(id);
+
     if (isNaN(sectionId)) {
+      console.error(`[ClassSection DELETE] Invalid ID received: "${id}" (parsed: ${sectionId})`);
       return NextResponse.json({ error: 'Invalid class section ID' }, { status: 400 });
     }
 

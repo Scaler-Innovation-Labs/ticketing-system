@@ -63,10 +63,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
       throw Errors.forbidden('Students cannot add internal notes');
     }
 
+    // Debug log for role matching
+    const isFromStudent = role === USER_ROLES.STUDENT;
+    logger.info(
+      {
+        ticketId,
+        userId: dbUser.id,
+        role,
+        USER_ROLES_STUDENT: USER_ROLES.STUDENT,
+        isFromStudent,
+      },
+      'Comment submission - role check'
+    );
+
     // Add comment
     const activity = await addTicketComment(ticketId, dbUser.id, {
       comment,
       is_internal,
+      is_from_student: isFromStudent,
       attachments,
     });
 

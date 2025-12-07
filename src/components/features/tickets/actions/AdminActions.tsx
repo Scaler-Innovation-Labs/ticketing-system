@@ -151,23 +151,19 @@ export function AdminActions({
 
 		setLoading("comment");
 		try {
-			// Determine comment type for API
-			let apiCommentType = "student_visible";
+			// Determine if this is an internal note
+			let isInternalNote = false;
 			let statusUpdate = null;
 
 			if (commentType === "question") {
-				apiCommentType = "student_visible";
 				statusUpdate = "awaiting_student_response"; // Set status to await student response
-			} else if (commentType === "internal") {
-				apiCommentType = "internal_note";
-			} else if (commentType === "super_admin") {
-				apiCommentType = "super_admin_note";
+			} else if (commentType === "internal" || commentType === "super_admin") {
+				isInternalNote = true;
 			}
 
 			const body: Record<string, unknown> = {
 				comment,
-				isAdmin: true,
-				commentType: apiCommentType,
+				is_internal: isInternalNote,
 			};
 
 			// If asking a question, also update status

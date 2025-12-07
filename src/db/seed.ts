@@ -54,10 +54,11 @@ async function seed() {
         { value: 'open', label: 'Open', description: 'Ticket has been created and is awaiting acknowledgement', color: '#3B82F6', progress_percent: 0, display_order: 1, is_final: false },
         { value: 'acknowledged', label: 'Acknowledged', description: 'Admin has acknowledged the ticket', color: '#8B5CF6', progress_percent: 20, display_order: 2, is_final: false },
         { value: 'in_progress', label: 'In Progress', description: 'Work is being done on the ticket', color: '#F59E0B', progress_percent: 50, display_order: 3, is_final: false },
-        { value: 'resolved', label: 'Resolved', description: 'Ticket has been resolved, awaiting student confirmation', color: '#10B981', progress_percent: 90, display_order: 4, is_final: true },
-        { value: 'closed', label: 'Closed', description: 'Ticket is closed and archived', color: '#6B7280', progress_percent: 100, display_order: 5, is_final: true },
-        { value: 'reopened', label: 'Reopened', description: 'Ticket was reopened by student', color: '#EF4444', progress_percent: 10, display_order: 6, is_final: false },
-        { value: 'cancelled', label: 'Cancelled', description: 'Ticket was cancelled', color: '#9CA3AF', progress_percent: 100, display_order: 7, is_final: true },
+        { value: 'awaiting_student_response', label: 'Awaiting Student', description: 'Admin asked a question, awaiting student response', color: '#A855F7', progress_percent: 60, display_order: 4, is_final: false },
+        { value: 'resolved', label: 'Resolved', description: 'Ticket has been resolved, awaiting student confirmation', color: '#10B981', progress_percent: 90, display_order: 5, is_final: true },
+        { value: 'closed', label: 'Closed', description: 'Ticket is closed and archived', color: '#6B7280', progress_percent: 100, display_order: 6, is_final: true },
+        { value: 'reopened', label: 'Reopened', description: 'Ticket was reopened by student', color: '#EF4444', progress_percent: 10, display_order: 7, is_final: false },
+        { value: 'cancelled', label: 'Cancelled', description: 'Ticket was cancelled', color: '#9CA3AF', progress_percent: 100, display_order: 8, is_final: true },
     ];
 
     for (const status of statusData) {
@@ -73,7 +74,7 @@ async function seed() {
         is_final = EXCLUDED.is_final
     `;
     }
-    console.log('  ✅ Ticket statuses seeded (7 statuses)\n');
+    console.log('  ✅ Ticket statuses seeded (8 statuses)\n');
 
     // ============================================
     // 3. Seed Default Domain (Required)
