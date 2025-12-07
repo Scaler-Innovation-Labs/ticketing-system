@@ -140,7 +140,7 @@ export function FieldDialog({
       setLogicSectionOpen(Boolean(initialRules.dependsOn));
       const initialValues = toArray(
         (initialRules.showWhenValue as string | string[] | undefined) ??
-          (initialRules.hideWhenValue as string | string[] | undefined)
+        (initialRules.hideWhenValue as string | string[] | undefined)
       ).join(", ");
       setManualLogicInput(initialValues);
     } else {
@@ -269,15 +269,15 @@ export function FieldDialog({
   const availableValueOptions =
     controllingField && CHOICE_FIELD_TYPES.has(controllingField.field_type)
       ? (controllingField.options || []).map((opt) => ({
-          label: opt.label || opt.value,
-          value: opt.value,
-        }))
+        label: opt.label || opt.value,
+        value: opt.value,
+      }))
       : controllingField && controllingField.field_type === "boolean"
-      ? [
+        ? [
           { label: "Yes", value: "true" },
           { label: "No", value: "false" },
         ]
-      : [];
+        : [];
 
   useEffect(() => {
     if (dependsOnSlug) {
@@ -287,7 +287,7 @@ export function FieldDialog({
 
   useEffect(() => {
     setManualLogicInput(logicValues.join(", "));
-     
+
   }, [dependsOnSlug, logicBehavior, logicValues]);
 
   const handleLogicToggle = (enabled: boolean) => {
@@ -418,7 +418,7 @@ export function FieldDialog({
             setLoading(false);
             return;
           }
-          const value = (opt.value || generateSlug(opt.label, "_")).trim().toLowerCase();
+          const value = (opt.value || generateSlug(opt.label)).trim().toLowerCase();
           if (!value) {
             toast.error(`Option ${i + 1}: Value cannot be empty`);
             setLoading(false);
@@ -436,7 +436,7 @@ export function FieldDialog({
 
       const optionsToSend = options.map((opt, index) => ({
         label: opt.label,
-        value: opt.value || generateSlug(opt.label, "_"),
+        value: opt.value || generateSlug(opt.label),
         display_order: index,
       }));
 
@@ -447,8 +447,10 @@ export function FieldDialog({
       const payload = {
         ...formData,
         subcategory_id: subcategoryId,
-        assigned_admin_id: inheritFromSubcategory ? null : formData.assigned_admin_id,
+        assigned_admin_id: inheritFromSubcategory ? undefined : (formData.assigned_admin_id || undefined),
         options: CHOICE_FIELD_TYPES.has(formData.field_type) ? optionsToSend : undefined,
+        placeholder: formData.placeholder || undefined,
+        help_text: formData.help_text || undefined,
       };
 
       if (field) {

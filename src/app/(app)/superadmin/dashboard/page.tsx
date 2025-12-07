@@ -20,10 +20,10 @@ export const revalidate = 30;
  * Super Admin Dashboard Page
  * Note: Auth and role checks are handled by superadmin/layout.tsx
  */
-export default async function SuperAdminDashboardPage({ 
-  searchParams 
-}: { 
-  searchParams?: Promise<Record<string, string | string[] | undefined>> 
+export default async function SuperAdminDashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
@@ -56,11 +56,8 @@ export default async function SuperAdminDashboardPage({
 
 
   // Calculate pagination metadata
-  // NOTE: Filters are applied client-side after DB pagination, which means:
-  // - totalCount reflects unfiltered count from DB
-  // - displayedCount reflects filtered count on current page
-  // - Pagination may show incorrect totals when filters are active
-  // TODO: Move filters to DB level for accurate pagination
+  // Calculate pagination metadata
+  // Filters are now applied at DB level, so totalCount is accurate for the filters.
   const displayedCount = allTickets.length; // Number of tickets displayed on this page
   const totalPages = Math.max(1, Math.ceil(totalCount / limit)); // Ensure at least 1 page
   const offsetValue = (page - 1) * limit;

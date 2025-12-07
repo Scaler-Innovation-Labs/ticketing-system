@@ -66,7 +66,7 @@ export function ManageGroupTicketsDialog({
   const currentGroupRef = useRef<TicketGroup | null>(group);
   const [committees, setCommittees] = useState<Array<{ id: number; name: string; description: string | null }>>([]);
   const [loadingCommittees, setLoadingCommittees] = useState(false);
-  
+
   // Keep ref in sync with state
   useEffect(() => {
     currentGroupRef.current = currentGroup;
@@ -171,7 +171,8 @@ export function ManageGroupTicketsDialog({
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to remove tickets from group");
+          const errorMessage = typeof error.error === 'string' ? error.error : "Failed to remove tickets from group";
+          toast.error(errorMessage);
         } else {
           toast.error(`Failed to remove tickets from group (${response.status} ${response.statusText})`);
         }
@@ -275,7 +276,6 @@ export function ManageGroupTicketsDialog({
         <div className="flex-1 min-h-0 overflow-y-auto px-6">
           <div className="space-y-4 py-4">
             <GroupSettingsSection
-              groupId={currentGroup.id}
               currentCommittee={currentGroup.committee || null}
               committees={committees}
               loadingCommittees={loadingCommittees}

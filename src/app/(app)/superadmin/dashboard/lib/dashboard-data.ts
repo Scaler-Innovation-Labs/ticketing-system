@@ -1,5 +1,5 @@
 import { db, tickets, categories, users, ticket_statuses } from "@/db";
-import { desc, eq, isNull, or, sql, count, inArray } from "drizzle-orm";
+import { desc, eq, isNull, or, sql, count, inArray, ilike, and } from "drizzle-orm";
 import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 import { normalizeStatusForComparison } from "@/lib/utils";
 import type { TicketMetadata } from "@/db/inferred-types";
@@ -56,14 +56,88 @@ export async function fetchSuperAdminTickets(
 ) {
   const { dbUser } = await getCachedAdminUser(userId);
 
-  const whereConditions = or(
-    isNull(tickets.assigned_to),
-    dbUser ? eq(tickets.assigned_to, dbUser.id) : sql`false`,
-    sql`${tickets.escalation_level} > 0`
-  );
+  const conditions: any[] = [
+    or(
+      isNull(tickets.assigned_to),
+      dbUser ? eq(tickets.assigned_to, dbUser.id) : sql`false`,
+      sql`${tickets.escalation_level} > 0`
+    )
+  ];
+
+  // Apply filters to DB query
+  if (filters.escalated === "true") {
+    conditions.push(sql`${tickets.escalation_level} > 0`);
+  }
+
+  if (filters.user) {
+    conditions.push(
+      or(
+        ilike(users.full_name, `%${filters.user}%`),
+        ilike(users.email, `%${filters.user}%`)
+      )
+    );
+  }
+
+  if (filters.from) {
+    const from = new Date(filters.from);
+    from.setHours(0, 0, 0, 0);
+    conditions.push(sql`${tickets.created_at} >= ${from.toISOString()}`);
+  }
+
+  if (filters.to) {
+    const to = new Date(filters.to);
+    to.setHours(23, 59, 59, 999);
+    conditions.push(sql`${tickets.created_at} <= ${to.toISOString()}`);
+  }
+
+  if (filters.status) {
+    const normalizedFilter = filters.status.toLowerCase();
+    if (normalizedFilter === "awaiting_student_response") {
+      conditions.push(or(
+        ilike(ticket_statuses.value, "awaiting_student_response"),
+        ilike(ticket_statuses.value, "awaiting_student")
+      ));
+    } else {
+      conditions.push(ilike(ticket_statuses.value, normalizedFilter));
+    }
+  }
+
+  if (filters.tat) {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    if (filters.tat === "has") {
+      conditions.push(sql`${tickets.resolution_due_at} IS NOT NULL`);
+    } else if (filters.tat === "none") {
+      conditions.push(sql`${tickets.resolution_due_at} IS NULL`);
+    } else if (filters.tat === "due") {
+      conditions.push(sql`${tickets.resolution_due_at} < ${now.toISOString()}`);
+    } else if (filters.tat === "upcoming") {
+      conditions.push(sql`${tickets.resolution_due_at} >= ${now.toISOString()}`);
+    } else if (filters.tat === "today") {
+      conditions.push(and(
+        sql`${tickets.resolution_due_at} >= ${startOfToday.toISOString()}`,
+        sql`${tickets.resolution_due_at} <= ${endOfToday.toISOString()}`
+      ));
+    }
+  }
+
+  const whereConditions = and(...conditions);
 
   const page = parseInt(filters.page || "1", 10);
   const offsetValue = (page - 1) * limit;
+
+  // Determine sort order
+  let orderByClause = desc(tickets.created_at);
+  if (filters.sort === "oldest") {
+    orderByClause = sql`${tickets.created_at} ASC`;
+  } else if (filters.sort === "due-date") {
+    orderByClause = sql`${tickets.resolution_due_at} ASC NULLS LAST`;
+  }
+  // Note: "status" sort is complex in DB without a mapping table or case statement, keeping default for now or implementing if critical.
 
   let totalCount = 0;
   let ticketRows: TicketRow[] = [];
@@ -73,6 +147,8 @@ export async function fetchSuperAdminTickets(
       db
         .select({ count: count() })
         .from(tickets)
+        .leftJoin(ticket_statuses, eq(ticket_statuses.id, tickets.status_id))
+        .leftJoin(users, eq(tickets.created_by, users.id))
         .where(whereConditions),
       db
         .select({
@@ -102,7 +178,7 @@ export async function fetchSuperAdminTickets(
         .leftJoin(categories, eq(tickets.category_id, categories.id))
         .leftJoin(users, eq(tickets.created_by, users.id))
         .where(whereConditions)
-        .orderBy(desc(tickets.created_at))
+        .orderBy(orderByClause)
         .limit(limit)
         .offset(offsetValue),
     ]);

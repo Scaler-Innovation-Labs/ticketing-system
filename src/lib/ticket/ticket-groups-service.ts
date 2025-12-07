@@ -4,7 +4,7 @@
  * Group related tickets together for bulk operations
  */
 
-import { db, tickets, ticket_groups, ticket_activity } from '@/db';
+import { db, tickets, ticket_groups, ticket_activity, ticket_statuses, categories } from '@/db';
 import { eq, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -240,7 +240,41 @@ export async function listTicketGroups() {
     .from(ticket_groups)
     .orderBy(ticket_groups.created_at);
 
-  return groups;
+  if (groups.length === 0) {
+    return [];
+  }
+
+  const groupIds = groups.map((g) => g.id);
+
+  const groupTickets = await db
+    .select({
+      id: tickets.id,
+      status: ticket_statuses.value,
+      description: tickets.description,
+      location: tickets.location,
+      created_at: tickets.created_at,
+      category_name: categories.name,
+      resolution_due_at: tickets.resolution_due_at,
+      metadata: tickets.metadata,
+      group_id: tickets.group_id,
+    })
+    .from(tickets)
+    .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+    .leftJoin(categories, eq(tickets.category_id, categories.id))
+    .where(inArray(tickets.group_id, groupIds));
+
+  // Map tickets to groups
+  const groupsWithTickets = groups.map((group) => {
+    const groupTicketsList = groupTickets.filter((t) => t.group_id === group.id);
+    return {
+      ...group,
+      is_archived: !group.is_active,
+      tickets: groupTicketsList,
+      ticketCount: groupTicketsList.length,
+    };
+  });
+
+  return groupsWithTickets;
 }
 
 /**

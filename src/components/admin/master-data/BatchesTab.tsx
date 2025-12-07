@@ -51,11 +51,11 @@ export function BatchesTab({ batches, onAdd, onEdit, onDelete }: BatchesTabProps
 								</TableCell>
 							</TableRow>
 						) : (
-							batches.sort((a, b) => b.batch_year - a.batch_year).map((batch) => (
+							batches.sort((a, b) => b.year - a.year).map((batch) => (
 								<TableRow key={batch.id}>
 									<TableCell>{batch.id}</TableCell>
 									<TableCell className="font-medium">
-										{batch.batch_year}
+										{batch.name} ({batch.year})
 										{batch.is_active === false && (
 											<span className="ml-2 text-xs text-muted-foreground">(inactive)</span>
 										)}

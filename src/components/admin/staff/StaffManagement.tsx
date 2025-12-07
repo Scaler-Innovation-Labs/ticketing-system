@@ -57,7 +57,6 @@ interface StaffManagementProps {
 export function StaffManagement({ initialStaff, initialMasterData }: StaffManagementProps) {
   const router = useRouter();
   const [staff, setStaff] = useState<StaffMember[]>(initialStaff);
-  const [clerkUsers, setClerkUsers] = useState<ClerkUser[]>([]);
   const [masterData] = useState<MasterData>(initialMasterData);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -68,7 +67,6 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
-  const [formMode, setFormMode] = useState<"select" | "create">("select");
   const [formData, setFormData] = useState({
     clerkUserId: "",
     email: "",
@@ -82,27 +80,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    fetchClerkUsers();
-  }, []);
 
-  const fetchClerkUsers = async () => {
-    try {
-      const response = await fetch("/api/admin/list");
-      if (response.ok) {
-        const data = await response.json();
-        const uniqueUsers = (data.admins || []).reduce((acc: ClerkUser[], user: ClerkUser) => {
-          if (!acc.find(u => u.id === user.id)) {
-            acc.push(user);
-          }
-          return acc;
-        }, []);
-        setClerkUsers(uniqueUsers);
-      }
-    } catch (error) {
-      console.error("Error fetching Clerk users:", error);
-    }
-  };
 
   const refreshData = () => {
     router.refresh();
@@ -111,7 +89,6 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   const handleOpenDialog = (staffMember?: StaffMember) => {
     if (staffMember) {
       setEditingStaff(staffMember);
-      setFormMode("select");
       setFormData({
         clerkUserId: staffMember.clerkUserId || "",
         email: staffMember.email || "",
@@ -125,7 +102,6 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
       });
     } else {
       setEditingStaff(null);
-      setFormMode("select");
       setFormData({
         clerkUserId: "",
         email: "",
@@ -144,7 +120,6 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingStaff(null);
-    setFormMode("select");
     setErrors({});
     setFormData({
       clerkUserId: "",
@@ -165,11 +140,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
 
     const newErrors: Record<string, string> = {};
 
-    if (formMode === "select" && !editingStaff) {
-      if (!formData.clerkUserId || formData.clerkUserId === "none") {
-        newErrors.clerkUserId = "Please select a user";
-      }
-    } else if (formMode === "create") {
+    if (!editingStaff) {
       if (!formData.email || !formData.email.trim()) {
         newErrors.email = "Email is required";
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
@@ -234,9 +205,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
         whatsappNumber: formData.whatsappNumber || null,
       };
 
-      if (formMode === "select") {
-        payload.clerkUserId = formData.clerkUserId === "none" ? null : formData.clerkUserId;
-      } else {
+      if (!editingStaff) {
         payload.newUser = {
           email: formData.email.trim(),
           firstName: formData.firstName.trim(),
@@ -276,15 +245,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
     }
   };
 
-  const selectedUser = clerkUsers.find(u => u.id === formData.clerkUserId);
-  const selectedUserFullName = editingStaff && !selectedUser
-    ? editingStaff.fullName
-    : selectedUser
-      ? `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() || "No name"
-      : "";
-  const selectedUserEmail = editingStaff && !selectedUser
-    ? editingStaff.email || ""
-    : selectedUser?.emailAddresses?.[0]?.emailAddress || selectedUser?.email || "";
+
 
   const handleDelete = async () => {
     if (!deletingStaffId) return;
@@ -397,8 +358,6 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         editingStaff={editingStaff}
-        formMode={formMode}
-        onFormModeChange={setFormMode}
         formData={formData}
         onFormDataChange={(data) => {
           setFormData(prev => ({ ...prev, ...data }));
@@ -410,15 +369,13 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
             return newErrors;
           });
         }}
-        clerkUsers={clerkUsers}
         staff={staff}
         masterData={masterData}
         errors={errors}
         saving={saving}
         onSubmit={handleSubmit}
         onClose={handleCloseDialog}
-        selectedUserFullName={selectedUserFullName}
-        selectedUserEmail={selectedUserEmail}
+        selectedUserEmail={formData.email}
       />
 
       <StaffFilters

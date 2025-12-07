@@ -133,18 +133,49 @@ export async function createStudent(data: StudentData) {
         throw new Error('Student role not found');
       }
 
-      // Create user
-      const [user] = await tx
-        .insert(users)
-        .values({
-          external_id: `manual_${Date.now()}_${Math.random()}`, // Temporary until Clerk sync
-          email: data.email,
-          phone: data.phone,
-          full_name: data.full_name,
-          role_id: studentRole.id,
-          is_active: true,
-        })
-        .returning();
+      // Check if user exists
+      let [user] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.email, data.email))
+        .limit(1);
+
+      if (user) {
+        // Check if user already has a student profile
+        const [existingStudent] = await tx
+          .select({ id: students.id })
+          .from(students)
+          .where(eq(students.user_id, user.id))
+          .limit(1);
+
+        if (existingStudent) {
+          throw new Error('Student profile already exists for this user');
+        }
+
+        // Update user details if provided (optional, but good practice)
+        await tx
+          .update(users)
+          .set({
+            full_name: data.full_name,
+            phone: data.phone,
+            role_id: studentRole.id, // Ensure they have student role
+            updated_at: new Date(),
+          })
+          .where(eq(users.id, user.id));
+      } else {
+        // Create new user
+        [user] = await tx
+          .insert(users)
+          .values({
+            external_id: `manual_${Date.now()}_${Math.random()}`, // Temporary until Clerk sync
+            email: data.email,
+            phone: data.phone,
+            full_name: data.full_name,
+            role_id: studentRole.id,
+            is_active: true,
+          })
+          .returning();
+      }
 
       // Create student profile
       const [student] = await tx
@@ -287,6 +318,43 @@ export async function reactivateStudent(studentId: number) {
     logger.info({ studentId }, 'Student reactivated');
   } catch (error) {
     logger.error({ error, studentId }, 'Error reactivating student');
+    throw error;
+  }
+}
+
+/**
+ * Get student by ID
+ */
+export async function getStudentById(studentId: number) {
+  try {
+    const [student] = await db
+      .select({
+        student_id: students.id,
+        user_id: users.id,
+        email: users.email,
+        full_name: users.full_name,
+        phone: users.phone,
+        roll_no: students.roll_no,
+        room_no: students.room_no,
+        hostel_id: students.hostel_id,
+        class_section_id: students.class_section_id,
+        batch_id: students.batch_id,
+        department: students.department,
+        blood_group: students.blood_group,
+        parent_name: students.parent_name,
+        parent_phone: students.parent_phone,
+        is_active: users.is_active,
+        created_at: students.created_at,
+        updated_at: students.updated_at,
+      })
+      .from(students)
+      .innerJoin(users, eq(students.user_id, users.id))
+      .where(eq(students.id, studentId))
+      .limit(1);
+
+    return student || null;
+  } catch (error) {
+    logger.error({ error, studentId }, 'Error getting student');
     throw error;
   }
 }

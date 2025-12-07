@@ -51,20 +51,26 @@ async function seed() {
     console.log('📦 Seeding ticket statuses...');
 
     const statusData = [
-        { value: 'open', label: 'Open', description: 'Ticket has been created and is awaiting acknowledgement', color: '#3B82F6', progress_percent: 0, display_order: 1 },
-        { value: 'acknowledged', label: 'Acknowledged', description: 'Admin has acknowledged the ticket', color: '#8B5CF6', progress_percent: 20, display_order: 2 },
-        { value: 'in_progress', label: 'In Progress', description: 'Work is being done on the ticket', color: '#F59E0B', progress_percent: 50, display_order: 3 },
-        { value: 'resolved', label: 'Resolved', description: 'Ticket has been resolved, awaiting student confirmation', color: '#10B981', progress_percent: 90, display_order: 4 },
-        { value: 'closed', label: 'Closed', description: 'Ticket is closed and archived', color: '#6B7280', progress_percent: 100, display_order: 5 },
-        { value: 'reopened', label: 'Reopened', description: 'Ticket was reopened by student', color: '#EF4444', progress_percent: 10, display_order: 6 },
-        { value: 'cancelled', label: 'Cancelled', description: 'Ticket was cancelled', color: '#9CA3AF', progress_percent: 100, display_order: 7 },
+        { value: 'open', label: 'Open', description: 'Ticket has been created and is awaiting acknowledgement', color: '#3B82F6', progress_percent: 0, display_order: 1, is_final: false },
+        { value: 'acknowledged', label: 'Acknowledged', description: 'Admin has acknowledged the ticket', color: '#8B5CF6', progress_percent: 20, display_order: 2, is_final: false },
+        { value: 'in_progress', label: 'In Progress', description: 'Work is being done on the ticket', color: '#F59E0B', progress_percent: 50, display_order: 3, is_final: false },
+        { value: 'resolved', label: 'Resolved', description: 'Ticket has been resolved, awaiting student confirmation', color: '#10B981', progress_percent: 90, display_order: 4, is_final: true },
+        { value: 'closed', label: 'Closed', description: 'Ticket is closed and archived', color: '#6B7280', progress_percent: 100, display_order: 5, is_final: true },
+        { value: 'reopened', label: 'Reopened', description: 'Ticket was reopened by student', color: '#EF4444', progress_percent: 10, display_order: 6, is_final: false },
+        { value: 'cancelled', label: 'Cancelled', description: 'Ticket was cancelled', color: '#9CA3AF', progress_percent: 100, display_order: 7, is_final: true },
     ];
 
     for (const status of statusData) {
         await sql`
-      INSERT INTO ticket_statuses (value, label, description, color, progress_percent, display_order)
-      VALUES (${status.value}, ${status.label}, ${status.description}, ${status.color}, ${status.progress_percent}, ${status.display_order})
-      ON CONFLICT (value) DO NOTHING
+      INSERT INTO ticket_statuses (value, label, description, color, progress_percent, display_order, is_final)
+      VALUES (${status.value}, ${status.label}, ${status.description}, ${status.color}, ${status.progress_percent}, ${status.display_order}, ${status.is_final})
+      ON CONFLICT (value) DO UPDATE SET
+        label = EXCLUDED.label,
+        description = EXCLUDED.description,
+        color = EXCLUDED.color,
+        progress_percent = EXCLUDED.progress_percent,
+        display_order = EXCLUDED.display_order,
+        is_final = EXCLUDED.is_final
     `;
     }
     console.log('  ✅ Ticket statuses seeded (7 statuses)\n');
@@ -87,16 +93,16 @@ async function seed() {
     console.log('📦 Seeding sample hostels...');
 
     const hostelData = [
-        { name: 'Boys Hostel A', code: 'BHA', capacity: 200 },
-        { name: 'Boys Hostel B', code: 'BHB', capacity: 200 },
-        { name: 'Girls Hostel A', code: 'GHA', capacity: 150 },
-        { name: 'Girls Hostel B', code: 'GHB', capacity: 150 },
+        { name: 'Boys Hostel A', code: 'BHA' },
+        { name: 'Boys Hostel B', code: 'BHB' },
+        { name: 'Girls Hostel A', code: 'GHA' },
+        { name: 'Girls Hostel B', code: 'GHB' },
     ];
 
     for (const hostel of hostelData) {
         await sql`
-      INSERT INTO hostels (name, code, capacity)
-      VALUES (${hostel.name}, ${hostel.code}, ${hostel.capacity})
+      INSERT INTO hostels (name, code)
+      VALUES (${hostel.name}, ${hostel.code})
       ON CONFLICT (code) DO NOTHING
     `;
     }

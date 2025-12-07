@@ -75,8 +75,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
   const fetchGroups = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/tickets/groups", { 
-        next: { revalidate: 30 } // Cache for 30 seconds instead of no-store
+      const response = await fetch("/api/tickets/groups", {
+        cache: 'no-store'
       });
       if (response.ok) {
         const contentType = response.headers.get("content-type");
@@ -127,7 +127,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to create group");
+          const errorMessage = typeof error.error === 'string' ? error.error : "Failed to create group";
+          toast.error(errorMessage);
         } else {
           toast.error(`Failed to create group (${response.status} ${response.statusText})`);
         }
@@ -182,7 +183,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to perform bulk action");
+          const errorMessage = typeof error.error === 'string' ? error.error : "Failed to perform bulk action";
+          toast.error(errorMessage);
         } else {
           toast.error(`Failed to perform bulk action (${response.status} ${response.statusText})`);
         }
@@ -228,7 +230,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to add tickets to group");
+          const errorMessage = typeof error.error === 'string' ? error.error : "Failed to add tickets to group";
+          toast.error(errorMessage);
         } else {
           toast.error(`Failed to add tickets to group (${response.status} ${response.statusText})`);
         }
@@ -260,7 +263,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to delete group");
+          const errorMessage = typeof error.error === 'string' ? error.error : "Failed to delete group";
+          toast.error(errorMessage);
         } else {
           toast.error(`Failed to delete group (${response.status} ${response.statusText})`);
         }
@@ -277,7 +281,7 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
   const filteredGroups = useMemo(() => {
     if (!searchQuery.trim()) return groups;
     const query = searchQuery.toLowerCase();
-    return groups.filter(group => 
+    return groups.filter(group =>
       group.name.toLowerCase().includes(query) ||
       group.description?.toLowerCase().includes(query) ||
       group.tickets.some(t => t.id.toString().includes(query))
@@ -285,18 +289,18 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
   }, [groups, searchQuery]);
 
   // Memoize displayed groups (filtered by archived status)
-  const displayedGroups = useMemo(() => 
+  const displayedGroups = useMemo(() =>
     filteredGroups.filter(group => showArchived || !group.is_archived),
     [filteredGroups, showArchived]
   );
 
   // Memoize stats calculations
-  const activeGroupsCount = useMemo(() => 
+  const activeGroupsCount = useMemo(() =>
     filteredGroups.filter(g => !g.is_archived).length,
     [filteredGroups]
   );
-  
-  const archivedGroupsCount = useMemo(() => 
+
+  const archivedGroupsCount = useMemo(() =>
     filteredGroups.filter(g => g.is_archived).length,
     [filteredGroups]
   );
@@ -323,8 +327,8 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
             <RotateCcw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             disabled={selectedTicketIds.length === 0}
             onClick={() => setIsCreateDialogOpen(true)}
           >
@@ -340,9 +344,9 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
             <Users className="w-4 h-4 mr-2" />
             Add to Group ({selectedTicketIds.length})
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             disabled={groups.length === 0}
             onClick={() => setIsBulkActionDialogOpen(true)}
           >

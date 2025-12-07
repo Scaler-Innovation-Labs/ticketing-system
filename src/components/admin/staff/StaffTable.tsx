@@ -143,15 +143,15 @@ export function StaffTable({
                       </TableCell>
                       <TableCell>
                         <Badge variant={
-                          member.role === "super_admin" ? "destructive" : 
-                          member.role === "snr_admin" ? "default" : 
-                          member.role === "committee" ? "secondary" : 
-                          "default"
+                          member.role === "super_admin" ? "destructive" :
+                            member.role === "snr_admin" ? "default" :
+                              member.role === "committee" ? "secondary" :
+                                "default"
                         }>
-                          {member.role === "super_admin" ? "Super Admin" : 
-                           member.role === "snr_admin" ? "Senior Admin" : 
-                           member.role === "committee" ? "Committee" : 
-                           "Admin"}
+                          {member.role === "super_admin" ? "Super Admin" :
+                            member.role === "snr_admin" ? "Senior Admin" :
+                              member.role === "committee" ? "Committee" :
+                                "Admin"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -173,7 +173,7 @@ export function StaffTable({
                         {member.committee ? (
                           <Badge variant="outline" className="flex items-center gap-1 w-fit bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
                             <Users className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                            {member.committee.name}
+                            {typeof member.committee.name === 'string' ? member.committee.name : String(member.committee.name)}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">—</span>

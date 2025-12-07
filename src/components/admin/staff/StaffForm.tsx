@@ -58,18 +58,14 @@ interface StaffFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editingStaff: StaffMember | null;
-  formMode: "select" | "create";
-  onFormModeChange: (mode: "select" | "create") => void;
   formData: StaffFormData;
   onFormDataChange: (data: Partial<StaffFormData>) => void;
-  clerkUsers: ClerkUser[];
   staff: StaffMember[];
   masterData: MasterData | null;
   errors: Record<string, string>;
   saving: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onClose: () => void;
-  selectedUserFullName: string;
   selectedUserEmail: string;
 }
 
@@ -77,21 +73,16 @@ export function StaffForm({
   open,
   onOpenChange,
   editingStaff,
-  formMode,
-  onFormModeChange,
   formData,
   onFormDataChange,
-  clerkUsers,
   staff,
   masterData,
   errors,
   saving,
   onSubmit,
   onClose,
-  selectedUserFullName,
   selectedUserEmail,
 }: StaffFormProps) {
-  const selectedUser = clerkUsers.find(u => u.id === formData.clerkUserId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -111,29 +102,8 @@ export function StaffForm({
         <form onSubmit={onSubmit} className="space-y-4">
           {!editingStaff && (
             <div className="space-y-2">
-              <Label>User Selection Mode</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={formMode === "select" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => onFormModeChange("select")}
-                >
-                  Select Existing User
-                </Button>
-                <Button
-                  type="button"
-                  variant={formMode === "create" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => onFormModeChange("create")}
-                >
-                  Create New User
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {formMode === "select"
-                  ? "Select an existing user from Clerk to assign as staff."
-                  : "Create a new user account and assign them as staff. They will need to sign up with Clerk using this email."}
+              <p className="text-sm text-muted-foreground">
+                Enter the details of the staff member. If a user with this email already exists, they will be assigned the staff role. Otherwise, a new user account will be created.
               </p>
             </div>
           )}
@@ -148,126 +118,56 @@ export function StaffForm({
             </div>
           )}
 
-          {formMode === "select" ? (
-            <div className="space-y-2">
-              <Label htmlFor="clerkUserId">Select User *</Label>
-              {editingStaff ? (
-                <div className="space-y-2">
-                  <div className="p-3 bg-muted rounded-lg space-y-1 border">
-                    <p className="text-sm font-medium">{editingStaff.fullName}</p>
-                    {editingStaff.email && (
-                      <p className="text-xs text-muted-foreground">{editingStaff.email}</p>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    User cannot be changed when editing. To change the user, delete and recreate the staff member.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <Select
-                    value={formData.clerkUserId || undefined}
-                    onValueChange={(value) => {
-                      onFormDataChange({ clerkUserId: value === "none" ? "" : value });
-                    }}
-                    required={formMode === "select"}
-                  >
-                    <SelectTrigger id="clerkUserId" className={errors.clerkUserId ? "border-destructive" : ""}>
-                      <SelectValue placeholder="Select a user" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {clerkUsers
-                        .filter(user => {
-                          if (!editingStaff && staff.find(s => s.clerkUserId === user.id)) {
-                            return false;
-                          }
-                          return true;
-                        })
-                        .map((user, index) => {
-                          const displayName = user.name ||
-                            (user.firstName && user.lastName
-                              ? `${user.firstName} ${user.lastName}`
-                              : user.emailAddresses?.[0]?.emailAddress ||
-                              user.email ||
-                              user.id);
-                          return (
-                            <SelectItem key={`user-${user.id}-${index}`} value={user.id}>
-                              {displayName}
-                            </SelectItem>
-                          );
-                        })}
-                    </SelectContent>
-                  </Select>
-                  {selectedUser && (
-                    <div className="p-3 bg-muted rounded-lg space-y-1">
-                      <p className="text-sm font-medium">{selectedUserFullName}</p>
-                      {selectedUserEmail && (
-                        <p className="text-xs text-muted-foreground">{selectedUserEmail}</p>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    Select a user from Clerk. Their name and email will be automatically used.
-                  </p>
-                  {errors.clerkUserId && (
-                    <p className="text-sm text-destructive">{errors.clerkUserId}</p>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name *</Label>
-                  <Input
-                    id="firstName"
-                    value={formData.firstName}
-                    onChange={(e) => onFormDataChange({ firstName: e.target.value })}
-                    placeholder="John"
-                    className={errors.firstName ? "border-destructive" : ""}
-                    required={formMode === "create"}
-                  />
-                  {errors.firstName && (
-                    <p className="text-sm text-destructive">{errors.firstName}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name *</Label>
-                  <Input
-                    id="lastName"
-                    value={formData.lastName}
-                    onChange={(e) => onFormDataChange({ lastName: e.target.value })}
-                    placeholder="Doe"
-                    className={errors.lastName ? "border-destructive" : ""}
-                    required={formMode === "create"}
-                  />
-                  {errors.lastName && (
-                    <p className="text-sm text-destructive">{errors.lastName}</p>
-                  )}
-                </div>
+          <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  value={formData.firstName}
+                  onChange={(e) => onFormDataChange({ firstName: e.target.value })}
+                  placeholder="John"
+                  className={errors.firstName ? "border-destructive" : ""}
+                  required
+                />
+                {errors.firstName && (
+                  <p className="text-sm text-destructive">{errors.firstName}</p>
+                )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="lastName">Last Name *</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => onFormDataChange({ email: e.target.value })}
-                  placeholder="john.doe@example.com"
-                  className={errors.email ? "border-destructive" : ""}
-                  required={formMode === "create"}
+                  id="lastName"
+                  value={formData.lastName}
+                  onChange={(e) => onFormDataChange({ lastName: e.target.value })}
+                  placeholder="Doe"
+                  className={errors.lastName ? "border-destructive" : ""}
+                  required
                 />
-                <p className="text-xs text-muted-foreground">
-                  User must sign up with Clerk using this email address.
-                </p>
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email}</p>
+                {errors.lastName && (
+                  <p className="text-sm text-destructive">{errors.lastName}</p>
                 )}
               </div>
             </div>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => onFormDataChange({ email: e.target.value })}
+                placeholder="john.doe@example.com"
+                className={errors.email ? "border-destructive" : ""}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                User must sign up with Clerk using this email address.
+              </p>
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

@@ -11,19 +11,20 @@ const UpdateBatchSchema = z.object({
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const batchId = parseInt(params.id);
+
+    const { id } = await params;
+    const batchId = parseInt(id);
     if (isNaN(batchId)) {
       return NextResponse.json({ error: 'Invalid batch ID' }, { status: 400 });
     }
-    
+
     const body = await request.json();
     const data = UpdateBatchSchema.parse(body);
-    
+
     const batch = await updateBatch(batchId, data.year, data.name);
     return NextResponse.json(batch);
   } catch (error) {
@@ -42,16 +43,17 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const batchId = parseInt(params.id);
+
+    const { id } = await params;
+    const batchId = parseInt(id);
     if (isNaN(batchId)) {
       return NextResponse.json({ error: 'Invalid batch ID' }, { status: 400 });
     }
-    
+
     await deleteBatch(batchId);
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -65,7 +65,7 @@ export function SubcategoryDialog({
   });
 
   // Use centralized hooks
-  const { admins: staffMembers, loading: loadingStaff, refetch: refetchStaff } = useAdmins("staff");
+  const { admins: staffMembers, loading: loadingStaff, refetch: refetchStaff } = useAdmins("list");
   const { slugManuallyEdited, handleNameChange: handleSlugNameChange, handleSlugChange: handleSlugChangeCallback, setManualEdit } = useSlugGeneration("-");
 
   useEffect(() => {
@@ -123,7 +123,8 @@ export function SubcategoryDialog({
       const payload = {
         ...formData,
         category_id: categoryId,
-        assigned_admin_id: inheritFromCategory ? null : formData.assigned_admin_id,
+        assigned_admin_id: inheritFromCategory ? undefined : (formData.assigned_admin_id || undefined),
+        description: formData.description || undefined,
       };
 
       if (subcategory) {
@@ -234,7 +235,7 @@ export function SubcategoryDialog({
                 Inherit admin from category
                 {categoryDefaultAdmin && (
                   <span className="text-xs text-muted-foreground ml-2 font-normal">
-                    (Currently: {staffMembers.find(s => s.id === categoryDefaultAdmin)?.fullName || staffMembers.find(s => s.id === categoryDefaultAdmin)?.full_name || "Unknown"})
+                    (Currently: {staffMembers.find(s => s.id === categoryDefaultAdmin)?.name || "Unknown"})
                   </span>
                 )}
               </Label>
@@ -258,7 +259,7 @@ export function SubcategoryDialog({
                   <SelectContent>
                     <SelectItem value="none">No admin</SelectItem>
                     {staffMembers.map((staff) => {
-                      const displayName = staff.fullName || staff.full_name || staff.email || "Unknown";
+                      const displayName = staff.name || staff.email || "Unknown";
                       return (
                         <SelectItem key={staff.id} value={staff.id}>
                           {displayName}

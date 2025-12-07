@@ -12,19 +12,20 @@ const UpdateClassSectionSchema = z.object({
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const sectionId = parseInt(params.id);
+
+    const { id } = await params;
+    const sectionId = parseInt(id);
     if (isNaN(sectionId)) {
       return NextResponse.json({ error: 'Invalid class section ID' }, { status: 400 });
     }
-    
+
     const body = await request.json();
     const data = UpdateClassSectionSchema.parse(body);
-    
+
     const section = await updateClassSection(sectionId, data.name, data.department, data.batch_id);
     return NextResponse.json(section);
   } catch (error) {
@@ -43,16 +44,17 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const sectionId = parseInt(params.id);
+
+    const { id } = await params;
+    const sectionId = parseInt(id);
     if (isNaN(sectionId)) {
       return NextResponse.json({ error: 'Invalid class section ID' }, { status: 400 });
     }
-    
+
     await deleteClassSection(sectionId);
     return NextResponse.json({ success: true });
   } catch (error) {

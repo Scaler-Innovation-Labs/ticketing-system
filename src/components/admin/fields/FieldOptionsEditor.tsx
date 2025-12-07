@@ -45,7 +45,7 @@ export function FieldOptionsEditor({
 
     newOptions[index] = { ...current, [key]: value } as FieldOption;
     if (key === "label" && !newOptions[index]?.value) {
-      newOptions[index]!.value = generateSlug(value, "_");
+      newOptions[index]!.value = generateSlug(value);
     }
     onChange(newOptions);
   };

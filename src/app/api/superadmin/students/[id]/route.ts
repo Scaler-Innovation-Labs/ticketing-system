@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
-import { updateStudent, deactivateStudent } from '@/lib/student/student-service';
+import { updateStudent, deactivateStudent, getStudentById } from '@/lib/student/student-service';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
@@ -26,14 +26,44 @@ const UpdateStudentSchema = z.object({
   parent_phone: z.string().max(15).nullable().optional(),
 });
 
-export async function PATCH(
+export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
 
-    const studentId = parseInt(params.id, 10);
+    const { id } = await params;
+    const studentId = parseInt(id, 10);
+    if (isNaN(studentId)) {
+      return NextResponse.json({ error: 'Invalid student ID' }, { status: 400 });
+    }
+
+    const student = await getStudentById(studentId);
+
+    if (!student) {
+      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(student);
+  } catch (error: any) {
+    logger.error({ error: error.message }, 'Error fetching student');
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch student' },
+      { status: error.message.includes('Unauthorized') ? 401 : 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireRole(['super_admin']);
+
+    const { id } = await params;
+    const studentId = parseInt(id, 10);
     if (isNaN(studentId)) {
       return NextResponse.json({ error: 'Invalid student ID' }, { status: 400 });
     }
@@ -62,12 +92,13 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
 
-    const studentId = parseInt(params.id, 10);
+    const { id } = await params;
+    const studentId = parseInt(id, 10);
     if (isNaN(studentId)) {
       return NextResponse.json({ error: 'Invalid student ID' }, { status: 400 });
     }

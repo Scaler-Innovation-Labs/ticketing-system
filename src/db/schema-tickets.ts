@@ -115,6 +115,22 @@ export const category_fields = pgTable('category_fields', {
 }));
 
 // ============================================
+// Category Assignments
+// ============================================
+
+export const category_assignments = pgTable('category_assignments', {
+  id: serial('id').primaryKey(),
+  category_id: integer('category_id').notNull().references(() => categories.id, { onDelete: 'cascade' }),
+  user_id: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assignment_type: varchar('assignment_type', { length: 50 }), // primary, backup, etc.
+  created_at: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  categoryIdx: index('idx_cat_assign_category').on(table.category_id),
+  userIdx: index('idx_cat_assign_user').on(table.user_id),
+  uniqueAssignment: uniqueIndex('idx_cat_assign_unique').on(table.category_id, table.user_id),
+}));
+
+// ============================================
 // Ticket Groups
 // ============================================
 
@@ -432,3 +448,6 @@ export type SelectCommittee = typeof committees.$inferSelect;
 
 export type InsertCommitteeMember = typeof committee_members.$inferInsert;
 export type SelectCommitteeMember = typeof committee_members.$inferSelect;
+
+export type InsertCategoryAssignment = typeof category_assignments.$inferInsert;
+export type SelectCategoryAssignment = typeof category_assignments.$inferSelect;

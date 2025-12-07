@@ -95,6 +95,78 @@ export async function getActiveCategories(includeFields = false) {
 }
 
 /**
+ * Get all categories (active and inactive) with subcategories
+ */
+export async function getAllCategories(includeFields = false) {
+  try {
+    const cats = await db
+      .select({
+        id: categories.id,
+        name: categories.name,
+        slug: categories.slug,
+        description: categories.description,
+        icon: categories.icon,
+        color: categories.color,
+        sla_hours: categories.sla_hours,
+        domain_id: categories.domain_id,
+        scope_id: categories.scope_id,
+        display_order: categories.display_order,
+        is_active: categories.is_active,
+        created_at: categories.created_at,
+        updated_at: categories.updated_at,
+      })
+      .from(categories)
+      .orderBy(asc(categories.display_order), desc(categories.created_at));
+
+    if (!includeFields) {
+      return cats;
+    }
+
+    // Fetch subcategories for all categories
+    const subcats = await db
+      .select()
+      .from(subcategories)
+      .where(inArray(subcategories.category_id, cats.map(c => c.id)))
+      .orderBy(asc(subcategories.display_order));
+
+    // Fetch fields for all subcategories
+    const subcatIds = subcats.map(s => s.id);
+    const fields = subcatIds.length > 0 ? await db
+      .select()
+      .from(category_fields)
+      .where(inArray(category_fields.subcategory_id, subcatIds))
+      .orderBy(asc(category_fields.display_order)) : [];
+
+    // Fetch options for all fields
+    const fieldIds = fields.map(f => f.id);
+    const options = fieldIds.length > 0 ? await db
+      .select()
+      .from(field_options)
+      .where(inArray(field_options.field_id, fieldIds))
+      .orderBy(asc(field_options.display_order)) : [];
+
+    // Build nested structure
+    return cats.map(cat => ({
+      ...cat,
+      subcategories: subcats
+        .filter(s => s.category_id === cat.id)
+        .map(sub => ({
+          ...sub,
+          fields: fields
+            .filter(f => f.subcategory_id === sub.id)
+            .map(field => ({
+              ...field,
+              options: options.filter(o => o.field_id === field.id),
+            })),
+        })),
+    }));
+  } catch (error) {
+    logger.error({ error }, 'Error fetching all categories');
+    throw error;
+  }
+}
+
+/**
  * Get category schema (fields) for a specific category
  */
 export async function getCategorySchema(categoryId: number) {
@@ -177,6 +249,7 @@ export async function createCategory(data: {
   default_admin_id?: string;
   sla_hours?: number;
   display_order?: number;
+  is_active?: boolean;
 }) {
   try {
     const [category] = await db

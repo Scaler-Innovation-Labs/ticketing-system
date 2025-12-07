@@ -81,7 +81,8 @@ export function AdminActions({
 					onStatusChanged(currentStatus);
 				}
 				const error = await response.json().catch(() => ({ error: "Failed to mark in progress" }));
-				toast.error(error.error || "Failed to mark in progress");
+				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to mark in progress";
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			// Rollback optimistic update
@@ -133,7 +134,7 @@ export function AdminActions({
 			} else {
 				const errorData = await response.json().catch(() => ({ error: "Failed to set TAT" }));
 				logger.error({ ...errorData, component: "AdminActions", action: "setTAT" }, "TAT API error");
-				const errorMessage = errorData.error || errorData.details || "Failed to set TAT";
+				const errorMessage = typeof errorData.error === 'string' ? errorData.error : (typeof errorData.details === 'string' ? errorData.details : "Failed to set TAT");
 				toast.error(errorMessage);
 			}
 		} catch (error) {
@@ -196,7 +197,8 @@ export function AdminActions({
 				router.refresh();
 			} else {
 				const error = await response.json().catch(() => ({ error: "Failed to add comment" }));
-				toast.error(error.error || "Failed to add comment");
+				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to add comment";
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			logger.error({ error, component: "AdminActions", action: "addComment" }, "Error adding comment");
@@ -233,7 +235,8 @@ export function AdminActions({
 					onStatusChanged(currentStatus);
 				}
 				const error = await response.json().catch(() => ({ error: "Failed to mark ticket as resolved" }));
-				toast.error(error.error || "Failed to mark ticket as resolved");
+				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to mark ticket as resolved";
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			// Rollback optimistic update
@@ -275,7 +278,8 @@ export function AdminActions({
 				router.refresh();
 			} else {
 				const error = await response.json().catch(() => ({ error: "Failed to forward ticket" }));
-				toast.error(error.error || "Failed to forward ticket");
+				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to forward ticket";
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			logger.error({ error, component: "AdminActions", action: "forward", ticketId }, "Error forwarding ticket");

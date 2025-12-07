@@ -125,18 +125,49 @@ export async function createAdmin(data: AdminData) {
         throw new Error('Admin role not found');
       }
 
-      // Create user
-      const [user] = await tx
-        .insert(users)
-        .values({
-          external_id: `manual_admin_${Date.now()}_${Math.random()}`,
-          email: data.email,
-          phone: data.phone,
-          full_name: data.full_name,
-          role_id: adminRole.id,
-          is_active: true,
-        })
-        .returning();
+      // Check if user exists
+      let [user] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.email, data.email))
+        .limit(1);
+
+      if (user) {
+        // Check if user already has an admin profile
+        const [existingAdmin] = await tx
+          .select({ id: admin_profiles.id })
+          .from(admin_profiles)
+          .where(eq(admin_profiles.user_id, user.id))
+          .limit(1);
+
+        if (existingAdmin) {
+          throw new Error('Admin profile already exists for this user');
+        }
+
+        // Update user details if provided
+        await tx
+          .update(users)
+          .set({
+            full_name: data.full_name,
+            phone: data.phone,
+            role_id: adminRole.id, // Ensure they have admin role
+            updated_at: new Date(),
+          })
+          .where(eq(users.id, user.id));
+      } else {
+        // Create new user
+        [user] = await tx
+          .insert(users)
+          .values({
+            external_id: `manual_admin_${Date.now()}_${Math.random()}`,
+            email: data.email,
+            phone: data.phone,
+            full_name: data.full_name,
+            role_id: adminRole.id,
+            is_active: true,
+          })
+          .returning();
+      }
 
       userId = user.id;
 

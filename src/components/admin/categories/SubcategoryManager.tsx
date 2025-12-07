@@ -86,7 +86,7 @@ export function SubcategoryManager({ categoryId, categoryDefaultAdmin }: Subcate
       );
       if (response.ok) {
         const data = await response.json();
-        setSubcategories(data);
+        setSubcategories(data.subcategories || []);
       } else {
         toast.error("Failed to fetch subcategories");
       }

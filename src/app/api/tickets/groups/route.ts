@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 const CreateGroupSchema = z.object({
   name: z.string().min(1).max(100),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).optional().nullable(),
   ticketIds: z.array(z.number()).optional(),
 });
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     const { name, description, ticketIds } = validation.data;
 
-    const group = await createTicketGroup(name, description, dbUser.id, ticketIds);
+    const group = await createTicketGroup(name, description || undefined, dbUser.id, ticketIds);
 
     logger.info(
       {

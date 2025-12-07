@@ -45,7 +45,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
-          setCategories(data);
+          setCategories(data.categories || []);
         } else {
           console.error("Server returned non-JSON response when fetching categories");
         }

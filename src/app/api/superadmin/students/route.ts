@@ -14,9 +14,9 @@ import { z } from 'zod';
 const CreateStudentSchema = z.object({
   full_name: z.string().min(1).max(255),
   email: z.string().email(),
-  phone: z.string().min(10).max(15),
+  mobile: z.string().min(10).max(15),
   roll_no: z.string().optional(),
-  room_no: z.string().optional(),
+  room_number: z.string().optional(),
   hostel_id: z.number().int().positive().optional(),
   class_section_id: z.number().int().positive().optional(),
   batch_id: z.number().int().positive().optional(),
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const search = searchParams.get('search') || undefined;
     const hostel = searchParams.get('hostel') || undefined;
-    const batch_year = searchParams.get('batch_year') 
+    const batch_year = searchParams.get('batch_year')
       ? parseInt(searchParams.get('batch_year')!, 10)
       : undefined;
 
@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const studentId = await createStudent(parsed.data);
+    const studentData = {
+      ...parsed.data,
+      phone: parsed.data.mobile,
+      room_no: parsed.data.room_number,
+    };
+
+    const studentId = await createStudent(studentData);
 
     return NextResponse.json({ id: studentId }, { status: 201 });
   } catch (error: any) {

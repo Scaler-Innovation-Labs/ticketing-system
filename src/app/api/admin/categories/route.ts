@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole } from '@/lib/auth/helpers';
-import { getActiveCategories, createCategory } from '@/lib/category/category-service';
+import { getActiveCategories, getAllCategories, createCategory } from '@/lib/category/category-service';
 import { logger } from '@/lib/logger';
 
 const CreateCategorySchema = z.object({
@@ -23,6 +23,7 @@ const CreateCategorySchema = z.object({
   default_admin_id: z.string().uuid().optional(),
   sla_hours: z.number().int().positive().optional(),
   display_order: z.number().int().optional(),
+  is_active: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeFields = searchParams.get('include_fields') === 'true';
 
-    const categories = await getActiveCategories(includeFields);
+    const categories = await getAllCategories(includeFields);
 
     return NextResponse.json({ categories });
   } catch (error: any) {

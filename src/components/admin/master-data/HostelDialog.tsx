@@ -18,8 +18,8 @@ interface HostelDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	editingHostel: Hostel | null;
-	formData: { name: string; is_active: boolean };
-	onFormChange: (data: { name: string; is_active: boolean }) => void;
+	formData: { name: string; code: string; is_active: boolean };
+	onFormChange: (data: { name: string; code: string; is_active: boolean }) => void;
 	onSubmit: () => Promise<void>;
 	loading: boolean;
 }
@@ -50,6 +50,15 @@ export function HostelDialog({
 							value={formData.name}
 							onChange={(e) => onFormChange({ ...formData, name: e.target.value })}
 							placeholder="e.g., Hostel A"
+						/>
+					</div>
+					<div>
+						<Label htmlFor="hostel-code">Hostel Code</Label>
+						<Input
+							id="hostel-code"
+							value={formData.code}
+							onChange={(e) => onFormChange({ ...formData, code: e.target.value })}
+							placeholder="e.g., H-A"
 						/>
 					</div>
 					<div className="flex items-center space-x-2">

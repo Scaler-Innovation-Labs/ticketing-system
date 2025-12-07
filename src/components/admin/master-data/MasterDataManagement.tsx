@@ -44,7 +44,7 @@ export function MasterDataManagement({
 
 	const [hostels, setHostels] = useState<Hostel[]>(initialHostels);
 	const [hostelDialog, setHostelDialog] = useState(false);
-	const [hostelForm, setHostelForm] = useState({ name: "", is_active: true });
+	const [hostelForm, setHostelForm] = useState({ name: "", code: "", is_active: true });
 	const [editingHostel, setEditingHostel] = useState<Hostel | null>(null);
 	const [hostelLoading, setHostelLoading] = useState(false);
 
@@ -250,6 +250,11 @@ export function MasterDataManagement({
 			return;
 		}
 
+		if (!hostelForm.code.trim()) {
+			toast.error("Please enter hostel code");
+			return;
+		}
+
 		setHostelLoading(true);
 		try {
 			if (editingHostel) {
@@ -258,6 +263,7 @@ export function MasterDataManagement({
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						name: hostelForm.name.trim(),
+						code: hostelForm.code.trim(),
 						is_active: hostelForm.is_active,
 					}),
 				});
@@ -276,6 +282,7 @@ export function MasterDataManagement({
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						name: hostelForm.name.trim(),
+						code: hostelForm.code.trim(),
 						is_active: hostelForm.is_active,
 					}),
 				});
@@ -319,10 +326,10 @@ export function MasterDataManagement({
 	const openHostelDialog = (hostel?: Hostel) => {
 		if (hostel) {
 			setEditingHostel(hostel);
-			setHostelForm({ name: hostel.name, is_active: true });
+			setHostelForm({ name: hostel.name, code: hostel.code, is_active: true });
 		} else {
 			setEditingHostel(null);
-			setHostelForm({ name: "", is_active: true });
+			setHostelForm({ name: "", code: "", is_active: true });
 		}
 		setHostelDialog(true);
 	};
@@ -330,7 +337,7 @@ export function MasterDataManagement({
 	const closeHostelDialog = () => {
 		setHostelDialog(false);
 		setEditingHostel(null);
-		setHostelForm({ name: "", is_active: true });
+		setHostelForm({ name: "", code: "", is_active: true });
 	};
 
 	const confirmDelete = (type: string, id: number, name: string) => {

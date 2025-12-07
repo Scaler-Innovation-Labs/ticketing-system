@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { api, endpoints } from "@/lib/api/client";
 import { useAdmins, type Admin } from "@/lib/api/admins";
@@ -38,6 +39,7 @@ interface Category {
   domain_id?: number | null;
   scope_id?: number | null;
   default_admin_id?: string | null;
+  active: boolean;
 }
 
 interface Domain {
@@ -74,11 +76,12 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
     domain_id: 1,
     scope_id: null as number | null,
     default_admin_id: null as string | null,
+    is_active: true,
   });
 
   // Use centralized hooks
   const { domains, scopes, loading: loadingDomains, refetch: refetchDomains } = useFetchDomains();
-  const { admins, loading: loadingAdmins, refetch: refetchAdmins } = useAdmins("staff");
+  const { admins, loading: loadingAdmins, refetch: refetchAdmins } = useAdmins("list");
   const { slugManuallyEdited, handleNameChange: handleSlugNameChange, handleSlugChange: handleSlugChangeCallback, setManualEdit } = useSlugGeneration("-");
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
         domain_id: category.domain_id || 1,
         scope_id: category.scope_id || null,
         default_admin_id: category.default_admin_id || null,
+        is_active: category.active,
       });
       setManualEdit(true); // When editing, slug is already set, so mark as manually edited
     } else {
@@ -115,6 +119,7 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
         domain_id: 1,
         scope_id: null,
         default_admin_id: null,
+        is_active: true,
       });
       setManualEdit(false); // Reset when creating new category
     }
@@ -148,10 +153,19 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
         ? `${endpoints.admin.categories}/${category.id}`
         : endpoints.admin.categories;
 
+      const payload = {
+        ...formData,
+        scope_id: formData.scope_id || undefined,
+        default_admin_id: formData.default_admin_id || undefined,
+        description: formData.description || undefined,
+        icon: formData.icon || undefined,
+        is_active: formData.is_active,
+      };
+
       if (category) {
-        await api.patch(url, formData);
+        await api.patch(url, payload);
       } else {
-        await api.post(url, formData);
+        await api.post(url, payload);
       }
 
       toast.success(category ? "Category updated successfully" : "Category created successfully");
@@ -222,6 +236,19 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
               placeholder="Brief description of this category"
               rows={3}
             />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="is_active"
+              checked={formData.is_active}
+              onCheckedChange={(checked) =>
+                setFormData((prev) => ({ ...prev, is_active: checked === true }))
+              }
+            />
+            <Label htmlFor="is_active" className="cursor-pointer">
+              Active (Visible to users)
+            </Label>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -385,11 +412,10 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
                     </SelectItem>
                   ) : (
                     admins.map((admin) => {
-                      const fullName = admin.fullName || admin.full_name || null;
-                      const displayName = fullName || admin.email || "Unknown";
+                      const displayName = admin.name || admin.email || "Unknown";
                       return (
                         <SelectItem key={admin.id} value={admin.id}>
-                          {displayName} {fullName && admin.email && <span className="text-muted-foreground">({admin.email})</span>}
+                          {displayName} {admin.name && admin.email && <span className="text-muted-foreground">({admin.email})</span>}
                         </SelectItem>
                       );
                     })

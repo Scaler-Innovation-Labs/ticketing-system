@@ -12,19 +12,20 @@ const UpdateHostelSchema = z.object({
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const hostelId = parseInt(params.id);
+
+    const { id } = await params;
+    const hostelId = parseInt(id);
     if (isNaN(hostelId)) {
       return NextResponse.json({ error: 'Invalid hostel ID' }, { status: 400 });
     }
-    
+
     const body = await request.json();
     const data = UpdateHostelSchema.parse(body);
-    
+
     const hostel = await updateHostel(hostelId, data.name, data.code, data.capacity);
     return NextResponse.json(hostel);
   } catch (error) {
@@ -43,16 +44,17 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
-    
-    const hostelId = parseInt(params.id);
+
+    const { id } = await params;
+    const hostelId = parseInt(id);
     if (isNaN(hostelId)) {
       return NextResponse.json({ error: 'Invalid hostel ID' }, { status: 400 });
     }
-    
+
     await deleteHostel(hostelId);
     return NextResponse.json({ success: true });
   } catch (error) {

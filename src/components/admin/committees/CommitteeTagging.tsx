@@ -119,7 +119,8 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         onTagAdded?.();
       } else {
         const error = await response.json();
-        toast.error(error.error || "Failed to tag ticket");
+        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to tag ticket";
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error("Error tagging ticket:", error);
@@ -146,7 +147,8 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         onTagRemoved?.();
       } else {
         const error = await response.json();
-        toast.error(error.error || "Failed to remove tag");
+        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to remove tag";
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error("Error removing tag:", error);

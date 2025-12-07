@@ -39,9 +39,9 @@ interface Assignment {
 }
 
 interface Admin {
-    id: string; // Database UUID (matches category_assignments.user_id)
+    user_id: string; // Database UUID (matches category_assignments.user_id)
     external_id?: string; // Clerk ID (optional, for display)
-    name: string;
+    full_name: string;
     email: string;
     domain: string | null;
     scope: string | null;
@@ -174,8 +174,8 @@ export function CategoryAssignmentsManager({ categoryId }: { categoryId: number 
     }
 
     // Filter out already assigned admins
-    const availableAdmins = admins.filter(
-        (a) => !assignments.some((assignment) => assignment.user_id === a.id)
+    const availableAdmins = (admins || []).filter(
+        (a) => !(assignments || []).some((assignment) => assignment.user_id === a.user_id)
     );
 
     return (
@@ -209,10 +209,10 @@ export function CategoryAssignmentsManager({ categoryId }: { categoryId: number 
                         <div className="space-y-3">
                             {assignments.map((assignment) => {
                                 // Find matching admin for domain/scope display
-                                const matchingAdmin = admins.find(a => a.id === assignment.user_id);
+                                const matchingAdmin = admins.find(a => a.user_id === assignment.user_id);
                                 const userName = assignment.user.full_name || assignment.user.email || "Unknown";
                                 const userEmail = assignment.user.email || "";
-                                
+
                                 return (
                                     <div
                                         key={assignment.id}
@@ -288,8 +288,8 @@ export function CategoryAssignmentsManager({ categoryId }: { categoryId: number 
                                         </div>
                                     ) : (
                                         availableAdmins.map((admin) => (
-                                            <SelectItem key={admin.id} value={admin.id}>
-                                                {admin.name} - {admin.email}
+                                            <SelectItem key={admin.user_id} value={admin.user_id}>
+                                                {admin.full_name} - {admin.email}
                                             </SelectItem>
                                         ))
                                     )}

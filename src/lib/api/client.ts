@@ -45,6 +45,8 @@ export const endpoints = {
     // Admin
     admin: {
         categories: `${API_BASE}/admin/categories`,
+        subcategories: `${API_BASE}/admin/subcategories`,
+        fields: `${API_BASE}/admin/fields`,
         users: `${API_BASE}/admin/users`,
         stats: `${API_BASE}/admin/stats`,
     },

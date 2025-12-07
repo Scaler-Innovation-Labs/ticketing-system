@@ -45,7 +45,8 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         router.refresh();
       } else {
         const error = await response.json().catch(() => ({ error: "Failed to reopen ticket" }));
-        toast.error(error.error || "Failed to reopen ticket");
+        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to reopen ticket";
+        toast.error(errorMessage);
       }
     } catch (error) {
       logger.error({ error, component: "StudentActions", action: "reopen", ticketId }, "Error reopening ticket");
@@ -72,7 +73,8 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
         router.refresh();
       } else {
         const error = await response.json().catch(() => ({ error: "Failed to close ticket" }));
-        toast.error(error.error || "Failed to close ticket");
+        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to close ticket";
+        toast.error(errorMessage);
       }
     } catch (error) {
       logger.error({ error, component: "StudentActions", action: "close", ticketId }, "Error closing ticket");
