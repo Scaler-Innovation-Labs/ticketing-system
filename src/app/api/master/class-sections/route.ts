@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { class_sections } from '@/db';
 import { eq, asc } from 'drizzle-orm';
@@ -16,6 +17,7 @@ import { logger } from '@/lib/logger';
  */
 export async function GET() {
   try {
+    await requireAuth();
     const sections = await db
       .select({
         id: class_sections.id,

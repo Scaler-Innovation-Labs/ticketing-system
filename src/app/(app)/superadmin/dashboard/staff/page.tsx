@@ -97,6 +97,7 @@ async function getMasterData() {
   const formattedDomains = domainsList
     .filter(d => d.name && d.name.trim() !== "")
     .map(d => ({
+      id: d.id,
       value: d.name,
       label: d.name,
     }));
@@ -110,10 +111,12 @@ async function getMasterData() {
       description: r.description,
     }));
 
-  // Format scopes for dropdown (extract unique scopes from staff data)
+  // Format scopes for dropdown
   const formattedScopes = scopesList
     .filter(s => s.name && s.name.trim() !== "")
     .map(s => ({
+      id: s.id,
+      domain_id: s.domain_id,
       value: s.name,
       label: s.name,
     }));

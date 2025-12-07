@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { hostels } from '@/db';
 import { eq, asc } from 'drizzle-orm';
@@ -16,6 +17,7 @@ import { logger } from '@/lib/logger';
  */
 export async function GET() {
   try {
+    await requireAuth();
     const rows = await db
       .select({
         id: hostels.id,

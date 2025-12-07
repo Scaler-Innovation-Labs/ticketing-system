@@ -24,7 +24,7 @@ export const endpoints = {
     },
     // Categories
     categories: {
-        list: `${API_BASE}/categories`,
+        list: `${API_BASE}/categories/list`,
         get: (id: number) => `${API_BASE}/categories/${id}`,
         hierarchy: `${API_BASE}/categories/hierarchy`,
     },
@@ -41,6 +41,12 @@ export const endpoints = {
     // Upload
     upload: {
         image: `${API_BASE}/upload/image`,
+    },
+    // Admin
+    admin: {
+        categories: `${API_BASE}/admin/categories`,
+        users: `${API_BASE}/admin/users`,
+        stats: `${API_BASE}/admin/stats`,
     },
 } as const;
 

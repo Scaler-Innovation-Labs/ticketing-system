@@ -6,7 +6,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { ApiResponse } from '@/lib/auth/helpers';
+import { ApiResponse, requireAuth } from '@/lib/auth/helpers';
 import { handleApiError, Errors } from '@/lib/errors';
 import { getSubcategoryFieldSchema } from '@/lib/ticket/category-fields-service';
 import { logger } from '@/lib/logger';
@@ -26,6 +26,7 @@ export async function GET(
   context: RouteContext
 ) {
   try {
+    await requireAuth();
     const { id } = await context.params;
     const subcategoryId = parseInt(id, 10);
 

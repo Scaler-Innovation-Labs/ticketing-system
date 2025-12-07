@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { domains, scopes } from '@/db';
 import { eq, asc } from 'drizzle-orm';
@@ -16,6 +17,7 @@ import { logger } from '@/lib/logger';
  */
 export async function GET() {
   try {
+    await requireAuth();
     // Fetch all active domains
     const allDomains = await db
       .select({

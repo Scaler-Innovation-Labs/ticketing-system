@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,19 +30,19 @@ export function MasterDataManagement({
 }: MasterDataManagementProps) {
 	const router = useRouter();
 
-	const [sections] = useState<ClassSection[]>(initialSections);
+	const [sections, setSections] = useState<ClassSection[]>(initialSections);
 	const [sectionDialog, setSectionDialog] = useState(false);
 	const [sectionForm, setSectionForm] = useState({ name: "" });
 	const [editingSection, setEditingSection] = useState<ClassSection | null>(null);
 	const [sectionLoading, setSectionLoading] = useState(false);
 
-	const [batches] = useState<Batch[]>(initialBatches);
+	const [batches, setBatches] = useState<Batch[]>(initialBatches);
 	const [batchDialog, setBatchDialog] = useState(false);
 	const [batchForm, setBatchForm] = useState({ batch_year: "", name: "", is_active: true });
 	const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
 	const [batchLoading, setBatchLoading] = useState(false);
 
-	const [hostels] = useState<Hostel[]>(initialHostels);
+	const [hostels, setHostels] = useState<Hostel[]>(initialHostels);
 	const [hostelDialog, setHostelDialog] = useState(false);
 	const [hostelForm, setHostelForm] = useState({ name: "", is_active: true });
 	const [editingHostel, setEditingHostel] = useState<Hostel | null>(null);
@@ -50,6 +50,13 @@ export function MasterDataManagement({
 
 	const [deleteDialog, setDeleteDialog] = useState(false);
 	const [deleteItem, setDeleteItem] = useState<{ type: string; id: number; name: string } | null>(null);
+
+	// Sync state with props when they change (e.g. after router.refresh())
+	useEffect(() => {
+		setSections(initialSections);
+		setBatches(initialBatches);
+		setHostels(initialHostels);
+	}, [initialSections, initialBatches, initialHostels]);
 
 	const refreshData = () => {
 		router.refresh();
@@ -223,7 +230,7 @@ export function MasterDataManagement({
 	const openBatchDialog = (batch?: Batch) => {
 		if (batch) {
 			setEditingBatch(batch);
-			setBatchForm({ batch_year: batch.batch_year.toString(), name: batch.name || "", is_active: true });
+			setBatchForm({ batch_year: batch.year.toString(), name: batch.name || "", is_active: true });
 		} else {
 			setEditingBatch(null);
 			setBatchForm({ batch_year: "", name: "", is_active: true });
@@ -460,7 +467,7 @@ export function MasterDataManagement({
 						batches={batches}
 						onAdd={() => openBatchDialog()}
 						onEdit={openBatchDialog}
-						onDelete={(id) => confirmDelete("batch", id, batches.find(b => b.id === id)?.batch_year.toString() || "")}
+						onDelete={(id) => confirmDelete("batch", id, batches.find(b => b.id === id)?.year.toString() || "")}
 					/>
 				</TabsContent>
 
@@ -510,6 +517,6 @@ export function MasterDataManagement({
 				itemName={deleteItem?.name || null}
 				onConfirm={handleDelete}
 			/>
-		</div>
+		</div >
 	);
 }

@@ -37,9 +37,9 @@ interface ClerkUser {
 
 interface MasterData {
   hostels: Array<{ id: number; name: string }>;
-  domains: Array<{ value: string; label: string }>;
+  domains: Array<{ id: number; value: string; label: string }>;
   roles: Array<{ value: string; label: string; description: string | null }>;
-  scopes: Array<{ value: string; label: string }>;
+  scopes: Array<{ id: number; domain_id: number; value: string; label: string }>;
 }
 
 type StaffFormData = {
@@ -131,7 +131,7 @@ export function StaffForm({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {formMode === "select" 
+                {formMode === "select"
                   ? "Select an existing user from Clerk to assign as staff."
                   : "Create a new user account and assign them as staff. They will need to sign up with Clerk using this email."}
               </p>
@@ -314,41 +314,65 @@ export function StaffForm({
                   onFormDataChange({ scope: value });
                 }}
                 required
-                disabled={!masterData || (masterData.scopes.length === 0 && masterData.hostels.length === 0)}
+                disabled={!masterData || !formData.domain}
               >
                 <SelectTrigger id="scope" className={errors.scope ? "border-destructive" : ""}>
-                  <SelectValue placeholder={masterData ? "Select location/hostel" : "Loading..."} />
+                  <SelectValue placeholder={
+                    !formData.domain
+                      ? "Select domain first"
+                      : masterData
+                        ? "Select location/hostel"
+                        : "Loading..."
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {!masterData ? (
                     <SelectItem value="loading" disabled>Loading locations...</SelectItem>
-                  ) : masterData.scopes.length === 0 && masterData.hostels.length === 0 ? (
-                    <SelectItem value="empty" disabled>No locations available</SelectItem>
                   ) : (
                     <>
-                      {masterData.scopes.length > 0 && (
-                        <>
-                          {masterData.scopes
-                            .filter(scope => scope.value && scope.value.trim() !== "")
-                            .map((scope) => (
+                      {/* Filter scopes based on selected domain */}
+                      {(() => {
+                        const selectedDomainObj = masterData.domains.find(d => d.value === formData.domain);
+                        const domainScopes = selectedDomainObj
+                          ? masterData.scopes.filter(s => s.domain_id === selectedDomainObj.id)
+                          : [];
+
+                        // If domain is "Hostel", show hostels from hostels table
+                        // Note: This assumes "Hostel" is the name of the domain. 
+                        // Better to check by ID if possible, but name is what we have in formData.
+                        const isHostelDomain = formData.domain === "Hostel";
+
+                        if (domainScopes.length === 0 && !isHostelDomain) {
+                          return <SelectItem value="empty" disabled>No locations found for this domain</SelectItem>;
+                        }
+
+                        return (
+                          <>
+                            {domainScopes.map((scope) => (
                               <SelectItem key={`scope-${scope.value}`} value={scope.value}>
                                 {scope.label}
                               </SelectItem>
                             ))}
-                          {masterData.hostels.length > 0 && (
-                            <SelectItem value="divider" disabled>
-                              ──── From Hostels Table ────
-                            </SelectItem>
-                          )}
-                        </>
-                      )}
-                      {masterData.hostels
-                        .filter(hostel => hostel.name && hostel.name.trim() !== "" && !masterData.scopes.some(scope => scope.value === hostel.name))
-                        .map((hostel) => (
-                          <SelectItem key={`hostel-${hostel.id}`} value={hostel.name}>
-                            {hostel.name}
-                          </SelectItem>
-                        ))}
+
+                            {isHostelDomain && masterData.hostels.length > 0 && (
+                              <>
+                                {domainScopes.length > 0 && (
+                                  <SelectItem value="divider" disabled>
+                                    ──── Hostels ────
+                                  </SelectItem>
+                                )}
+                                {masterData.hostels
+                                  .filter(hostel => !domainScopes.some(scope => scope.value === hostel.name))
+                                  .map((hostel) => (
+                                    <SelectItem key={`hostel-${hostel.id}`} value={hostel.name}>
+                                      {hostel.name}
+                                    </SelectItem>
+                                  ))}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                     </>
                   )}
                 </SelectContent>

@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { batches } from '@/db';
 import { eq, desc } from 'drizzle-orm';
@@ -16,6 +17,7 @@ import { logger } from '@/lib/logger';
  */
 export async function GET() {
   try {
+    await requireAuth();
     const batchesList = await db
       .select({
         id: batches.id,

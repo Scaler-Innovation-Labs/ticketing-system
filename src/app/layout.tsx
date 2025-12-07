@@ -5,13 +5,11 @@ import { NavLoadingShimmer } from "@/components/nav/NavLoadingShimmer";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/provider/ThemeProvider";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { WebVitals } from "./web-vitals";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,16 +41,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider
-      afterSignOutUrl="/"
-      appearance={{
-        layout: { unsafe_disableDevelopmentModeWarnings: true },
-      }}
-    >
+    <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-          suppressHydrationWarning
         >
           <ThemeProvider
             attribute="class"
@@ -60,21 +52,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             enableSystem
             disableTransitionOnChange
           >
-            <Suspense fallback={null}>
-              <ProgressBar />
-            </Suspense>
+            <ProgressBar />
             <Suspense fallback={<NavLoadingShimmer />}>
               <ConditionalNav />
             </Suspense>
-            {children}
-            <Toaster
-              position="bottom-center"
-              closeButton
-              richColors
-              expand
-              duration={4000}
-            />
-            <SpeedInsights />
+            <main className="min-h-screen bg-background">
+              {children}
+            </main>
+            <Toaster />
             <WebVitals />
           </ThemeProvider>
         </body>

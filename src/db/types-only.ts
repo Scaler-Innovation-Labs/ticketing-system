@@ -16,3 +16,11 @@ export interface TicketMetadata {
     tat?: string;
     [key: string]: any;
 }
+
+import { class_sections, batches, hostels, domains, scopes } from './schema';
+
+export type ClassSection = typeof class_sections.$inferSelect;
+export type Batch = typeof batches.$inferSelect;
+export type Hostel = typeof hostels.$inferSelect;
+export type Domain = typeof domains.$inferSelect;
+export type Scope = typeof scopes.$inferSelect;

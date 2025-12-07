@@ -79,7 +79,7 @@ export function StudentsManagement({
 }: StudentsManagementProps) {
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	
+
 	const [students, setStudents] = useState<Student[]>(initialStudents);
 	const [batches, setBatches] = useState<Batch[]>(initialBatches);
 	const [hostels, setHostels] = useState<Hostel[]>(initialHostels);
@@ -96,6 +96,14 @@ export function StudentsManagement({
 	const [expandedBatches, setExpandedBatches] = useState<Set<number>>(new Set());
 	const [deletingStudentId, setDeletingStudentId] = useState<number | null>(null);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+	// Sync state with props when they change (e.g. after router.refresh())
+	useEffect(() => {
+		setStudents(initialStudents);
+		setBatches(initialBatches);
+		setHostels(initialHostels);
+		setPagination(initialPagination);
+	}, [initialStudents, initialBatches, initialHostels, initialPagination]);
 
 	// Auto-expand batches that have students on initial load
 	useEffect(() => {

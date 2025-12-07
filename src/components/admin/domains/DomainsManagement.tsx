@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { DomainsList } from "./DomainsList";
@@ -39,9 +39,15 @@ interface DomainsManagementProps {
 
 export function DomainsManagement({ initialDomains, initialScopes, masterData }: DomainsManagementProps) {
     const router = useRouter();
-    const [domains] = useState<Domain[]>(initialDomains);
-    const [scopes] = useState<Scope[]>(initialScopes);
+    const [domains, setDomains] = useState<Domain[]>(initialDomains);
+    const [scopes, setScopes] = useState<Scope[]>(initialScopes);
     const [selectedDomain, setSelectedDomain] = useState<number | null>(null);
+
+    // Sync state with props when they change (e.g. after router.refresh())
+    useEffect(() => {
+        setDomains(initialDomains);
+        setScopes(initialScopes);
+    }, [initialDomains, initialScopes]);
 
     // Domain dialog state
     const [domainDialog, setDomainDialog] = useState(false);

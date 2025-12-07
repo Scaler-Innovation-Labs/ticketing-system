@@ -27,7 +27,7 @@ const SIDE_ITEMS = [
   },
   {
     title: "Students",
-    href: "/superadmin/students",
+    href: "/superadmin/dashboard/students",
     icon: GraduationCap,
   },
   {

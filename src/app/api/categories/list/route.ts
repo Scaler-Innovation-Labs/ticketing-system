@@ -3,12 +3,14 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth/helpers';
 import { getActiveCategories } from '@/lib/category/category-service';
 
 export async function GET() {
   try {
+    await requireAuth();
     const categories = await getActiveCategories(false);
-    
+
     return NextResponse.json({ categories });
   } catch (error: any) {
     return NextResponse.json(

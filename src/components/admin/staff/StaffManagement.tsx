@@ -44,9 +44,9 @@ interface MasterData {
   hostels: Array<{ id: number; name: string }>;
   batches: Array<{ id: number; batch_year: number }>;
   class_sections: Array<{ id: number; name: string }>;
-  domains: Array<{ value: string; label: string }>;
+  domains: Array<{ id: number; value: string; label: string }>;
   roles: Array<{ value: string; label: string; description: string | null }>;
-  scopes: Array<{ value: string; label: string }>;
+  scopes: Array<{ id: number; domain_id: number; value: string; label: string }>;
 }
 
 interface StaffManagementProps {
@@ -280,8 +280,8 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   const selectedUserFullName = editingStaff && !selectedUser
     ? editingStaff.fullName
     : selectedUser
-    ? `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() || "No name"
-    : "";
+      ? `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() || "No name"
+      : "";
   const selectedUserEmail = editingStaff && !selectedUser
     ? editingStaff.email || ""
     : selectedUser?.emailAddresses?.[0]?.emailAddress || selectedUser?.email || "";
@@ -327,7 +327,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
 
   // Debounced search for client-side filtering (no API calls needed)
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
-  
+
   const debouncedSearch = useDebouncedCallback(
     (value: string) => {
       setDebouncedSearchQuery(value);
@@ -340,15 +340,15 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   }, [searchQuery, debouncedSearch]);
 
   const filteredStaff = staff.filter((member) => {
-    const matchesSearch = !debouncedSearchQuery || 
+    const matchesSearch = !debouncedSearchQuery ||
       member.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       member.email?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       member.slackUserId?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       member.whatsappNumber?.includes(debouncedSearchQuery);
-    
+
     const matchesRole = roleFilter === "all" || member.role === roleFilter;
     const matchesDomain = domainFilter === "all" || member.domain === domainFilter;
-    
+
     return matchesSearch && matchesRole && matchesDomain;
   });
 
@@ -394,32 +394,32 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
       </div>
 
       <StaffForm
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            editingStaff={editingStaff}
-            formMode={formMode}
-            onFormModeChange={setFormMode}
-            formData={formData}
-            onFormDataChange={(data) => {
-              setFormData(prev => ({ ...prev, ...data }));
-              setErrors(prev => {
-                const newErrors = { ...prev };
-                Object.keys(data).forEach(key => {
-                  if (newErrors[key]) delete newErrors[key];
-                });
-                return newErrors;
-              });
-            }}
-            clerkUsers={clerkUsers}
-            staff={staff}
-            masterData={masterData}
-            errors={errors}
-            saving={saving}
-            onSubmit={handleSubmit}
-            onClose={handleCloseDialog}
-            selectedUserFullName={selectedUserFullName}
-            selectedUserEmail={selectedUserEmail}
-          />
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        editingStaff={editingStaff}
+        formMode={formMode}
+        onFormModeChange={setFormMode}
+        formData={formData}
+        onFormDataChange={(data) => {
+          setFormData(prev => ({ ...prev, ...data }));
+          setErrors(prev => {
+            const newErrors = { ...prev };
+            Object.keys(data).forEach(key => {
+              if (newErrors[key]) delete newErrors[key];
+            });
+            return newErrors;
+          });
+        }}
+        clerkUsers={clerkUsers}
+        staff={staff}
+        masterData={masterData}
+        errors={errors}
+        saving={saving}
+        onSubmit={handleSubmit}
+        onClose={handleCloseDialog}
+        selectedUserFullName={selectedUserFullName}
+        selectedUserEmail={selectedUserEmail}
+      />
 
       <StaffFilters
         searchQuery={searchQuery}
