@@ -26,9 +26,6 @@ interface AddSingleStudentDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onSuccess: () => void;
-}
-
-interface MasterData {
 	hostels: Array<{ id: number; name: string }>;
 	batches: Array<{ id: number; batch_year: number }>;
 	sections: Array<{ id: number; name: string }>;
@@ -60,14 +57,11 @@ export function AddSingleStudentDialog({
 	open,
 	onOpenChange,
 	onSuccess,
+	hostels,
+	batches,
+	sections,
 }: AddSingleStudentDialogProps) {
-	const [masterData, setMasterData] = useState<MasterData>({
-		hostels: [],
-		batches: [],
-		sections: [],
-	});
 	const [loading, setLoading] = useState(false);
-	const [fetching, setFetching] = useState(false);
 	const [errors, setErrors] = useState<FormErrors>({});
 	const [formData, setFormData] = useState<StudentFormData>({
 		email: "",
@@ -82,7 +76,6 @@ export function AddSingleStudentDialog({
 
 	useEffect(() => {
 		if (open) {
-			fetchMasterData();
 			// Reset form when dialog opens
 			setFormData({
 				email: "",
@@ -232,7 +225,7 @@ export function AddSingleStudentDialog({
 
 	const validateAllFields = (): boolean => {
 		const newErrors: FormErrors = {};
-		
+
 		const emailError = validateEmail(formData.email);
 		if (emailError) newErrors.email = emailError;
 
@@ -255,7 +248,7 @@ export function AddSingleStudentDialog({
 	// Check if form is complete and valid
 	const isFormValid = (): boolean => {
 		// Check required fields are filled
-		if (!formData.email.trim() || 
+		if (!formData.email.trim() ||
 			!formData.full_name.trim() ||
 			!formData.mobile.trim() ||
 			!formData.room_number.trim() ||
@@ -277,65 +270,13 @@ export function AddSingleStudentDialog({
 		const bloodGroupError = validateBloodGroup(formData.blood_group);
 
 		// Form is valid if no errors
-		return !emailError && !nameError && !mobileError && !roomError && 
+		return !emailError && !nameError && !mobileError && !roomError &&
 			!hostelError && !batchError && !sectionError && !bloodGroupError;
-	};
-
-	const fetchMasterData = async () => {
-		setFetching(true);
-		try {
-			// Fetch hostels (active only)
-			const hostelsRes = await fetch("/api/superadmin/hostels?active=true");
-			if (hostelsRes.ok) {
-				const contentType = hostelsRes.headers.get("content-type");
-				if (contentType && contentType.includes("application/json")) {
-					const hostelsData = await hostelsRes.json();
-					setMasterData((prev) => ({ ...prev, hostels: hostelsData.hostels || [] }));
-				} else {
-					console.error("Server returned non-JSON response when fetching hostels");
-				}
-			} else {
-				console.error("Failed to fetch hostels:", hostelsRes.status, hostelsRes.statusText);
-			}
-
-			// Fetch batches (active only)
-			const batchesRes = await fetch("/api/superadmin/batches?active=true");
-			if (batchesRes.ok) {
-				const contentType = batchesRes.headers.get("content-type");
-				if (contentType && contentType.includes("application/json")) {
-					const batchesData = await batchesRes.json();
-					setMasterData((prev) => ({ ...prev, batches: batchesData.batches || [] }));
-				} else {
-					console.error("Server returned non-JSON response when fetching batches");
-				}
-			} else {
-				console.error("Failed to fetch batches:", batchesRes.status, batchesRes.statusText);
-			}
-
-			// Fetch sections (active only)
-			const sectionsRes = await fetch("/api/superadmin/class-sections?active=true");
-			if (sectionsRes.ok) {
-				const contentType = sectionsRes.headers.get("content-type");
-				if (contentType && contentType.includes("application/json")) {
-					const sectionsData = await sectionsRes.json();
-					setMasterData((prev) => ({ ...prev, sections: sectionsData.class_sections || [] }));
-				} else {
-					console.error("Server returned non-JSON response when fetching sections");
-				}
-			} else {
-				console.error("Failed to fetch sections:", sectionsRes.status, sectionsRes.statusText);
-			}
-		} catch (error) {
-			console.error("Error fetching master data:", error);
-			toast.error("Failed to load form data. Please refresh and try again.");
-		} finally {
-			setFetching(false);
-		}
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		
+
 		// Validate all fields
 		if (!validateAllFields()) {
 			toast.error("Please fix the errors in the form");
@@ -345,7 +286,7 @@ export function AddSingleStudentDialog({
 		setLoading(true);
 
 		try {
-			const response = await fetch("/api/superadmin/students/create", {
+			const response = await fetch("/api/superadmin/students", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -486,7 +427,7 @@ export function AddSingleStudentDialog({
 									<SelectValue placeholder="Select hostel" />
 								</SelectTrigger>
 								<SelectContent>
-									{masterData.hostels.map((hostel) => (
+									{hostels.map((hostel) => (
 										<SelectItem key={hostel.id} value={hostel.id.toString()}>
 											{hostel.name}
 										</SelectItem>
@@ -536,7 +477,7 @@ export function AddSingleStudentDialog({
 									<SelectValue placeholder="Select batch year" />
 								</SelectTrigger>
 								<SelectContent>
-									{masterData.batches.map((batch) => (
+									{batches.map((batch) => (
 										<SelectItem key={batch.id} value={batch.id.toString()}>
 											Batch {batch.batch_year}
 										</SelectItem>
@@ -563,7 +504,7 @@ export function AddSingleStudentDialog({
 									<SelectValue placeholder="Select class section" />
 								</SelectTrigger>
 								<SelectContent>
-									{masterData.sections.map((section) => (
+									{sections.map((section) => (
 										<SelectItem key={section.id} value={section.id.toString()}>
 											{section.name}
 										</SelectItem>
@@ -615,20 +556,15 @@ export function AddSingleStudentDialog({
 						>
 							Cancel
 						</Button>
-						<Button 
-							type="submit" 
-							disabled={loading || fetching || !isFormValid()}
+						<Button
+							type="submit"
+							disabled={loading || !isFormValid()}
 							className="min-w-[120px]"
 						>
 							{loading ? (
 								<>
 									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 									Creating...
-								</>
-							) : fetching ? (
-								<>
-									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-									Loading...
 								</>
 							) : (
 								"Create Student"

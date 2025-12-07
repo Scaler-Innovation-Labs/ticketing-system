@@ -48,7 +48,7 @@ export default async function SuperAdminStudentsPage({
 			student_id: students.id,
 			user_id: users.id,
 			email: users.email,
-			full_name: users.full_name || "",
+			full_name: sql<string>`COALESCE(${users.full_name}, '')`,
 			phone: users.phone,
 			room_no: students.room_no,
 			hostel: hostels.name,
@@ -84,6 +84,7 @@ export default async function SuperAdminStudentsPage({
 	// Fetch all available batches from database for filter dropdown
 	const availableBatches = await db
 		.select({
+			id: batches.id,
 			batch_year: batches.year,
 		})
 		.from(batches)
@@ -100,11 +101,22 @@ export default async function SuperAdminStudentsPage({
 		.where(eq(hostels.is_active, true))
 		.orderBy(hostels.name);
 
+	// Fetch all available class sections for dropdown
+	const availableSections = await db
+		.select({
+			id: class_sections.id,
+			name: class_sections.name,
+		})
+		.from(class_sections)
+		.where(eq(class_sections.is_active, true))
+		.orderBy(class_sections.name);
+
 	return (
 		<StudentsManagement
 			initialStudents={studentsData}
 			initialBatches={availableBatches}
 			initialHostels={availableHostels}
+			initialSections={availableSections}
 			initialPagination={{
 				page,
 				limit,

@@ -43,10 +43,16 @@ interface Student {
 }
 
 interface Batch {
+	id: number;
 	batch_year: number;
 }
 
 interface Hostel {
+	id: number;
+	name: string;
+}
+
+interface ClassSection {
 	id: number;
 	name: string;
 }
@@ -62,6 +68,7 @@ interface StudentsManagementProps {
 	initialStudents: Student[];
 	initialBatches: Batch[];
 	initialHostels: Hostel[];
+	initialSections: ClassSection[];
 	initialPagination: PaginationInfo;
 	initialSearch?: string;
 	initialHostelFilter?: string;
@@ -72,6 +79,7 @@ export function StudentsManagement({
 	initialStudents,
 	initialBatches,
 	initialHostels,
+	initialSections,
 	initialPagination,
 	initialSearch = "",
 	initialHostelFilter = "all",
@@ -83,6 +91,7 @@ export function StudentsManagement({
 	const [students, setStudents] = useState<Student[]>(initialStudents);
 	const [batches, setBatches] = useState<Batch[]>(initialBatches);
 	const [hostels, setHostels] = useState<Hostel[]>(initialHostels);
+	const [sections, setSections] = useState<ClassSection[]>(initialSections);
 	const [pagination, setPagination] = useState<PaginationInfo>(initialPagination);
 	const [search, setSearch] = useState(initialSearch);
 	const [hostelFilter, setHostelFilter] = useState(initialHostelFilter);
@@ -102,8 +111,9 @@ export function StudentsManagement({
 		setStudents(initialStudents);
 		setBatches(initialBatches);
 		setHostels(initialHostels);
+		setSections(initialSections);
 		setPagination(initialPagination);
-	}, [initialStudents, initialBatches, initialHostels, initialPagination]);
+	}, [initialStudents, initialBatches, initialHostels, initialSections, initialPagination]);
 
 	// Auto-expand batches that have students on initial load
 	useEffect(() => {
@@ -343,6 +353,9 @@ export function StudentsManagement({
 			<AddSingleStudentDialog
 				open={showAddStudentDialog}
 				onOpenChange={setShowAddStudentDialog}
+				hostels={hostels}
+				batches={batches}
+				sections={sections}
 				onSuccess={() => {
 					refreshData();
 				}}
