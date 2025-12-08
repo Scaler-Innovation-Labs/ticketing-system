@@ -36,16 +36,16 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const result = await uploadFromBuffer(buffer, file.name, {
       folder: 'ticket-attachments',
-      resource_type: 'auto',
+      resourceType: 'auto',
       tags: ['ticket-attachment', 'generic-upload'],
     });
 
     logger.info(
-      { userId: dbUser.id, publicId: result.public_id, bytes: file.size },
+      { userId: dbUser.id, publicId: result.publicId, bytes: file.size },
       'Ticket attachment uploaded'
     );
 
-    return NextResponse.json({ url: result.secure_url }, { status: 201 });
+    return NextResponse.json({ url: result.secureUrl }, { status: 201 });
   } catch (error) {
     logger.error({ error }, 'Ticket attachment upload failed');
     return handleApiError(error);

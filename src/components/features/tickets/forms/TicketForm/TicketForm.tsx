@@ -25,7 +25,7 @@ import { shouldDisplayField, isFieldRequired, isMultiSelectField } from "./field
 // Hooks
 import { useTicketFormState } from "./hooks/useTicketFormState";
 import { useTicketSubmission } from "./hooks/useTicketSubmission";
-import { useImageUpload } from "./hooks/useImageUpload";
+import { useImageUpload, AttachmentData } from "./hooks/useImageUpload";
 
 // Components
 import { CategorySelector } from "./components/CategorySelector";
@@ -85,7 +85,7 @@ export default function TicketForm(props: TicketFormProps) {
   } = useTicketFormState(student);
 
   const [loading, setLoading] = useState(false);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadedAttachments, setUploadedAttachments] = useState<AttachmentData[]>([]);
   const { uploadImage, imagesUploading } = useImageUpload();
 
   // Derived state
@@ -139,13 +139,15 @@ export default function TicketForm(props: TicketFormProps) {
         const file = files[i];
         if (!file) continue;
         try {
-          const url = await uploadImage(file);
-          setUploadedImages((prev) => [...prev, url]);
+          const attachment = await uploadImage(file);
+          setUploadedAttachments((prev) => [...prev, attachment]);
           setFormPartial((prev) => ({
             ...prev,
             details: {
               ...(prev.details || {}),
-              images: [...((prev.details?.images as string[]) || []), url],
+              attachments: [...((prev.details?.attachments as AttachmentData[]) || []), attachment],
+              // Also keep images for backwards compatibility with display components
+              images: [...((prev.details?.images as string[]) || []), attachment.url],
             },
           }));
         } catch (error) {
@@ -158,14 +160,17 @@ export default function TicketForm(props: TicketFormProps) {
 
   const removeImage = useCallback(
     (url: string) => {
-      setUploadedImages((prev) => prev.filter((u) => u !== url));
+      setUploadedAttachments((prev) => prev.filter((a) => a.url !== url));
       setFormPartial((prev) => {
+        const attachments = Array.isArray(prev.details?.attachments) ? prev.details.attachments as AttachmentData[] : [];
+        const newAttachments = attachments.filter((a) => a.url !== url);
         const images = Array.isArray(prev.details?.images) ? prev.details.images : [];
-        const newImages = images.filter((u: unknown) => typeof u === "string" && u !== url);
+        const newImages = (images as string[]).filter((u) => u !== url);
         return {
           ...prev,
           details: {
             ...(prev.details || {}),
+            attachments: newAttachments,
             images: newImages,
           },
         };
@@ -353,8 +358,10 @@ export default function TicketForm(props: TicketFormProps) {
     const formImages = Array.isArray(form.details?.images)
       ? (form.details.images as unknown[]).filter((u) => typeof u === "string" && u.length > 0) as string[]
       : [];
+    // Also get URLs from uploadedAttachments for images that were uploaded in current session
+    const uploadedUrls = uploadedAttachments.map((a) => a.url);
     // Merge local and form images to handle initial render + new uploads
-    const images: string[] = Array.from(new Set([...formImages, ...uploadedImages]));
+    const images: string[] = Array.from(new Set([...formImages, ...uploadedUrls]));
 
     return (
       <GeneralImageUpload
@@ -364,7 +371,7 @@ export default function TicketForm(props: TicketFormProps) {
         onRemove={removeImage}
       />
     );
-  }, [form.details?.images, uploadedImages, imagesUploading, handleImageFiles, removeImage]);
+  }, [form.details?.images, uploadedAttachments, imagesUploading, handleImageFiles, removeImage]);
 
   return (
     <div className="max-w-3xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
@@ -442,7 +449,7 @@ export default function TicketForm(props: TicketFormProps) {
                     setFormPartial({
                       categoryId,
                       subcategoryId: null,
-                      details: { images: form.details?.images || [] },
+                      details: { images: form.details?.images || [], attachments: form.details?.attachments || [] },
                     });
                     setErrors((p) => {
                       const c = { ...p };
@@ -460,7 +467,7 @@ export default function TicketForm(props: TicketFormProps) {
                   value={form.subcategoryId}
                   error={errors.subcategory}
                   onChange={(subcategoryId) => {
-                    setFormPartial({ subcategoryId, details: { images: form.details?.images || [] } });
+                    setFormPartial({ subcategoryId, details: { images: form.details?.images || [], attachments: form.details?.attachments || [] } });
                     setErrors((p) => {
                       const c = { ...p };
                       delete c.subcategory;

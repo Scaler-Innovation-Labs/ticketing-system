@@ -4,7 +4,7 @@
  * Business logic for ticket management
  */
 
-import { db, tickets, ticket_activity, ticket_statuses, categories, subcategories, users, outbox } from '@/db';
+import { db, tickets, ticket_activity, ticket_statuses, categories, subcategories, users, outbox, ticket_attachments } from '@/db';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { LIMITS, TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
@@ -198,7 +198,21 @@ export async function createTicket(
       })
       .returning();
 
-    // 6. Log activity
+    // 6. Insert attachments into ticket_attachments table
+    if (input.attachments && input.attachments.length > 0) {
+      await txn.insert(ticket_attachments).values(
+        input.attachments.map((attachment) => ({
+          ticket_id: ticket.id,
+          uploaded_by: userId,
+          file_name: attachment.filename,
+          file_url: attachment.url,
+          file_size: attachment.size,
+          mime_type: attachment.mime_type,
+        }))
+      );
+    }
+
+    // 7. Log activity
     await txn.insert(ticket_activity).values({
       ticket_id: ticket.id,
       user_id: userId,

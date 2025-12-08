@@ -42,9 +42,36 @@ export function useTicketSubmission(
         Object.entries(profileData).filter(([key, value]) => key !== "undefined" && value != null)
       );
 
-      const images = (form.details?.images as string[]) || [];
+      // Extract attachments from form.details.attachments (full objects with metadata)
+      // Filter out any malformed entries that don't have a valid url
+      const rawAttachments = (form.details?.attachments as Array<{
+        filename: string;
+        url: string;
+        size: number;
+        mime_type: string;
+      }>) || [];
+
+      // Only use properly formed attachments (with valid url)
+      const validAttachments = rawAttachments.filter(a => a && typeof a.url === 'string' && a.url.length > 0);
+
+      // Only use legacy images if we have NO valid attachments (backwards compatibility)
+      // Don't merge both sources - they now contain the same data
+      let attachments = validAttachments;
+      if (attachments.length === 0) {
+        const legacyImages = (form.details?.images as string[]) || [];
+        attachments = legacyImages
+          .filter(url => typeof url === 'string' && url.length > 0)
+          .map((url, index) => ({
+            filename: `image-${index + 1}.jpg`,
+            url,
+            size: 0,
+            mime_type: 'image/jpeg',
+          }));
+      }
+
       const detailsWithoutImages = { ...(form.details || {}) };
       delete detailsWithoutImages.images;
+      delete detailsWithoutImages.attachments;
 
       const derivedLocation =
         typeof form.profile?.hostel === "string" && form.profile.hostel.trim()
@@ -68,7 +95,7 @@ export function useTicketSubmission(
         subcategory_id: form.subcategoryId || undefined,
         description,
         details: detailsWithoutImages,
-        images: images.length > 0 ? images : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
         location: derivedLocation,
         profile: cleanProfile,
         priority: 'medium', // Default priority
