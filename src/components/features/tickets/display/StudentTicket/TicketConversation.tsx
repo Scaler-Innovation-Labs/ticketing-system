@@ -30,7 +30,7 @@ export function TicketConversation({
   const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
   const showAlert = canComment && lastComment && lastComment.source !== "website";
   
-  // Merge optimistic comments with server comments
+  // Merge optimistic comments with server comments, then sort oldest-first
   const allComments = [
     ...comments,
     ...optimisticComments.map((opt) => ({
@@ -40,7 +40,11 @@ export function TicketConversation({
       created_at: opt.createdAt,
       author: opt.source === "website" ? "You" : undefined,
     })),
-  ];
+  ].sort((a, b) => {
+    const aDate = (a.createdAt || a.created_at) ? new Date(a.createdAt || a.created_at).getTime() : 0;
+    const bDate = (b.createdAt || b.created_at) ? new Date(b.createdAt || b.created_at).getTime() : 0;
+    return aDate - bDate; // oldest to newest
+  });
 
   return (
     <Card className="border-2 shadow-md">
@@ -59,24 +63,31 @@ export function TicketConversation({
       </CardHeader>
       <CardContent className="pt-6">
         {allComments.length > 0 ? (
-          <ScrollArea className="max-h-[500px] pr-4">
+          <ScrollArea className="max-h-[500px] min-h-[160px] pr-4">
             <div className="space-y-4">
               {allComments.map((comment, idx) => {
                 const commentCreatedAt = comment.createdAt || comment.created_at;
                 const isStudent = comment.source === "website";
                 const isAdmin = !isStudent;
 
+                // Student (you) on the right, admin on the left
+                const alignClass = isStudent ? 'justify-end' : 'justify-start';
+                const rowDir = isStudent ? 'flex-row-reverse' : 'flex-row';
+                const bubbleColor = isStudent ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm';
+                const avatarColor = isStudent ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground';
+                const metaDir = isStudent ? 'flex-row-reverse' : '';
+
                 return (
-                  <div key={idx} className={`flex gap-3 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`flex gap-3 max-w-[80%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                  <div key={idx} className={`flex gap-3 ${alignClass}`}>
+                    <div className={`flex gap-3 max-w-[80%] ${rowDir}`}>
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${avatarColor}`}>
                         <User className="w-4 h-4" />
                       </div>
-                      <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
-                        <div className={`rounded-2xl px-4 py-3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'}`}>
-                          <p className={`text-sm whitespace-pre-wrap leading-relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''}`}>{comment.text}</p>
+                      <div className={`flex flex-col ${isStudent ? 'items-end' : 'items-start'}`}>
+                        <div className={`rounded-2xl px-4 py-3 ${bubbleColor}`}>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed break-words">{comment.text}</p>
                         </div>
-                        <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${isAdmin ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${metaDir}`}>
                           {commentCreatedAt && (
                             <>
                               <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>

@@ -79,7 +79,11 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
       const response = await fetch(`/api/tickets/${ticketId}/committee-tags`);
       if (response.ok) {
         const data = await response.json();
-        setTags(data.tags || []);
+        setTags(data.committees || data.tags || []);
+      } else {
+        console.error("Failed to fetch tags:", response.status);
+        // Try to read text to avoid crashing caller when response isn't JSON
+        await response.text().catch(() => undefined);
       }
     } catch (error) {
       console.error("Error fetching tags:", error);
@@ -118,8 +122,15 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         fetchTags();
         onTagAdded?.();
       } else {
-        const error = await response.json();
-        const errorMessage = typeof error.error === 'string' ? error.error : "Failed to tag ticket";
+        let errorMessage = "Failed to tag ticket";
+        try {
+          const error = await response.json();
+          if (typeof error?.error === "string") errorMessage = error.error;
+          else if (typeof error?.message === "string") errorMessage = error.message;
+        } catch {
+          const text = await response.text().catch(() => "");
+          if (text) errorMessage = text;
+        }
         toast.error(errorMessage);
       }
     } catch (error) {

@@ -145,6 +145,18 @@ export function AdminActions({
 				setShowCustomTat(false);
 				const responseData = await response.json().catch(() => ({}));
 				toast.success(responseData.message || "TAT set successfully");
+				// Ensure status moves to in_progress as a fallback, even if TAT API didn't change it
+				if (shouldMarkInProgress) {
+					try {
+						await fetch(`/api/tickets/${ticketId}/status`, {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ status: "in_progress" }),
+						});
+					} catch (err) {
+						logger.warn({ err, ticketId }, "Fallback status update to in_progress failed");
+					}
+				}
 				// Wait longer for revalidation to complete, then refresh
 				await new Promise(resolve => setTimeout(resolve, 500));
 				router.refresh();

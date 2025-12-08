@@ -63,6 +63,7 @@ export interface StudentTicketViewModel {
         deadline: Date | null;
         isOverdue: boolean;
         formattedDeadline: string;
+        expectedResolution: Date | null;
         tatSetAt: Date | null;
         tatSetBy: string | null;
         tat: string | null;

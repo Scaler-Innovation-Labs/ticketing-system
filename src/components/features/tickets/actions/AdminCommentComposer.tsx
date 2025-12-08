@@ -47,7 +47,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
 
     try {
       if (action === "question") {
-        // Try to move to awaiting_student_response, but don't fail the comment if transition is not allowed
+        // Try to move to awaiting_student_response; if missing, fall back to in_progress
         const statusResponse = await fetch(`/api/tickets/${ticketId}/status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -57,8 +57,13 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
         if (!statusResponse.ok) {
           const statusError = await statusResponse.json().catch(() => ({ error: "Failed to update status" }));
           const msg = typeof statusError?.error === "string" ? statusError.error : "Failed to update status";
-          // Log and continue; comment will still be sent
           logger.warn({ msg, ticketId, action: "awaiting_student_response" }, "Status transition skipped");
+          // Fallback: set to in_progress to ensure progress state
+          await fetch(`/api/tickets/${ticketId}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "in_progress" }),
+          }).catch((err) => logger.warn({ err, ticketId }, "Fallback status update to in_progress failed"));
         }
       }
 
