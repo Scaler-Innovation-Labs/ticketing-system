@@ -113,7 +113,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
           <TabsList>
             <TabsTrigger value="subcategories">Subcategories & Fields</TabsTrigger>
             <TabsTrigger value="assignments">Admin Assignments</TabsTrigger>
-            {(selectedCategory.name === "Hostel" || selectedCategory.name === "College") && (
+            {selectedCategory.domain_id && (
               <TabsTrigger value="escalation">Escalation Rules</TabsTrigger>
             )}
           </TabsList>
@@ -169,7 +169,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
             <CategoryAssignmentsManager categoryId={selectedCategory.id} />
           </TabsContent>
 
-          {(selectedCategory.name === "Hostel" || selectedCategory.name === "College") && (
+          {selectedCategory.domain_id && (
             <TabsContent value="escalation" className="space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -188,7 +188,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
               </div>
               <EscalationManager
                 categoryName={selectedCategory.name}
-                categoryId={selectedCategory.domain_id || 0}
+                categoryId={selectedCategory.domain_id}
               />
             </TabsContent>
           )}

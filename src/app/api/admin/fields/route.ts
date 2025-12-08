@@ -15,12 +15,15 @@ import { z } from 'zod';
 const CreateFieldSchema = z.object({
   subcategory_id: z.number().int().positive(),
   name: z.string().min(1).max(100),
-  slug: z.string().min(1).max(100),
+  slug: z.string().min(1).max(100).optional(),
   field_type: z.enum(['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'multi_select', 'file', 'upload', 'boolean']),
   required: z.boolean().default(false),
-  placeholder: z.string().max(255).optional(),
-  validation: z.record(z.string(), z.any()).optional(),
+  placeholder: z.string().max(255).optional().nullable(),
+  validation: z.record(z.string(), z.any()).optional().nullable(),
+  validation_rules: z.record(z.string(), z.any()).optional().nullable(), // Accept validation_rules as alias
+  help_text: z.string().optional().nullable(), // Accept but don't store (not in schema)
   display_order: z.number().int().default(0),
+  assigned_admin_id: z.string().uuid().optional().nullable(), // Accept but don't store (not in schema)
   options: z.array(z.object({
     label: z.string(),
     value: z.string(),
@@ -93,7 +96,16 @@ export async function POST(request: NextRequest) {
   try {
     await requireRole(['super_admin']);
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+
     const parsed = CreateFieldSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -120,17 +132,23 @@ export async function POST(request: NextRequest) {
     let fieldId: number;
 
     await db.transaction(async (tx) => {
+      // Use provided slug or generate from name
+      const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/\s+/g, '-');
+      
+      // Use validation_rules if provided, otherwise use validation
+      const validation = parsed.data.validation_rules || parsed.data.validation || null;
+      
       // Create field
       const [field] = await tx
         .insert(category_fields)
         .values({
           subcategory_id: parsed.data.subcategory_id,
           name: parsed.data.name,
-          slug: parsed.data.name.toLowerCase().replace(/\s+/g, '-'),
+          slug: slug,
           field_type: parsed.data.field_type,
           required: parsed.data.required,
           placeholder: parsed.data.placeholder || null,
-          validation: parsed.data.validation || null,
+          validation: validation,
           display_order: parsed.data.display_order,
         })
         .returning();

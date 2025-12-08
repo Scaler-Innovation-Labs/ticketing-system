@@ -1,16 +1,15 @@
 import { notFound } from "next/navigation";
 import { db, committees } from "@/db";
 import { eq } from "drizzle-orm";
-import { TicketCard } from "@/components/layout/TicketCard";
-import TicketSearch from "@/components/student/TicketSearch";
-import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { filterTickets } from "@/lib/ticket/filters/filterTickets";
 import { calculateTicketStats } from "@/lib/committee/calculateStats";
-import { getCommitteeTicketsById } from "@/lib/committee/getCommitteeTicketsById";
+import { getCommitteeTaggedTickets } from "@/lib/committee/getCommitteeTaggedTickets";
+import { getCommitteeCreatedTickets } from "@/lib/committee/getCommitteeCreatedTickets";
+import { CommitteeTicketsTabs } from "@/components/committee/CommitteeTicketsTabs";
 import type { Ticket } from "@/db/types-only";
 
 export const dynamic = "force-dynamic";
@@ -57,13 +56,18 @@ export default async function CommitteeTicketsPage({
   const statusFilter = (typeof paramsObj["status"] === "string" ? paramsObj["status"] : paramsObj["status"]?.[0]) || "";
   const categoryFilter = (typeof paramsObj["category"] === "string" ? paramsObj["category"] : paramsObj["category"]?.[0]) || "";
 
-  // Use the same helper function used by committee dashboard for consistency
-  const allTickets = await getCommitteeTicketsById(id);
+  // Fetch tagged and created tickets separately
+  const [taggedTickets, createdTickets] = await Promise.all([
+    getCommitteeTaggedTickets(id),
+    getCommitteeCreatedTickets(id),
+  ]);
 
-  // Apply filters
-  const filteredTickets = filterTickets(allTickets, search, statusFilter, categoryFilter);
+  // Apply filters to both sets
+  const filteredTaggedTickets = filterTickets(taggedTickets, search, statusFilter, categoryFilter);
+  const filteredCreatedTickets = filterTickets(createdTickets, search, statusFilter, categoryFilter);
 
-  // Calculate stats from all tickets (before filtering)
+  // Calculate stats from all tickets (for display)
+  const allTickets = [...taggedTickets, ...createdTickets];
   const stats = calculateTicketStats(allTickets);
 
   return (
@@ -82,7 +86,7 @@ export default async function CommitteeTicketsPage({
             {committee.name} - Tickets
           </h1>
           <p className="text-muted-foreground">
-            Tickets created by this committee or tagged to this committee
+            View tickets tagged to this committee or created by committee members
           </p>
         </div>
       </div>
@@ -90,35 +94,17 @@ export default async function CommitteeTicketsPage({
       {/* Stats Cards */}
       {allTickets.length > 0 && <StatsCards stats={stats} />}
 
-      {/* Search and Filters */}
-      <TicketSearch />
-
-      {/* Tickets List */}
-      {filteredTickets.length === 0 ? (
-        <Card className="border-2 border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <FileText className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <p className="text-lg font-semibold mb-1">No tickets found</p>
-            <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              {search || statusFilter || categoryFilter
-                ? "Try adjusting your search or filters"
-                : "This committee has not raised any tickets yet"}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredTickets.map((ticket) => (
-            <TicketCard
-              key={ticket.id}
-              ticket={ticket as unknown as Ticket & { status?: string | null; category_name?: string | null; creator_name?: string | null; creator_email?: string | null }}
-              basePath="/superadmin/dashboard"
-            />
-          ))}
-        </div>
-      )}
+      {/* Tabs for Tagged vs Created */}
+      <CommitteeTicketsTabs
+        committeeId={id}
+        taggedTickets={taggedTickets}
+        createdTickets={createdTickets}
+        filteredTaggedTickets={filteredTaggedTickets}
+        filteredCreatedTickets={filteredCreatedTickets}
+        search={search}
+        statusFilter={statusFilter}
+        categoryFilter={categoryFilter}
+      />
     </div>
   );
 }

@@ -41,7 +41,7 @@ export function StudentBulkUpload() {
 
 	const downloadTemplate = async () => {
 		try {
-			const response = await fetch("/api/superadmin/students/template");
+			const response = await fetch("/api/superadmin/students/csv-template");
 			if (!response.ok) {
 				throw new Error("Failed to download template");
 			}
@@ -87,25 +87,26 @@ export function StudentBulkUpload() {
 				});
 
 				xhr.addEventListener("load", () => {
-					if (xhr.status >= 200 && xhr.status < 300) {
-						try {
-							const contentType = xhr.getResponseHeader("content-type");
-							if (!contentType || !contentType.includes("application/json")) {
-								reject(new Error(`Server returned non-JSON response (${xhr.status} ${xhr.statusText})`));
-								return;
-							}
-							const responseData = JSON.parse(xhr.responseText);
+					try {
+						const contentType = xhr.getResponseHeader("content-type");
+						if (!contentType || !contentType.includes("application/json")) {
+							reject(new Error(`Server returned non-JSON response (${xhr.status} ${xhr.statusText})`));
+							return;
+						}
+						const responseData = JSON.parse(xhr.responseText);
+						
+						// Handle both success and error responses (400, 207, etc. may still have data)
+						if (xhr.status >= 200 && xhr.status < 300) {
 							resolve(responseData);
-						} catch (parseError) {
-							reject(new Error("Failed to parse response"));
+						} else if (xhr.status === 400 || xhr.status === 207) {
+							// 400 = validation errors, 207 = partial success
+							// These responses contain the result data with errors
+							resolve(responseData);
+						} else {
+							reject(new Error(responseData.error || `Upload failed: ${xhr.status}`));
 						}
-					} else {
-						try {
-							const errorData = JSON.parse(xhr.responseText);
-							reject(new Error(errorData.error || `Upload failed: ${xhr.status}`));
-						} catch {
-							reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
-						}
+					} catch (parseError) {
+						reject(new Error("Failed to parse response"));
 					}
 				});
 
@@ -118,13 +119,13 @@ export function StudentBulkUpload() {
 			});
 
 			setResult(data);
-			if (data.success) {
-				// Clear file input on success
+			setErrors(data.errors || []);
+			
+			// Clear file input only on full success (no errors)
+			if (data.success && (!data.errors || data.errors.length === 0)) {
 				setFile(null);
 				const input = document.getElementById("csv-upload") as HTMLInputElement;
 				if (input) input.value = "";
-			} else {
-				setErrors(data.errors || []);
 			}
 		} catch (error) {
 			console.error("Upload error:", error);
@@ -139,10 +140,8 @@ export function StudentBulkUpload() {
 			<AriaLiveRegion
 				loading={uploading}
 				loadingMessage={uploadProgress < 100 ? `Uploading file... ${uploadProgress}%` : "Processing CSV file..."}
-				success={result?.success === true}
-				successMessage={result?.success ? `Upload successful! Created ${result.created}, updated ${result.updated} students.` : undefined}
-				error={errors.length > 0}
-				errorMessage={errors.length > 0 ? `Upload failed with ${errors.length} validation errors.` : undefined}
+				success={result?.success ? `Upload successful! Created ${result.created}, updated ${result.updated} students.` : false}
+				error={errors.length > 0 ? `Upload failed with ${errors.length} validation errors.` : false}
 			/>
 			<Card>
 				<CardHeader>
@@ -276,14 +275,23 @@ export function StudentBulkUpload() {
 					<div>
 						<p className="font-medium">Required Fields:</p>
 						<ul className="list-disc list-inside text-muted-foreground ml-2">
-							<li>email - Must be unique and valid format</li>
-							<li>full_name - Student&apos;s complete name</li>
-							<li>hostel - Must match an active hostel name (case-insensitive)</li>
-							<li>class_section - Must match an active class section (e.g., A, B, C, D)</li>
-							<li>batch_year - Year (e.g., 2027) - Must match an active batch</li>
+							<li><strong>email</strong> - Must be unique and valid format</li>
+							<li><strong>full_name</strong> - Student&apos;s complete name</li>
+							<li><strong>mobile</strong> - 10-15 digit phone number</li>
+							<li><strong>hostel</strong> - Must match an active hostel name (case-insensitive) OR use hostel_id</li>
+							<li><strong>class_section</strong> - Must match an active class section name (e.g., A, B, C, D) OR use class_section_id</li>
+							<li><strong>batch_year</strong> - Year (e.g., 2027) - Must match an active batch OR use batch_id</li>
+						</ul>
+					</div>
+					<div className="pt-2">
+						<p className="font-medium">Optional Fields:</p>
+						<ul className="list-disc list-inside text-muted-foreground ml-2">
+							<li>roll_no - Student roll number</li>
+							<li>room_number - Room number (max 16 chars)</li>
+							<li>department - Department name</li>
 							<li>blood_group - One of A+, A-, B+, B-, O+, O-, AB+, AB-</li>
-							<li>mobile - 10 digit phone number (required)</li>
-							<li>room_number - Optional; if provided, max 16 chars</li>
+							<li>parent_name - Parent/guardian name</li>
+							<li>parent_phone - Parent/guardian phone (10-15 digits)</li>
 						</ul>
 					</div>
 					<div className="pt-2 border-t">

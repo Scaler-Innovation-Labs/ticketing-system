@@ -74,8 +74,11 @@ export function EscalationManager({ categoryName, categoryId }: EscalationManage
   });
 
   useEffect(() => {
-    if (categoryId) {
+    if (categoryId && categoryId > 0) {
       fetchData();
+    } else {
+      // If categoryId is invalid, set loading to false and show empty state
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId]);
@@ -327,6 +330,19 @@ export function EscalationManager({ categoryName, categoryId }: EscalationManage
   // I will proceed with this assumption.
 
   const relevantScopes = scopes.filter(s => s.domain_id === categoryId);
+
+  // Show message if categoryId is invalid
+  if (!categoryId || categoryId <= 0) {
+    return (
+      <div className="space-y-4">
+        <div className="p-4 border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50 dark:bg-amber-950/20">
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            ⚠️ This category does not have a domain assigned. Please assign a domain to the category to configure escalation rules.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
