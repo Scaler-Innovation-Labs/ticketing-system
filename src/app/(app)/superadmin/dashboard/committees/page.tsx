@@ -80,16 +80,20 @@ export default async function CommitteesPage() {
       name: committees.name,
       description: committees.description,
       contact_email: committees.contact_email,
+      is_active: committees.is_active,
       created_at: committees.created_at,
       updated_at: committees.updated_at,
     })
     .from(committees)
     .orderBy(committees.name);
 
+  const activeCommittees = allCommittees.filter((c) => c.is_active !== false);
+  const archivedCommittees = allCommittees.filter((c) => c.is_active === false);
+
   // Fetch members for each committee
   const membersMap: Record<number, Awaited<ReturnType<typeof getCommitteeMembers>>> = {};
   await Promise.all(
-    allCommittees.map(async (committee) => {
+    activeCommittees.map(async (committee) => {
       const members = await getCommitteeMembers(committee.id);
       membersMap[committee.id] = members;
     })
@@ -115,8 +119,10 @@ export default async function CommitteesPage() {
       </div>
 
       <CommitteesManagement
-        initialCommittees={allCommittees}
+        initialCommittees={activeCommittees}
+        initialArchivedCommittees={archivedCommittees}
         initialMembers={membersMap}
+        basePath="/superadmin/dashboard"
       />
     </div>
   );

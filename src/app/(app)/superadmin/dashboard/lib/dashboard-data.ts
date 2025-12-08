@@ -55,6 +55,8 @@ export async function fetchSuperAdminTickets(
   limit: number = 20
 ) {
   const { dbUser } = await getCachedAdminUser(userId);
+  const roleName = dbUser?.roleName || null;
+  const primaryDomainId = dbUser?.primary_domain_id || null;
 
   const conditions: any[] = [
     or(
@@ -123,6 +125,11 @@ export async function fetchSuperAdminTickets(
         sql`${tickets.resolution_due_at} <= ${endOfToday.toISOString()}`
       ));
     }
+  }
+
+  // Restrict snr_admin to their primary domain (if set)
+  if (roleName === "snr_admin" && primaryDomainId) {
+    conditions.push(sql`${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`);
   }
 
   const whereConditions = and(...conditions);

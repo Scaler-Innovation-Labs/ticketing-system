@@ -5,7 +5,7 @@
  */
 
 import { db, tickets, ticket_groups, ticket_activity, ticket_statuses, categories } from '@/db';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
@@ -234,7 +234,7 @@ export async function getTicketGroup(groupId: number) {
 /**
  * List all ticket groups
  */
-export async function listTicketGroups() {
+export async function listTicketGroups(domainId?: number) {
   const groups = await db
     .select()
     .from(ticket_groups)
@@ -257,11 +257,12 @@ export async function listTicketGroups() {
       resolution_due_at: tickets.resolution_due_at,
       metadata: tickets.metadata,
       group_id: tickets.group_id,
+      category_domain_id: categories.domain_id,
     })
     .from(tickets)
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
-    .where(inArray(tickets.group_id, groupIds));
+    .where(domainId ? and(inArray(tickets.group_id, groupIds), eq(categories.domain_id, domainId)) : inArray(tickets.group_id, groupIds));
 
   // Map tickets to groups
   const groupsWithTickets = groups.map((group) => {
@@ -274,7 +275,9 @@ export async function listTicketGroups() {
     };
   });
 
-  return groupsWithTickets;
+  return domainId
+    ? groupsWithTickets.filter((g) => g.ticketCount > 0)
+    : groupsWithTickets;
 }
 
 /**

@@ -63,12 +63,22 @@ interface ClerkUser {
 
 interface CommitteesManagementProps {
   initialCommittees: Committee[];
+  initialArchivedCommittees?: Committee[];
   initialMembers: Record<number, CommitteeMember[]>;
+  basePath?: string;
 }
 
-export function CommitteesManagement({ initialCommittees, initialMembers }: CommitteesManagementProps) {
+type CommitteeView = "active" | "archived";
+
+export function CommitteesManagement({
+  initialCommittees,
+  initialArchivedCommittees = [],
+  initialMembers,
+  basePath = "/superadmin/dashboard",
+}: CommitteesManagementProps) {
   const router = useRouter();
   const [committees, setCommittees] = useState<Committee[]>(initialCommittees);
+  const [archivedCommittees, setArchivedCommittees] = useState<Committee[]>(initialArchivedCommittees);
   const [clerkUsers, setClerkUsers] = useState<ClerkUser[]>([]);
   const [committeeMembers, setCommitteeMembers] = useState<Record<number, CommitteeMember[]>>(initialMembers);
   const [saving, setSaving] = useState(false);
@@ -81,6 +91,7 @@ export function CommitteesManagement({ initialCommittees, initialMembers }: Comm
     description: "",
     contact_email: "",
   });
+  const [view, setView] = useState<CommitteeView>("active");
 
   useEffect(() => {
     fetchClerkUsers();
@@ -212,7 +223,7 @@ export function CommitteesManagement({ initialCommittees, initialMembers }: Comm
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-3">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -281,120 +292,153 @@ export function CommitteesManagement({ initialCommittees, initialMembers }: Comm
             </DialogContent>
           </Dialog>
         </div>
+        <div className="flex gap-2">
+          <Button
+            variant={view === "active" ? "default" : "outline"}
+            onClick={() => setView("active")}
+          >
+            Active
+          </Button>
+          <Button
+            variant={view === "archived" ? "default" : "outline"}
+            onClick={() => setView("archived")}
+          >
+            Archived
+          </Button>
+        </div>
       </div>
 
       {/* Committees List */}
       <div className="space-y-3">
-        {committees.map((committee) => {
-          const members = committeeMembers[committee.id] || [];
-          
-          return (
-            <Card key={committee.id} className="border-2 hover:shadow-lg transition-all duration-300">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <Building2 className="w-5 h-5 text-primary" />
+        {(view === "active" ? committees : archivedCommittees).length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>No {view === "active" ? "committees" : "archived committees"} found</CardTitle>
+              <CardDescription>
+                {view === "active"
+                  ? "Create a committee to get started"
+                  : "Archived committees will appear here after deletion"}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          (view === "active" ? committees : archivedCommittees).map((committee) => {
+            const members = committeeMembers[committee.id] || [];
+            
+            return (
+              <Card key={committee.id} className="border-2 hover:shadow-lg transition-all duration-300">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <Building2 className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">{committee.name}</CardTitle>
+                        <CardDescription className="mt-1">
+                          {committee.description || "No description"}
+                        </CardDescription>
+                        {committee.contact_email && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            📧 {committee.contact_email}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">{committee.name}</CardTitle>
-                      <CardDescription className="mt-1">
-                        {committee.description || "No description"}
-                      </CardDescription>
-                      {committee.contact_email && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          📧 {committee.contact_email}
-                        </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        asChild
+                        disabled={view === "archived"}
+                      >
+                        <Link href={`${basePath}/committees/${committee.id}/tickets`}>
+                          <FileText className="w-4 h-4 mr-2" />
+                          View Tickets
+                        </Link>
+                      </Button>
+                      {view === "active" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenDialog(committee)}
+                          >
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              setDeletingCommitteeId(committee.id);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            disabled={saving}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="default"
-                      size="sm"
-                      asChild
-                    >
-                      <Link href={`/superadmin/dashboard/committees/${committee.id}/tickets`}>
-                        <FileText className="w-4 h-4 mr-2" />
-                        View Tickets
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenDialog(committee)}
-                    >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        setDeletingCommitteeId(committee.id);
-                        setIsDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {committee.contact_email && (
-                  <div className="p-3 bg-muted/50 rounded-md">
-                    <p className="text-sm font-medium mb-1">Contact Email</p>
-                    <p className="text-sm text-muted-foreground">
-                      📧 {committee.contact_email}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium mb-2">Members ({members.length})</p>
-                  {members.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No members assigned. The committee head (from contact email) is treated as the sole member.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {members.map((member) => {
-                        const clerkUser = clerkUsers.find(u => u.id === member.clerk_user_id);
-
-                        let displayName = "Unknown User";
-                        if (clerkUser) {
-                          displayName =
-                            `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
-                            clerkUser.emailAddresses?.[0]?.emailAddress ||
-                            clerkUser.email ||
-                            clerkUser.id;
-                        } else if (member.user) {
-                          displayName =
-                            `${member.user.firstName || ""} ${member.user.lastName || ""}`.trim() ||
-                            member.user.emailAddresses?.[0]?.emailAddress ||
-                            "Unknown User";
-                        }
-                        
-                        return (
-                          <div key={member.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-muted-foreground" />
-                              <span className="text-sm">{displayName}</span>
-                              {member.role && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {member.role}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {committee.contact_email && (
+                    <div className="p-3 bg-muted/50 rounded-md">
+                      <p className="text-sm font-medium mb-1">Contact Email</p>
+                      <p className="text-sm text-muted-foreground">
+                        📧 {committee.contact_email}
+                      </p>
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                  <div>
+                    <p className="text-sm font-medium mb-2">Members ({members.length})</p>
+                    {members.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No members assigned. The committee head (from contact email) is treated as the sole member.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {members.map((member) => {
+                          const clerkUser = clerkUsers.find(u => u.id === member.clerk_user_id);
+
+                          let displayName = "Unknown User";
+                          if (clerkUser) {
+                            displayName =
+                              `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
+                              clerkUser.emailAddresses?.[0]?.emailAddress ||
+                              clerkUser.email ||
+                              clerkUser.id;
+                          } else if (member.user) {
+                            displayName =
+                              `${member.user.firstName || ""} ${member.user.lastName || ""}`.trim() ||
+                              member.user.emailAddresses?.[0]?.emailAddress ||
+                              "Unknown User";
+                          }
+                          
+                          return (
+                            <div key={member.id} className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-muted-foreground" />
+                                <span className="text-sm">{displayName}</span>
+                                {member.role && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {member.role}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
       </div>
 
       {committees.length === 0 && (

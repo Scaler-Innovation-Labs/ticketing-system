@@ -23,14 +23,16 @@ const CreateAdminSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(['admin', 'super_admin']);
+    await requireRole(['snr_admin', 'super_admin']);
 
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const search = searchParams.get('search') || undefined;
 
-    const result = await listAdmins({ page, limit, search });
+    const includeCommittee = searchParams.get('include_committee') === 'true';
+
+    const result = await listAdmins({ page, limit, search, includeCommittee });
 
     return NextResponse.json(result);
   } catch (error: any) {

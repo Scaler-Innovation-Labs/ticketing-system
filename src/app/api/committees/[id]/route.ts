@@ -72,7 +72,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['super_admin', 'snr_admin']);
 
     const { id } = await params;
     const committeeId = parseInt(id, 10);
@@ -115,7 +115,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['super_admin', 'snr_admin']);
 
     const { id } = await params;
     const committeeId = parseInt(id, 10);
@@ -129,12 +129,30 @@ export async function DELETE(
 
     const committee = await deleteCommittee(committeeId);
 
-    return NextResponse.json({ committee });
+    if (!committee) {
+      return NextResponse.json({ error: 'Committee not found' }, { status: 404 });
+    }
+
+    // Invalidate dashboards that show committees
+    return NextResponse.json({ committee }, {
+      status: 200,
+      headers: {
+        "x-revalidate-paths": JSON.stringify([
+          "/superadmin/dashboard/committees",
+          "/snr-admin/dashboard/committees",
+        ])
+      }
+    });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Failed to delete committee');
+    const message = error?.message || 'Failed to delete committee';
+    const status =
+      message.toLowerCase().includes('not found') ? 404 :
+      message.toLowerCase().includes('unauthorized') ? 403 :
+      error.status || 500;
     return NextResponse.json(
-      { error: error.message || 'Failed to delete committee' },
-      { status: error.status || 500 }
+      { error: message },
+      { status }
     );
   }
 }

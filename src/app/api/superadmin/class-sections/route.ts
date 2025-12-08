@@ -11,7 +11,7 @@ const CreateClassSectionSchema = z.object({
 
 export async function GET() {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['snr_admin', 'super_admin']);
     
     const sections = await listClassSections(false); // Get all, including inactive
     return NextResponse.json(sections);
@@ -25,7 +25,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
     
     const body = await request.json();
     const data = CreateClassSectionSchema.parse(body);

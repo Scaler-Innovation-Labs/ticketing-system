@@ -27,11 +27,13 @@ export async function listAdmins(params: {
   page?: number;
   limit?: number;
   search?: string;
+  includeCommittee?: boolean;
 }) {
   try {
     const page = params.page || 1;
     const limit = params.limit || 50;
     const offset = (page - 1) * limit;
+    const includeCommittee = params.includeCommittee || false;
 
     const whereConditions: any[] = [];
 
@@ -44,6 +46,19 @@ export async function listAdmins(params: {
         )
       );
     }
+
+    const roleFilter = includeCommittee
+      ? or(
+          eq(roles.name, 'admin'),
+          eq(roles.name, 'super_admin'),
+          eq(roles.name, 'snr_admin'),
+          eq(roles.name, 'committee'),
+        )
+      : or(
+          eq(roles.name, 'admin'),
+          eq(roles.name, 'super_admin'),
+          eq(roles.name, 'snr_admin')
+        );
 
     const adminsData = await db
       .select({
@@ -65,11 +80,7 @@ export async function listAdmins(params: {
       .innerJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
       .where(
         and(
-          or(
-            eq(roles.name, 'admin'),
-            eq(roles.name, 'super_admin'),
-            eq(roles.name, 'snr_admin')
-          ),
+          roleFilter,
           whereConditions.length > 0 ? and(...whereConditions) : undefined
         )
       )
@@ -84,11 +95,7 @@ export async function listAdmins(params: {
       .innerJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
       .where(
         and(
-          or(
-            eq(roles.name, 'admin'),
-            eq(roles.name, 'super_admin'),
-            eq(roles.name, 'snr_admin')
-          ),
+          roleFilter,
           whereConditions.length > 0 ? and(...whereConditions) : undefined
         )
       );

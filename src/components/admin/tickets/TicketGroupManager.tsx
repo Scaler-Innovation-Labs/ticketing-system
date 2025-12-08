@@ -11,9 +11,16 @@ import { Badge } from "@/components/ui/badge";
 interface TicketGroupManagerProps {
     tickets: Ticket[];
     basePath?: string;
+    initialGroups?: any[] | null;
+    initialStats?: {
+        totalGroups: number;
+        activeGroups: number;
+        archivedGroups: number;
+        totalTicketsInGroups: number;
+    } | null;
 }
 
-export function TicketGroupManager({ tickets, basePath }: TicketGroupManagerProps) {
+export function TicketGroupManager({ tickets, basePath, initialGroups, initialStats }: TicketGroupManagerProps) {
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
     return (
@@ -30,6 +37,8 @@ export function TicketGroupManager({ tickets, basePath }: TicketGroupManagerProp
                     <TicketGrouping
                         selectedTicketIds={selectedIds}
                         onGroupCreated={() => setSelectedIds([])}
+                        initialGroups={initialGroups}
+                        initialStats={initialStats}
                     />
                 </CardContent>
             </Card>

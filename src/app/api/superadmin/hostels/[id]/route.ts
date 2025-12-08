@@ -14,7 +14,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['snr_admin', 'super_admin']);
 
     const { id } = await params;
     const hostelId = parseInt(id);
@@ -46,7 +46,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['snr_admin', 'super_admin']);
 
     const { id } = await params;
     const hostelId = parseInt(id);

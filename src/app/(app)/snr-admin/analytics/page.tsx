@@ -1,5 +1,7 @@
 import { db, tickets, categories, users, roles, domains, scopes, admin_profiles, ticket_statuses } from "@/db";
 import { eq, sql } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
     FileText, Clock, ArrowLeft, Zap, Target, Activity, Award, AlertTriangle, Shield,
@@ -21,6 +23,13 @@ export const revalidate = 30;
  */
 export default async function SnrAdminAnalyticsPage() {
     try {
+        const { userId } = await auth();
+        if (!userId) {
+            throw new Error("Unauthorized");
+        }
+
+        const { dbUser } = await getCachedAdminUser(userId);
+        const primaryDomainId = dbUser?.primary_domain_id || null;
 
         // === SYSTEM-WIDE DATA COLLECTION ===
 
@@ -49,7 +58,8 @@ export default async function SnrAdminAnalyticsPage() {
             .leftJoin(users, eq(tickets.assigned_to, users.id))
             .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
             .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
-            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id));
+            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
+            .where(primaryDomainId ? eq(categories.domain_id, primaryDomainId) : undefined);
 
         // Extract metadata fields and transform
         const allTickets = allTicketsRaw.map(t => {

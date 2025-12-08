@@ -161,7 +161,7 @@ export default async function AdminGroupsPage({
     const allGroups = await db
       .select()
       .from(ticket_groups)
-      .where(eq(ticket_groups.is_archived, false));
+      .where(eq(ticket_groups.is_active, true));
 
     // Count tickets in groups (grouped tickets)
     const groupedTicketIds = await db

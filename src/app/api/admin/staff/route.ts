@@ -11,7 +11,7 @@ import { z } from 'zod';
  */
 export async function GET(request: Request) {
   try {
-    await requireRole(['super_admin', 'admin']);
+    await requireRole(['super_admin', 'snr_admin']);
 
     const { searchParams } = new URL(request.url);
     const roleFilter = searchParams.get('role');
@@ -87,7 +87,7 @@ const CreateStaffSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['super_admin', 'snr_admin']);
 
     const body = await request.json();
     const data = CreateStaffSchema.parse(body);
@@ -192,7 +192,7 @@ const UpdateStaffSchema = z.object({
  */
 export async function PATCH(request: Request) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['super_admin', 'snr_admin']);
 
     const body = await request.json();
     const data = UpdateStaffSchema.parse(body);

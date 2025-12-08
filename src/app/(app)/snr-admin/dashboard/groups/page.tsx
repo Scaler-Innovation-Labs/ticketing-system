@@ -9,6 +9,9 @@ import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
 import { AdminTicketFilters } from "@/components/admin/tickets";
 import type { Ticket, TicketMetadata } from "@/db/types-only";
+import { auth } from "@clerk/nextjs/server";
+import { getCachedAdminUser } from "@/lib/cache/cached-queries";
+import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
 
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 export const revalidate = 30;
@@ -22,6 +25,15 @@ export default async function SnrAdminGroupsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+
+  const { userId } = await auth();
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  const { dbUser } = await getCachedAdminUser(userId);
+  const primaryDomainId = dbUser?.primary_domain_id ?? null;
+  const isGlobal = primaryDomainId === null;
 
   // Parse search params
   const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -68,6 +80,11 @@ export default async function SnrAdminGroupsPage({
   // Fetch all tickets for snr admin with proper joins
   const creatorUser = aliasedTable(users, "creator");
 
+  const domainConditions = [...conditions];
+  if (!isGlobal && primaryDomainId !== null) {
+    domainConditions.push(eq(categories.domain_id, primaryDomainId));
+  }
+
   const allTicketRows = await db
     .select({
       id: tickets.id,
@@ -95,31 +112,35 @@ export default async function SnrAdminGroupsPage({
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
     .leftJoin(creatorUser, eq(tickets.created_by, creatorUser.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(domainConditions.length > 0 ? and(...domainConditions) : undefined)
     .orderBy(desc(tickets.created_at))
     .limit(500); // Reduced limit for better performance - can paginate if needed
 
   // Grouping stats based purely on data, not placeholders
   const totalTicketsCount = allTicketRows.length;
 
-  // Tickets that are in any group
+  // Group stats: domain-scoped when primaryDomainId set, otherwise global
   const groupedTicketIds = await db
     .select({ id: tickets.id })
     .from(tickets)
-    .where(isNotNull(tickets.group_id));
+    .leftJoin(categories, eq(tickets.category_id, categories.id))
+    .where(
+      and(
+        isNotNull(tickets.group_id),
+        !isGlobal && primaryDomainId !== null ? eq(categories.domain_id, primaryDomainId) : sql`true`
+      )
+    );
 
   const groupedTicketIdSet = new Set(groupedTicketIds.map(t => t.id));
-  const groupedTicketsCount = groupedTicketIdSet.size;
+  const groupedTicketsCountFromTickets = groupedTicketIdSet.size;
 
-  // Tickets not in any group
-  const availableTicketsCount = totalTicketsCount - groupedTicketsCount;
-
-  // Group stats
-  const allGroups = await db
-    .select()
-    .from(ticket_groups);
-
-  const activeGroupsCount = allGroups.filter(g => g.is_active).length;
+  const initialGroups = await listTicketGroups(isGlobal ? undefined : primaryDomainId || undefined);
+  const groupsForStats = initialGroups;
+  const activeGroupsCount = groupsForStats.filter(g => g.is_active).length;
+  const archivedGroupsCount = groupsForStats.filter(g => !g.is_active).length;
+  const totalTicketsInGroups = groupsForStats.reduce((acc, g) => acc + (g.ticketCount || 0), 0);
+  const groupedTicketsCount = isGlobal ? groupedTicketsCountFromTickets : totalTicketsInGroups;
+  const availableTicketsCount = Math.max(totalTicketsCount - groupedTicketsCount, 0);
 
   return (
     <div className="space-y-6">
@@ -224,6 +245,13 @@ export default async function SnrAdminGroupsPage({
           };
         }) as unknown as Ticket[]}
         basePath="/snr-admin/dashboard"
+        initialGroups={initialGroups as any}
+        initialStats={{
+          totalGroups: initialGroups.length,
+          activeGroups: activeGroupsCount,
+          archivedGroups: archivedGroupsCount,
+          totalTicketsInGroups,
+        }}
       />
     </div>
   );

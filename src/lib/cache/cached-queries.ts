@@ -6,7 +6,7 @@
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { db, users, roles, ticket_statuses, tickets, categories } from '@/db';
+import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles } from '@/db';
 import { eq, desc } from 'drizzle-orm';
 
 /**
@@ -78,18 +78,40 @@ export const getCachedUserRole = cache(async (clerkUserId: string) => {
  * Returns object wrapper to match usage in dashboard-data.ts
  */
 export const getCachedAdminUser = cache(async (clerkUserId: string) => {
-    const [user] = await db
-        .select({
-            id: users.id,
-            email: users.email,
-            full_name: users.full_name,
-            role_id: users.role_id,
-        })
-        .from(users)
-        .where(eq(users.external_id, clerkUserId))
-        .limit(1);
+    try {
+        const [user] = await db
+            .select({
+                id: users.id,
+                email: users.email,
+                full_name: users.full_name,
+                role_id: users.role_id,
+                roleName: roles.name,
+                primary_domain_id: admin_profiles.primary_domain_id,
+            })
+            .from(users)
+            .leftJoin(roles, eq(users.role_id, roles.id))
+            .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
+            .where(eq(users.external_id, clerkUserId))
+            .limit(1);
 
-    return { dbUser: user || null };
+        return { dbUser: user || null };
+    } catch (error) {
+        // Fallback if admin_profiles table/columns are unavailable
+        const [user] = await db
+            .select({
+                id: users.id,
+                email: users.email,
+                full_name: users.full_name,
+                role_id: users.role_id,
+                roleName: roles.name,
+            })
+            .from(users)
+            .leftJoin(roles, eq(users.role_id, roles.id))
+            .where(eq(users.external_id, clerkUserId))
+            .limit(1);
+
+        return { dbUser: user ? { ...user, primary_domain_id: null } : null };
+    }
 });
 
 /**
