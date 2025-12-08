@@ -27,9 +27,16 @@ export default async function CommitteeNewTicketPage() {
     // Fetch student row from DB (committee members might also be students)
     db
       .select({
-        student: students,
+        student_id: students.id,
+        student_user_id: students.user_id,
+        student_roll_no: students.roll_no,
+        student_room_no: students.room_no,
+        student_hostel_id: students.hostel_id,
+        student_class_section_id: students.class_section_id,
+        student_batch_id: students.batch_id,
+        student_blood_group: students.blood_group,
         class_section_name: class_sections.name,
-        batch_year: batches.batch_year,
+        batch_year: batches.year,
       })
       .from(students)
       .leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
@@ -49,7 +56,18 @@ export default async function CommitteeNewTicketPage() {
   ]);
 
   const [studentData] = studentDataResult;
-  const student = studentData?.student;
+  const student = studentData
+    ? {
+        id: studentData.student_id,
+        user_id: studentData.student_user_id,
+        roll_no: studentData.student_roll_no,
+        room_no: studentData.student_room_no,
+        hostel_id: studentData.student_hostel_id,
+        class_section_id: studentData.student_class_section_id,
+        batch_id: studentData.student_batch_id,
+        blood_group: studentData.student_blood_group,
+      }
+    : null;
 
   // Find the student's hostel name from ID (if student exists)
   const studentHostel = student?.hostel_id ? hostelsList.find(h => h.id === student.hostel_id) : null;

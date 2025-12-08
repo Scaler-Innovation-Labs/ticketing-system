@@ -1,13 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import type { TicketMetadata } from "@/db/inferred-types";
 import { TicketCard } from "@/components/layout/TicketCard";
-import { tickets, categories, users, roles, ticket_statuses } from "@/db";
 import { AlertTriangle, TrendingUp, Calendar, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getCachedUser, getCachedTicketStatuses, getCachedCommitteeTickets } from "@/lib/cache/cached-queries";
 import type { Ticket } from "@/db/types-only";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Force dynamic rendering since we use auth headers
 export const dynamic = "force-dynamic";

@@ -85,6 +85,7 @@ export default function TicketForm(props: TicketFormProps) {
   } = useTicketFormState(student);
 
   const [loading, setLoading] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const { uploadImage, imagesUploading } = useImageUpload();
 
   // Derived state
@@ -139,6 +140,7 @@ export default function TicketForm(props: TicketFormProps) {
         if (!file) continue;
         try {
           const url = await uploadImage(file);
+          setUploadedImages((prev) => [...prev, url]);
           setFormPartial((prev) => ({
             ...prev,
             details: {
@@ -156,6 +158,7 @@ export default function TicketForm(props: TicketFormProps) {
 
   const removeImage = useCallback(
     (url: string) => {
+      setUploadedImages((prev) => prev.filter((u) => u !== url));
       setFormPartial((prev) => {
         const images = Array.isArray(prev.details?.images) ? prev.details.images : [];
         const newImages = images.filter((u: unknown) => typeof u === "string" && u !== url);
@@ -347,10 +350,11 @@ export default function TicketForm(props: TicketFormProps) {
   }, [currentSubcategory?.fields, form.description, errors.description, setFormPartial, setErrors]);
 
   const GeneralImageUploadMemo = useMemo(() => {
-    const hasUploadField = currentSubcategory?.fields?.some((field) => field.field_type === "upload");
-    if (hasUploadField) return null;
-
-    const images: string[] = (form.details?.images as string[]) || [];
+    const formImages = Array.isArray(form.details?.images)
+      ? (form.details.images as unknown[]).filter((u) => typeof u === "string" && u.length > 0) as string[]
+      : [];
+    // Merge local and form images to handle initial render + new uploads
+    const images: string[] = Array.from(new Set([...formImages, ...uploadedImages]));
 
     return (
       <GeneralImageUpload
@@ -360,7 +364,7 @@ export default function TicketForm(props: TicketFormProps) {
         onRemove={removeImage}
       />
     );
-  }, [currentSubcategory?.fields, form.details?.images, imagesUploading, handleImageFiles, removeImage]);
+  }, [form.details?.images, uploadedImages, imagesUploading, handleImageFiles, removeImage]);
 
   return (
     <div className="max-w-3xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">

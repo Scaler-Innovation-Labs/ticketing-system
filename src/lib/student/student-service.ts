@@ -38,7 +38,7 @@ export async function listStudents(params: {
     const limit = params.limit || 50;
     const offset = (page - 1) * limit;
 
-    const whereConditions: any[] = [];
+    const whereConditions: any[] = [eq(users.is_active, true)];
 
     if (params.search) {
       whereConditions.push(

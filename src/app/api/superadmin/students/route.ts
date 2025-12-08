@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const studentId = await createStudent(studentData);
 
-    return NextResponse.json({ id: studentId }, { status: 201 });
+    return NextResponse.json({ id: studentId }, { status: 201, headers: { 'content-type': 'application/json' } });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating student');
     return NextResponse.json(

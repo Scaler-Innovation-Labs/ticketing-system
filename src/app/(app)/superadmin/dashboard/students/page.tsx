@@ -20,7 +20,7 @@ export default async function SuperAdminStudentsPage({
 	const offset = (page - 1) * limit;
 
 	// Build where conditions
-	const whereConditions: ReturnType<typeof and>[] = [];
+	const whereConditions: ReturnType<typeof and>[] = [eq(users.is_active, true)];
 
 	if (search) {
 		whereConditions.push(
@@ -63,7 +63,7 @@ export default async function SuperAdminStudentsPage({
 		.leftJoin(hostels, eq(students.hostel_id, hostels.id))
 		.leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
 		.leftJoin(batches, eq(students.batch_id, batches.id))
-		.where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
+	.where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
 		.orderBy(sql`${batches.year} DESC NULLS LAST, ${users.full_name} ASC`)
 		.limit(limit)
 		.offset(offset);
@@ -76,7 +76,7 @@ export default async function SuperAdminStudentsPage({
 		.leftJoin(hostels, eq(students.hostel_id, hostels.id))
 		.leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
 		.leftJoin(batches, eq(students.batch_id, batches.id))
-		.where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
+	.where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
 
 	const totalCount = Number(countResult.count);
 	const totalPages = Math.ceil(totalCount / limit);

@@ -18,9 +18,10 @@ export function useImageUpload() {
 
       const fd = new FormData();
       fd.append("file", file);
-      const response = await api.post<{ url: string }>("/api/tickets/attachments/upload", fd);
+      // use upload helper so Content-Type is set correctly
+      const response = await api.upload<{ url: string }>("/api/tickets/attachments/upload", fd);
       toast.success("Image uploaded");
-      return response.data.url;
+      return response.url;
     } catch (err: unknown) {
       logger.error("Upload failed", err, { component: "useImageUpload", fileName: file.name });
       const errorMessage = err instanceof Error ? err.message : "Image upload failed";

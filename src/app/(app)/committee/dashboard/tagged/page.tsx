@@ -17,9 +17,9 @@ export const dynamic = "force-dynamic";
  * Note: Auth is handled by committee/layout.tsx
  */
 export default async function CommitteeTaggedTicketsPage({
-  searchParams
+  searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>
+  searchParams?: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Layout ensures userId exists and user is created via getOrCreateUser
   const { userId } = await auth();
@@ -28,9 +28,9 @@ export default async function CommitteeTaggedTicketsPage({
   // Use cached function for better performance (request-scoped deduplication)
   const user = await getCachedUser(userId);
 
-  // Await searchParams (Next.js 15)
-  const resolvedSearchParams = searchParams ? await searchParams : {};
-  const params = resolvedSearchParams || {};
+  const params = searchParams && typeof (searchParams as any).then === "function"
+    ? await (searchParams as Promise<Record<string, string | string[] | undefined>>)
+    : (searchParams || {});
   const search = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const statusFilter = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
   const categoryFilter = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
