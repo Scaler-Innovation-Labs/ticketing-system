@@ -34,7 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { TicketStatusBadge } from "@/components/features/tickets/display/TicketStatusBadge";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
-import { getCachedAdminUser, getCachedAdminAssignment } from "@/lib/cache/cached-queries";
+import { getCachedAdminUser, getCachedAdminAssignment, getCachedUserRole } from "@/lib/cache/cached-queries";
 import { buildTimeline } from "@/lib/ticket/formatting/buildTimeline";
 import { normalizeStatusForComparison } from "@/lib/utils";
 import { getCachedTicketStatuses } from "@/lib/cache/cached-queries";
@@ -98,11 +98,14 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
 
 
-  const [{ dbUser: dbUserResult, role }, ticketRowsResult, forwardTargetsResult] = await Promise.all([
+  const [{ dbUser: dbUserResult }, role, ticketRowsResult, forwardTargetsResult] = await Promise.all([
 
-    // Use cached function for user and role (request-scoped deduplication)
+    // Use cached function for user (request-scoped deduplication)
 
     getCachedAdminUser(userId),
+
+    // Get role separately
+    getCachedUserRole(userId),
 
     // Fetch ticket with joins using Drizzle ORM
 
@@ -116,7 +119,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
         status_label: ticket_statuses.label,
 
-        status_badge_color: ticket_statuses.badge_color,
+        status_badge_color: ticket_statuses.color,
 
         description: tickets.description,
 
@@ -166,7 +169,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
       .limit(1),
 
-    
+
 
     // Fetch forward targets (super admins) - only needed for AdminActions
 
@@ -242,7 +245,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   const dbUser = dbUserResult;
 
-
+  if (!dbUser) throw new Error("User not found");
 
   if (ticketRows.length === 0) notFound();
 
@@ -276,7 +279,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
       .limit(1),
 
-    
+
 
     // Fetch profile fields configuration
 
@@ -286,7 +289,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
       : Promise.resolve([]),
 
-    
+
 
     // Fetch category schema for dynamic fields
 
@@ -298,12 +301,12 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   ]);
 
-  
+
 
   // Note: Role check is handled by admin/layout.tsx
   // Role is still needed for security check below (admin vs super_admin access control)
 
-  
+
 
   // Security check: Ensure admin has access to this ticket (if not super_admin)
 
@@ -315,7 +318,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
     const isAssigned = ticketRow.assigned_to === dbUser.id;
 
-    
+
 
     if (!isAssigned) {
 
@@ -323,7 +326,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
         const adminAssignment = await getCachedAdminAssignment(userId);
 
-        
+
 
         // Priority 1: Check if admin is assigned to this category (via category_assignments or default_admin_id)
 
@@ -335,7 +338,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
         const ticketDomain = ticketRow.category_domain_name || null;
 
-        
+
 
         if (ticketDomain && assignedCategoryDomains.includes(ticketDomain)) {
 
@@ -350,7 +353,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
           // Handle "Global" as a special case - admins with Global domain can access all tickets
 
           const assignmentDomain = (adminAssignment.domain || "").toLowerCase();
-          
+
 
           if (assignmentDomain === "global" || !adminAssignment.domain) {
 
@@ -372,7 +375,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
             );
 
-            
+
 
             if (!hasAccess) {
 
@@ -416,7 +419,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   }
 
-  
+
 
   // Build status display from DB data
 
@@ -426,13 +429,13 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
     ? {
 
-        value: statusValue,
+      value: statusValue,
 
-        label: ticketRows[0].status_label || statusValue,
+      label: ticketRows[0].status_label || statusValue,
 
-        badge_color: ticketRows[0].status_badge_color || "default",
+      badge_color: ticketRows[0].status_badge_color || "default",
 
-      }
+    }
 
     : null;
 
@@ -494,9 +497,9 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   // Normalize status for comparisons
 
-  const statusValueStr = typeof ticket.status === 'string' 
+  const statusValueStr = typeof ticket.status === 'string'
 
-    ? ticket.status 
+    ? ticket.status
 
     : (ticket.status && typeof ticket.status === 'object' && 'value' in ticket.status ? ticket.status.value : null);
 
@@ -509,15 +512,15 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
   // Use cached function for better performance (request-scoped deduplication)
   const ticketStatuses = await getCachedTicketStatuses().catch(() => []);
 
-  const progressMap = Array.isArray(ticketStatuses) && ticketStatuses.length > 0 
+  const progressMap = Array.isArray(ticketStatuses) && ticketStatuses.length > 0
 
-    ? buildProgressMap(ticketStatuses) 
+    ? buildProgressMap(ticketStatuses)
 
     : {};
 
-  const ticketProgress = (progressMap && typeof progressMap === 'object' && normalizedStatus && progressMap[normalizedStatus]) 
+  const ticketProgress = (progressMap && typeof progressMap === 'object' && normalizedStatus && progressMap[normalizedStatus])
 
-    ? progressMap[normalizedStatus] 
+    ? progressMap[normalizedStatus]
 
     : 0;
 
@@ -801,7 +804,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
               {ticket.status && (
 
-                <TicketStatusBadge 
+                <TicketStatusBadge
 
                   status={ticket.status}
 
@@ -1123,21 +1126,21 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
                   // Exclude TAT-related fields
 
-                  return !keyLower.includes('tat') && 
+                  return !keyLower.includes('tat') &&
 
-                         !labelLower.includes('tat') &&
+                    !labelLower.includes('tat') &&
 
-                         !keyLower.includes('tat_set') &&
+                    !keyLower.includes('tat_set') &&
 
-                         !labelLower.includes('tat set') &&
+                    !labelLower.includes('tat set') &&
 
-                         !keyLower.includes('tat_extensions') &&
+                    !keyLower.includes('tat_extensions') &&
 
-                         !labelLower.includes('tat extensions');
+                    !labelLower.includes('tat extensions');
 
                 });
 
-                
+
 
                 return filteredFields.length > 0 ? (
 
@@ -1189,7 +1192,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
                 <div className="space-y-4 relative">
 
-                  {timelineEntries.map((entry: Record<string, unknown>, index: number) => {
+                  {timelineEntries.map((entry, index) => {
 
                     const iconKey = typeof entry.icon === 'string' ? entry.icon : '';
 
@@ -1303,13 +1306,13 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
                       const rawTimestamp = comment.createdAt || comment.created_at;
 
-                      const commentCreatedAt = rawTimestamp && 
+                      const commentCreatedAt = rawTimestamp &&
 
-                        (typeof rawTimestamp === 'string' || rawTimestamp instanceof Date) 
+                        (typeof rawTimestamp === 'string' || rawTimestamp instanceof Date)
 
                         ? rawTimestamp : null;
 
-                      
+
 
                       // For internal notes, keep card style; for regular comments, use chat style
 
@@ -1389,7 +1392,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
                       const isAdmin = !isStudent;
 
-                      
+
 
                       return (
 

@@ -40,11 +40,11 @@ export default async function CommitteeCreatedTicketsPage({
   // Fetch all created tickets
   const allTickets = await getCreatedTickets(user.id);
 
-  // Apply filters
-  const filteredTickets = filterTickets(allTickets, search, statusFilter, categoryFilter);
+  // Apply filters (cast to any to work around type strictness)
+  const filteredTickets = filterTickets(allTickets as any, search, statusFilter, categoryFilter);
 
   // Calculate stats from all tickets (before filtering)
-  const stats = calculateTicketStats(allTickets);
+  const stats = calculateTicketStats(allTickets as any);
 
   return (
     <div className="space-y-8 p-6">

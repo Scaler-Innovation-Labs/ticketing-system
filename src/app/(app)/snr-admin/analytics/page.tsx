@@ -71,13 +71,13 @@ export default async function SnrAdminAnalyticsPage() {
             const acknowledgedAt = ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at as string) : null;
             const rating = (ticketMetadata.rating as number | null) || null;
             const ratingSubmitted = ticketMetadata.rating_submitted ? new Date(ticketMetadata.rating_submitted as string) : null;
-            
+
             // Split full_name into first_name and last_name for compatibility
             const fullName = t.admin_full_name || "";
             const nameParts = fullName.split(' ');
             const admin_first_name = nameParts[0] || null;
             const admin_last_name = nameParts.slice(1).join(' ') || null;
-            
+
             return {
                 id: t.id,
                 status: t.status_value || null,
@@ -577,7 +577,7 @@ export default async function SnrAdminAnalyticsPage() {
                                         return (
                                             <div key={status.id} className="flex items-center justify-between p-3 border rounded-lg">
                                                 <div className="flex items-center gap-3">
-                                                    <Badge variant={(status.badge_color as "default" | "secondary" | "destructive" | "outline") || "default"}>
+                                                    <Badge variant={(status.color as "default" | "secondary" | "destructive" | "outline") || "default"}>
                                                         {status.label}
                                                     </Badge>
                                                     <div>
@@ -656,47 +656,47 @@ export default async function SnrAdminAnalyticsPage() {
                     {/* Domains Tab */}
                     <TabsContent value="domains" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-3">
-                            {domainStats && typeof domainStats === 'object' && !Array.isArray(domainStats) 
-                              ? Object.entries(domainStats).map(([domain, stats]) => (
-                                <Card key={domain}>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Building2 className="h-4 w-4" />
-                                            {domain}
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div className="grid grid-cols-3 gap-2 text-center">
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Total</p>
-                                                <p className="text-2xl font-bold">{stats.total}</p>
+                            {domainStats && typeof domainStats === 'object' && !Array.isArray(domainStats)
+                                ? Object.entries(domainStats).map(([domain, stats]) => (
+                                    <Card key={domain}>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4" />
+                                                {domain}
+                                            </CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <div className="grid grid-cols-3 gap-2 text-center">
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Total</p>
+                                                    <p className="text-2xl font-bold">{stats.total}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Resolved</p>
+                                                    <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">Pending</p>
+                                                    <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+                                                </div>
                                             </div>
                                             <div>
-                                                <p className="text-xs text-muted-foreground">Resolved</p>
-                                                <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span>Resolution Rate</span>
+                                                    <span>{stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(0) : 0}%</span>
+                                                </div>
+                                                <Progress value={stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0} className="h-2" />
                                             </div>
-                                            <div>
-                                                <p className="text-xs text-muted-foreground">Pending</p>
-                                                <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span>Resolution Rate</span>
-                                                <span>{stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(0) : 0}%</span>
-                                            </div>
-                                            <Progress value={stats.total > 0 ? (stats.resolved / stats.total) * 100 : 0} className="h-2" />
-                                        </div>
-                                        {stats.avgRating > 0 && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-muted-foreground">Avg Rating</span>
-                                                <span className="text-lg font-bold">{stats.avgRating.toFixed(1)} ★</span>
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                              ))
-                              : null}
+                                            {stats.avgRating > 0 && (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-muted-foreground">Avg Rating</span>
+                                                    <span className="text-lg font-bold">{stats.avgRating.toFixed(1)} ★</span>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))
+                                : null}
                         </div>
                     </TabsContent>
 
@@ -716,63 +716,63 @@ export default async function SnrAdminAnalyticsPage() {
                                 ) : (
                                     <div className="space-y-4">
                                         {categoryStats.map((cat) => {
-                                        const resolutionRate = cat.total > 0 ? (cat.resolved / cat.total) * 100 : 0;
-                                        const escalationRate = cat.total > 0 ? (cat.escalated / cat.total) * 100 : 0;
-                                        return (
-                                            <div
-                                                key={cat.name}
-                                                className="border rounded-lg p-4">
-                                                <div className="flex justify-between items-center mb-3">
-                                                    <h4 className="font-semibold flex items-center gap-2">
-                                                        <Layers className="h-4 w-4" />
-                                                        {cat.name}
-                                                    </h4>
-                                                    <Badge>{cat.total} tickets</Badge>
-                                                </div>
-                                                <div className="grid grid-cols-5 gap-4 mb-3">
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Total</p>
-                                                        <p className="text-lg font-bold">{cat.total}</p>
+                                            const resolutionRate = cat.total > 0 ? (cat.resolved / cat.total) * 100 : 0;
+                                            const escalationRate = cat.total > 0 ? (cat.escalated / cat.total) * 100 : 0;
+                                            return (
+                                                <div
+                                                    key={cat.name}
+                                                    className="border rounded-lg p-4">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <h4 className="font-semibold flex items-center gap-2">
+                                                            <Layers className="h-4 w-4" />
+                                                            {cat.name}
+                                                        </h4>
+                                                        <Badge>{cat.total} tickets</Badge>
                                                     </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Resolved</p>
-                                                        <p className="text-lg font-bold text-green-600">{cat.resolved}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Pending</p>
-                                                        <p className="text-lg font-bold text-amber-600">{cat.pending}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Escalated</p>
-                                                        <p className="text-lg font-bold text-red-600">{cat.escalated}</p>
-                                                    </div>
-                                                    <div className="text-center">
-                                                        <p className="text-xs text-muted-foreground">Rating</p>
-                                                        <p className="text-lg font-bold text-purple-600">
-                                                            {cat.avgRating > 0 ? cat.avgRating.toFixed(1) : '-'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <div>
-                                                        <div className="flex justify-between text-xs mb-1">
-                                                            <span>Resolution Rate</span>
-                                                            <span>{resolutionRate.toFixed(0)}%</span>
+                                                    <div className="grid grid-cols-5 gap-4 mb-3">
+                                                        <div className="text-center">
+                                                            <p className="text-xs text-muted-foreground">Total</p>
+                                                            <p className="text-lg font-bold">{cat.total}</p>
                                                         </div>
-                                                        <Progress value={resolutionRate} className="h-2" />
+                                                        <div className="text-center">
+                                                            <p className="text-xs text-muted-foreground">Resolved</p>
+                                                            <p className="text-lg font-bold text-green-600">{cat.resolved}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-xs text-muted-foreground">Pending</p>
+                                                            <p className="text-lg font-bold text-amber-600">{cat.pending}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-xs text-muted-foreground">Escalated</p>
+                                                            <p className="text-lg font-bold text-red-600">{cat.escalated}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-xs text-muted-foreground">Rating</p>
+                                                            <p className="text-lg font-bold text-purple-600">
+                                                                {cat.avgRating > 0 ? cat.avgRating.toFixed(1) : '-'}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    {escalationRate > 0 && (
+                                                    <div className="space-y-2">
                                                         <div>
                                                             <div className="flex justify-between text-xs mb-1">
-                                                                <span>Escalation Rate</span>
-                                                                <span>{escalationRate.toFixed(0)}%</span>
+                                                                <span>Resolution Rate</span>
+                                                                <span>{resolutionRate.toFixed(0)}%</span>
                                                             </div>
-                                                            <Progress value={escalationRate} className="h-2 bg-red-100" />
+                                                            <Progress value={resolutionRate} className="h-2" />
                                                         </div>
-                                                    )}
+                                                        {escalationRate > 0 && (
+                                                            <div>
+                                                                <div className="flex justify-between text-xs mb-1">
+                                                                    <span>Escalation Rate</span>
+                                                                    <span>{escalationRate.toFixed(0)}%</span>
+                                                                </div>
+                                                                <Progress value={escalationRate} className="h-2 bg-red-100" />
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
+                                            );
                                         })}
                                     </div>
                                 )}

@@ -47,6 +47,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   // Layout already ensures user exists via getOrCreateUser, so adminDbUser will exist
   const { dbUser: adminDbUser } = await getCachedAdminUser(userId);
 
+  if (!adminDbUser) throw new Error("User not found");
   const adminUserId = adminDbUser.id;
 
   // Await searchParams (Next.js 15)

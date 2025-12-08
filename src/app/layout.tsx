@@ -52,7 +52,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             enableSystem
             disableTransitionOnChange
           >
-            <ProgressBar />
+            <Suspense fallback={null}>
+              <ProgressBar />
+            </Suspense>
             <Suspense fallback={<NavLoadingShimmer />}>
               <ConditionalNav />
             </Suspense>

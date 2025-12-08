@@ -11,7 +11,7 @@ interface TicketStatusBadgeProps {
   status?: {
     value: string;
     label: string;
-    badge_color: string | null;
+    badge_color?: string | null; // Made optional to match TicketStatusDisplay
   } | null;
   // Legacy: Accept string value directly (for backward compatibility)
   statusValue?: string | null;
@@ -33,7 +33,7 @@ export function TicketStatusBadge({
   const getVariantAndColor = (color: string | null, statusValue?: string) => {
     const normalizedColor = color?.toLowerCase().trim() || "";
     const normalizedStatus = statusValue ? normalizeStatusForComparison(statusValue) : "";
-    
+
     // Priority 1: Check status value first (match dashboard STATUS_STYLES exactly)
     if (normalizedStatus === "in_progress" || normalizedStatus.includes("in_progress")) {
       return { variant: "outline" as const, customClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800" };
@@ -56,7 +56,7 @@ export function TicketStatusBadge({
     if (normalizedStatus === "forwarded" || normalizedStatus.includes("forwarded")) {
       return { variant: "outline" as const, customClass: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800" };
     }
-    
+
     // Priority 2: Custom color mappings from badge_color field (match dashboard colors)
     if (normalizedColor.includes("blue") || normalizedColor === "info") {
       return { variant: "outline" as const, customClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800" };
@@ -79,7 +79,7 @@ export function TicketStatusBadge({
     if (normalizedColor.includes("cyan") || normalizedColor.includes("teal")) {
       return { variant: "outline" as const, customClass: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 border-cyan-200 dark:border-cyan-800" };
     }
-    
+
     // Priority 3: Standard Badge variants (only if no custom colors matched)
     if (normalizedColor === "default") {
       return { variant: "default" as const, customClass: "" };
@@ -93,7 +93,7 @@ export function TicketStatusBadge({
     if (normalizedColor === "outline") {
       return { variant: "outline" as const, customClass: "" };
     }
-    
+
     // Final fallback
     return { variant: "outline" as const, customClass: "" };
   };

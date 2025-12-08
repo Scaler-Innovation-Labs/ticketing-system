@@ -30,6 +30,7 @@ export default async function AdminEscalatedAnalyticsPage() {
 
   const { ticketMatchesAdminAssignment } = await import("@/lib/assignment/admin-assignment");
 
+  if (!dbUser) throw new Error("User not found");
   const adminUserDbId = dbUser.id;
 
   // Fetch tickets: assigned to this admin OR unassigned tickets that match admin's domain/scope
@@ -72,7 +73,7 @@ export default async function AdminEscalatedAnalyticsPage() {
       ticketMetadata = t.metadata as TicketMetadata;
     }
     const lastEscalationAt = ticketMetadata.last_escalation_at ? new Date(ticketMetadata.last_escalation_at) : null;
-    
+
     return {
       ...t,
       status: t.status_value || null,

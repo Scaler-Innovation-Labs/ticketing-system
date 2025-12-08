@@ -39,10 +39,7 @@ async function StatsCardsContent({ statsPromise }: StatsCardsWrapperProps) {
   return (
     <>
       <AriaLiveRegion
-        success={true}
-        successMessage={`Loaded ${stats.total} tickets`}
-        dataCount={stats.total}
-        dataLabel="tickets"
+        success={`Loaded ${stats.total} tickets`}
       />
       <StatsCards stats={stats} />
     </>
@@ -51,7 +48,7 @@ async function StatsCardsContent({ statsPromise }: StatsCardsWrapperProps) {
 
 export function StatsCardsWrapper({ statsPromise }: StatsCardsWrapperProps) {
   return (
-    <Suspense 
+    <Suspense
       fallback={
         <>
           <AriaLiveRegion loading={true} loadingMessage="Loading ticket statistics..." />

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function CommitteeTaggedTicketsPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Layout ensures userId exists and user is created via getOrCreateUser
   const { userId } = await auth();
@@ -28,9 +28,8 @@ export default async function CommitteeTaggedTicketsPage({
   // Use cached function for better performance (request-scoped deduplication)
   const user = await getCachedUser(userId);
 
-  const params = searchParams && typeof (searchParams as any).then === "function"
-    ? await (searchParams as Promise<Record<string, string | string[] | undefined>>)
-    : (searchParams || {});
+  // Await searchParams (Next.js 15 uses Promise-based searchParams)
+  const params = (await searchParams) || {};
   const search = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const statusFilter = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
   const categoryFilter = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";

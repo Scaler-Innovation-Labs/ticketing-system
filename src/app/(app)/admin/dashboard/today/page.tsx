@@ -30,6 +30,7 @@ export default async function AdminTodayPendingPage() {
     getCachedTicketStatuses(),
   ]);
 
+  if (!dbUser) throw new Error("User not found");
   const adminUserDbId = dbUser.id;
 
   // No filters on today page - just show all tickets due today
