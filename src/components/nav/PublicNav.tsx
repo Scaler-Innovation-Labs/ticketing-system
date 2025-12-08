@@ -28,7 +28,9 @@ export function PublicNav() {
           <ThemeToggle />
           {pathname !== "/sign-in" && (
             <Button asChild size="sm" variant="outline">
-              <Link href="/sign-in">Sign in</Link>
+              <SignUpButton mode="modal">
+                Sign in
+              </SignUpButton>
             </Button>
           )}
           <Button asChild size="sm">
