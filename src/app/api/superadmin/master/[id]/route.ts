@@ -47,14 +47,15 @@ const UpdateScopeSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
 
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type');
-    const id = parseInt(params.id, 10);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr, 10);
 
     if (!type || isNaN(id)) {
       return NextResponse.json(
@@ -179,14 +180,15 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
 
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type');
-    const id = parseInt(params.id, 10);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr, 10);
 
     if (!type || isNaN(id)) {
       return NextResponse.json(

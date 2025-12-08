@@ -8,7 +8,19 @@ import Link from "next/link";
 // Use ISR - revalidate every 5 minutes (committees change infrequently)
 export const revalidate = 300;
 
-async function getCommitteeMembers(committeeId: number) {
+interface CommitteeMember {
+  id: number;
+  committee_id: number;
+  clerk_user_id: string;
+  role: string | null;
+  user?: {
+    firstName: string | null;
+    lastName: string | null;
+    emailAddresses: Array<{ emailAddress: string }>;
+  };
+}
+
+async function getCommitteeMembers(committeeId: number): Promise<CommitteeMember[]> {
   const [committee] = await db
     .select({
       id: committees.id,
@@ -43,13 +55,13 @@ async function getCommitteeMembers(committeeId: number) {
   const lastName = restNameParts.length > 0 ? restNameParts.join(" ") : null;
 
   return [{
-    id: member.id,
+    id: 0,
     committee_id: committee.id,
-    user_id: member.id,
+
     clerk_user_id: member.external_id || "",
     role: "head",
-    created_at: null,
-    updated_at: null,
+
+
     user: {
       firstName: firstName || null,
       lastName,
@@ -102,7 +114,7 @@ export default async function CommitteesPage() {
         </Button>
       </div>
 
-      <CommitteesManagement 
+      <CommitteesManagement
         initialCommittees={allCommittees}
         initialMembers={membersMap}
       />

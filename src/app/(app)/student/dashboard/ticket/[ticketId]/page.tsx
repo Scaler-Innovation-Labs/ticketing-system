@@ -133,11 +133,18 @@ export default async function StudentTicketPage({
             <TicketSubmittedInfo
               description={vm.ticket.description}
               location={vm.ticket.location}
-              images={vm.images}
+              images={vm.images.map(img => img.url)}
               dynamicFields={vm.normalizedDynamicFields}
             />
 
-            <TicketTimeline entries={vm.timelineEntries} />
+            <TicketTimeline entries={vm.timelineEntries.map(entry => ({
+              title: entry.title,
+              icon: entry.type === 'creation' ? 'Plus' : entry.type === 'status_change' ? 'RotateCw' : 'MessageSquare',
+              date: entry.timestamp,
+              color: 'bg-gray-100',
+              textColor: 'text-gray-600',
+              description: entry.description || undefined
+            }))} />
 
             <TicketConversation
               comments={vm.normalizedComments}

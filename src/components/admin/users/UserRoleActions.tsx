@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Loader2, Settings, Trash2, UserX } from "lucide-react";
-import type { Roles } from "@/types/globals";
+import type { Role } from "@/types/globals";
 
 interface StaffMember {
   id: number;
@@ -21,7 +21,7 @@ interface UserRoleActionsProps {
   currentRole: string;
   loading: string | null;
   staffAssignment: StaffMember | null;
-  onSetRole: (userId: string, role: Roles) => void;
+  onSetRole: (userId: string, role: Role) => void;
   onRemoveRole: (userId: string) => void;
   onOpenStaffDialog: (userId: string) => void;
   onDeleteStaff: (staffId: string) => void;

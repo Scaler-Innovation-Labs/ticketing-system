@@ -37,12 +37,21 @@ export default async function DomainsPage() {
         orderBy: (batches, { asc }) => [asc(batches.year)],
     });
 
+    const formattedDomains = allDomains.map(d => ({
+        ...d,
+        created_at: d.created_at.toISOString(),
+        description: d.description || null
+    }));
+
+    const formattedScopes = allScopes.map(s => ({
+        ...s,
+        created_at: s.created_at.toISOString(),
+        description: null,
+        student_field_key: s.student_field_key || null
+    }));
+
     const masterData = {
-        domains: allDomains.map(d => ({
-            ...d,
-            created_at: d.created_at.toISOString(),
-            description: d.description || null
-        })),
+        domains: formattedDomains,
         hostels: activeHostels.map(h => ({ id: h.id, name: h.name })),
         classSections: activeClassSections.map(s => ({ id: s.id, name: s.name })),
         batches: activeBatches.map(b => ({ id: b.id, batch_year: b.year })),
@@ -66,8 +75,8 @@ export default async function DomainsPage() {
             </div>
 
             <DomainsManagement
-                initialDomains={allDomains}
-                initialScopes={allScopes}
+                initialDomains={formattedDomains}
+                initialScopes={formattedScopes}
                 masterData={masterData}
             />
         </div>

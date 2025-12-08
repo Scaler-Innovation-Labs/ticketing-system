@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
+import type { Role } from "@/types/globals";
 
 interface StaffMember {
   id: number;
@@ -48,7 +49,7 @@ type User = {
   name: string | null;
   emailAddresses: Array<{ emailAddress: string }>;
   publicMetadata: {
-    role?: string;
+    role?: Role;
   };
 };
 
@@ -131,8 +132,8 @@ export function StaffAssignmentDialog({
             {editingStaff
               ? `Update staff assignment for ${editingStaff.fullName}`
               : formMode === "select"
-              ? "Select an existing user from Clerk to assign as staff"
-              : "Create a new user account and assign them as staff. They will need to sign up with Clerk using this email."}
+                ? "Select an existing user from Clerk to assign as staff"
+                : "Create a new user account and assign them as staff. They will need to sign up with Clerk using this email."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

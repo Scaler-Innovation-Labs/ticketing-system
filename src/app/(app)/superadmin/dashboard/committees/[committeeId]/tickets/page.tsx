@@ -46,7 +46,7 @@ export default async function CommitteeTicketsPage({
     .where(eq(committees.id, id))
     .limit(1);
 
-  if (!committee || !committee.head_id) {
+  if (!committee) {
     notFound();
   }
 

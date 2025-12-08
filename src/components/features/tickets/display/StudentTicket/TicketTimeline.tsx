@@ -1,16 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  CalendarCheck, 
-  Calendar, 
-  AlertCircle, 
-  CheckCircle2, 
-  Clock, 
-  RotateCw, 
-  MessageSquare, 
-  AlertTriangle 
+import {
+  CalendarCheck,
+  Calendar,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  RotateCw,
+  MessageSquare,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
-import type { TicketTimelineEntry } from "@/types/ticket";
+import { TimelineEntry } from "@/lib/ticket/formatting/buildTimeline";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Calendar,
@@ -23,7 +23,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 interface TicketTimelineProps {
-  entries: TicketTimelineEntry[];
+  entries: TimelineEntry[];
 }
 
 export function TicketTimeline({ entries }: TicketTimelineProps) {

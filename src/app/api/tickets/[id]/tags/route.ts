@@ -20,12 +20,13 @@ const RemoveTagSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await getCurrentUser();
 
-    const ticketId = parseInt(params.id, 10);
+    const { id: idStr } = await params;
+    const ticketId = parseInt(idStr, 10);
     if (isNaN(ticketId)) {
       return NextResponse.json({ error: 'Invalid ticket ID' }, { status: 400 });
     }
@@ -54,12 +55,13 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await getCurrentUser();
 
-    const ticketId = parseInt(params.id, 10);
+    const { id: idStr } = await params;
+    const ticketId = parseInt(idStr, 10);
     if (isNaN(ticketId)) {
       return NextResponse.json({ error: 'Invalid ticket ID' }, { status: 400 });
     }

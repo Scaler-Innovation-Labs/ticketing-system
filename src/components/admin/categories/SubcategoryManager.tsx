@@ -33,7 +33,7 @@ interface Subcategory {
   description: string | null;
   display_order: number;
   active: boolean;
-  assigned_admin_id?: number | null;
+  assigned_admin_id?: string | null;
   fields?: Field[];
 }
 
@@ -63,7 +63,7 @@ interface FieldOption {
 
 interface SubcategoryManagerProps {
   categoryId: number;
-  categoryDefaultAdmin?: number | null;
+  categoryDefaultAdmin?: string | null;
 }
 
 export function SubcategoryManager({ categoryId, categoryDefaultAdmin }: SubcategoryManagerProps) {
@@ -244,7 +244,7 @@ export function SubcategoryManager({ categoryId, categoryDefaultAdmin }: Subcate
                         subcategoryId={subcategory.id}
                         initialFields={subcategory.fields || []}
                         onFieldsChange={fetchSubcategories}
-                        subcategoryDefaultAdmin={subcategory.assigned_admin_id ? String(subcategory.assigned_admin_id) : (categoryDefaultAdmin ? String(categoryDefaultAdmin) : null)}
+                        subcategoryDefaultAdmin={subcategory.assigned_admin_id || categoryDefaultAdmin || null}
                       />
                     </div>
                   </CardContent>
@@ -261,9 +261,9 @@ export function SubcategoryManager({ categoryId, categoryDefaultAdmin }: Subcate
         categoryId={categoryId}
         subcategory={editingSubcategory ? {
           ...editingSubcategory,
-          assigned_admin_id: editingSubcategory.assigned_admin_id ? String(editingSubcategory.assigned_admin_id) : null,
+          assigned_admin_id: editingSubcategory.assigned_admin_id || null,
         } : null}
-        categoryDefaultAdmin={categoryDefaultAdmin ? String(categoryDefaultAdmin) : null}
+        categoryDefaultAdmin={categoryDefaultAdmin || null}
       />
     </div>
   );

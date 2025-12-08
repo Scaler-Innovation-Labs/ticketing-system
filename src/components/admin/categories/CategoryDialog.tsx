@@ -26,6 +26,7 @@ import { api, endpoints } from "@/lib/api/client";
 import { useAdmins, type Admin } from "@/lib/api/admins";
 import { useFetchDomains } from "@/hooks/api/useFetchDomains";
 import { useSlugGeneration } from "@/hooks/forms/useSlugGeneration";
+import { type SelectCategory } from "@/db/schema-tickets";
 
 interface Category {
   id: number;
@@ -60,7 +61,7 @@ interface Scope {
 interface CategoryDialogProps {
   open: boolean;
   onClose: (saved: boolean) => void;
-  category?: Category | null;
+  category?: SelectCategory | null;
 }
 
 export function CategoryDialog({ open, onClose, category }: CategoryDialogProps) {
@@ -104,7 +105,7 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
         domain_id: category.domain_id || 1,
         scope_id: category.scope_id || null,
         default_admin_id: category.default_admin_id || null,
-        is_active: category.active,
+        is_active: category.is_active,
       });
       setManualEdit(true); // When editing, slug is already set, so mark as manually edited
     } else {

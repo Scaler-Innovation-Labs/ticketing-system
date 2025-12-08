@@ -16,11 +16,12 @@ const UpdateRoleSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireRole(['super_admin']);
 
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateRoleSchema.safeParse(body);
 
@@ -31,7 +32,7 @@ export async function PATCH(
       );
     }
 
-    await updateAdminRole(params.id, parsed.data.role);
+    await updateAdminRole(id, parsed.data.role);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

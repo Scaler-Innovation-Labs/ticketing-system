@@ -53,6 +53,8 @@ export interface TATInfo {
     isOverdue: boolean;
     formattedDeadline: string;
     expectedResolution?: Date | null;
+    tatSetAt?: Date | string | null;
+    tatSetBy?: string | null;
 }
 
 export interface TicketMetadata {

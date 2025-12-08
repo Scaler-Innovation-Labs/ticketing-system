@@ -180,7 +180,16 @@ export default async function StudentDashboardPage({
           <CardContent className="p-4 sm:p-6">
             <Suspense fallback={<div className="h-20 animate-pulse bg-muted rounded-lg" />}>
               <TicketSearch
-                categories={categoryList}
+                categories={categoryList.map(cat => ({
+                  value: cat.slug,
+                  label: cat.name,
+                  id: cat.id,
+                  subcategories: cat.subcategories.map((sub: any) => ({
+                    value: sub.slug,
+                    label: sub.name,
+                    id: sub.id
+                  }))
+                }))}
                 currentSort={sortBy}
                 statuses={ticketStatuses}
               />

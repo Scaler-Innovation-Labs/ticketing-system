@@ -12,37 +12,20 @@ import { CategoryAssignmentsManager } from "./CategoryAssignmentsManager";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface Category {
-  id: number;
-  name: string;
-  slug: string;
-  description: string | null;
-  icon: string | null;
-  color: string | null;
-  sla_hours: number;
-  display_order: number;
-  active?: boolean;
-  is_active?: boolean; // API may return is_active instead of active
-  default_authority?: number | null;
-  domain_id?: number | null;
-  created_at: Date | null;
-  updated_at: Date | null;
-}
+import { type SelectCategory } from "@/db/schema-tickets";
 
-// Helper to check if category is active (handles both field names)
-const isCategoryActive = (category: Category) =>
-  category.active === true || category.is_active === true;
-
+// Helper to check if category is active
+const isCategoryActive = (category: SelectCategory) => category.is_active;
 
 interface CategoryManagerProps {
-  initialCategories: Category[];
+  initialCategories: SelectCategory[];
 }
 
 export function CategoryManager({ initialCategories }: CategoryManagerProps) {
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categories, setCategories] = useState<SelectCategory[]>(initialCategories);
+  const [selectedCategory, setSelectedCategory] = useState<SelectCategory | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editingCategory, setEditingCategory] = useState<SelectCategory | null>(null);
 
   const fetchCategories = async () => {
     try {
@@ -66,12 +49,12 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
     setIsDialogOpen(true);
   };
 
-  const handleEditCategory = (category: Category) => {
+  const handleEditCategory = (category: SelectCategory) => {
     setEditingCategory(category);
     setIsDialogOpen(true);
   };
 
-  const handleDeleteCategory = async (category: Category) => {
+  const handleDeleteCategory = async (category: SelectCategory) => {
     if (!confirm(`Are you sure you want to delete "${category.name}"? This will also delete all subcategories and fields.`)) {
       return;
     }
@@ -163,7 +146,7 @@ export function CategoryManager({ initialCategories }: CategoryManagerProps) {
             </div>
             <SubcategoryManager
               categoryId={selectedCategory.id}
-              categoryDefaultAdmin={selectedCategory.default_authority}
+              categoryDefaultAdmin={selectedCategory.default_admin_id}
             />
           </TabsContent>
 

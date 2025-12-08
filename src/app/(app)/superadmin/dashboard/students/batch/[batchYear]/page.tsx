@@ -15,7 +15,7 @@ export default async function SuperAdminBatchStudentsPage({
 }) {
   const { batchYear } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  
+
   const search = typeof resolvedSearchParams.search === "string" ? resolvedSearchParams.search : "";
   const hostelFilter = typeof resolvedSearchParams.hostel === "string" ? resolvedSearchParams.hostel : "";
   const page = parseInt(typeof resolvedSearchParams.page === "string" ? resolvedSearchParams.page : "1");
@@ -30,9 +30,9 @@ export default async function SuperAdminBatchStudentsPage({
 
   // Build where conditions
   const whereConditions: ReturnType<typeof and>[] = [];
-  
+
   // Always filter by batch year
-  whereConditions.push(eq(batches.batch_year, batchYearNum));
+  whereConditions.push(eq(batches.year, batchYearNum));
 
   if (search) {
     whereConditions.push(
@@ -53,12 +53,12 @@ export default async function SuperAdminBatchStudentsPage({
       student_id: students.id,
       user_id: users.id,
       email: users.email,
-      full_name: users.full_name,
+      full_name: sql<string>`COALESCE(${users.full_name}, '')`,
       phone: users.phone,
       room_no: students.room_no,
       hostel: hostels.name,
       class_section: class_sections.name,
-      batch_year: batches.batch_year,
+      batch_year: batches.year,
       blood_group: students.blood_group,
       created_at: students.created_at,
       updated_at: students.updated_at,
@@ -69,7 +69,7 @@ export default async function SuperAdminBatchStudentsPage({
     .leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
     .leftJoin(batches, eq(students.batch_id, batches.id))
     .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
-    .orderBy(sql`${batches.batch_year} DESC NULLS LAST, ${users.full_name} ASC`)
+    .orderBy(sql`${batches.year} DESC NULLS LAST, ${users.full_name} ASC`)
     .limit(limit)
     .offset(offset);
 

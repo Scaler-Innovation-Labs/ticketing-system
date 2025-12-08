@@ -35,6 +35,7 @@ interface FieldLogicSectionProps {
   onManualLogicInputChange: (text: string) => void;
   controllingFields: Field[];
   hasControllingFields: boolean;
+  onLogicRequiredToggle: (enabled: boolean) => void;
 }
 
 const CHOICE_FIELD_TYPES = new Set(["select", "multi_select"]);
@@ -54,6 +55,7 @@ export function FieldLogicSection({
   onManualLogicInputChange,
   controllingFields,
   hasControllingFields,
+  onLogicRequiredToggle,
 }: FieldLogicSectionProps) {
   return (
     <div className="space-y-3 border rounded-lg p-4">

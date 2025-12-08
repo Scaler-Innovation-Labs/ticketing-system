@@ -210,6 +210,8 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
     ...ticket,
 
+    status: ticket.status?.value || null,
+
     acknowledged_at,
 
     resolved_at,
@@ -220,7 +222,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
   const baseTimeline = buildTimeline(ticketForTimeline, normalizedStatus);
 
-  const timelineEntries: TicketTimelineEntry[] = enrichTimelineWithTAT(baseTimeline, ticket, { normalizedStatus, ticketProgress });
+  const timelineEntries = enrichTimelineWithTAT(baseTimeline, ticket, { normalizedStatus, ticketProgress });
 
 
 

@@ -25,6 +25,7 @@ export function sanitizeTicket(ticket: any) {
         category_id: ticket.category_id,
         category_name: ticket.category_name || 'Unknown',
         category_icon: ticket.category_icon || '📋',
+        scope_id: ticket.scope_id || null,
         subcategory_id: ticket.subcategory_id || null,
         subcategory_name: ticket.subcategory_name || null,
         creator_name: ticket.creator_name || null, // Add creator fields
@@ -108,6 +109,7 @@ export interface SerializedTicket {
     category_id: number;
     category_name: string;
     category_icon: string;
+    scope_id: number | null;
     subcategory_id: number | null;
     subcategory_name: string | null;
     escalation_level: number;

@@ -11,14 +11,14 @@ import {
 } from "@/components/ui/table";
 import { User, Mail, Building2, GraduationCap, MapPin, MessageSquare, Phone, UserX } from "lucide-react";
 import { UserRoleActions } from "./UserRoleActions";
-import type { Roles } from "@/types/globals";
+import type { Role } from "@/types/globals";
 
 type User = {
   id: string;
   name: string | null;
   emailAddresses: Array<{ emailAddress: string }>;
   publicMetadata: {
-    role?: Roles;
+    role?: Role;
   };
 };
 
@@ -42,7 +42,7 @@ interface UserManagementTableProps {
   getRoleBadgeClass: (role: string) => string;
   getDomainIcon: (domain: string) => typeof Building2 | typeof GraduationCap;
   getDomainColor: (domain: string) => string;
-  onSetRole: (userId: string, role: Roles) => void;
+  onSetRole: (userId: string, role: Role) => void;
   onRemoveRole: (userId: string) => void;
   onOpenStaffDialog: (user: User) => void;
   onDeleteStaff: (staffId: string) => void;

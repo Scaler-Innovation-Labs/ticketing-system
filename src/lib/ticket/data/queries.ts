@@ -186,6 +186,17 @@ export async function getTicketStats(userId: string) {
         .where(eq(tickets.created_by, userId))
         .groupBy(ticket_statuses.value);
 
+    // Get escalated count
+    const escalatedResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(tickets)
+        .where(and(
+            eq(tickets.created_by, userId),
+            sql`${tickets.escalation_level} > 0`
+        ));
+
+    const escalatedCount = Number(escalatedResult[0]?.count || 0);
+
     const stats = {
         total: 0,
         open: 0,
@@ -193,6 +204,7 @@ export async function getTicketStats(userId: string) {
         resolved: 0,
         closed: 0,
         awaitingStudent: 0,
+        escalated: escalatedCount,
     };
 
     result.forEach((row) => {

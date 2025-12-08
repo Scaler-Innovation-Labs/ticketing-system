@@ -77,8 +77,10 @@ export interface StudentTicketViewModel {
         name: string;
     }[];
     normalizedDynamicFields: {
+        key: string;
         label: string;
         value: string;
+        type: string;
     }[];
     timelineEntries: {
         id: number;
@@ -179,8 +181,10 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         ? Object.entries(metadata)
             .filter(([key]) => !['profile_snapshot', 'system_info'].includes(key))
             .map(([key, value]) => ({
+                key,
                 label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                value: String(value)
+                value: String(value),
+                type: 'text'
             }))
         : [];
 

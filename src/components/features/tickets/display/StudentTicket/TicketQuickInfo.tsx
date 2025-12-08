@@ -7,7 +7,7 @@ import type { TATInfo } from "@/types/ticket";
 interface TicketQuickInfoProps {
   ticketProgress: number;
   normalizedStatus: string;
-  assignedStaff: { name: string; email: string | null } | null;
+  assignedStaff: { name: string; email?: string | null; role?: string; avatar_url?: string | null } | null;
   tatInfo: TATInfo;
   ticket: {
     resolved_at?: Date | string | null;
@@ -40,22 +40,21 @@ export function TicketQuickInfo({
             <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{ticketProgress}%</span>
           </div>
           <div className="relative">
-            <Progress 
-              value={ticketProgress} 
-              className={`h-2.5 rounded-full shadow-inner ${
-                normalizedStatus === "in_progress" 
-                  ? "[&>div]:bg-gradient-to-r [&>div]:from-blue-500 [&>div]:via-blue-600 [&>div]:to-blue-500 [&>div]:shadow-[0_0_8px_rgba(37,99,235,0.4)]" 
-                  : normalizedStatus === "resolved" || normalizedStatus === "closed"
+            <Progress
+              value={ticketProgress}
+              className={`h-2.5 rounded-full shadow-inner ${normalizedStatus === "in_progress"
+                ? "[&>div]:bg-gradient-to-r [&>div]:from-blue-500 [&>div]:via-blue-600 [&>div]:to-blue-500 [&>div]:shadow-[0_0_8px_rgba(37,99,235,0.4)]"
+                : normalizedStatus === "resolved" || normalizedStatus === "closed"
                   ? "[&>div]:bg-gradient-to-r [&>div]:from-emerald-500 [&>div]:via-emerald-600 [&>div]:to-emerald-500 [&>div]:shadow-[0_0_8px_rgba(16,185,129,0.4)]"
                   : normalizedStatus === "reopened"
-                  ? "[&>div]:bg-gradient-to-r [&>div]:from-indigo-500 [&>div]:via-indigo-600 [&>div]:to-indigo-500 [&>div]:shadow-[0_0_8px_rgba(99,102,241,0.4)]"
-                  : normalizedStatus === "awaiting_student_response"
-                  ? "[&>div]:bg-gradient-to-r [&>div]:from-amber-500 [&>div]:via-amber-600 [&>div]:to-amber-500 [&>div]:shadow-[0_0_8px_rgba(217,119,6,0.4)]"
-                  : "[&>div]:bg-gradient-to-r [&>div]:from-primary [&>div]:via-primary/90 [&>div]:to-primary [&>div]:shadow-[0_0_8px_rgba(var(--primary),0.3)]"
-              }`} 
+                    ? "[&>div]:bg-gradient-to-r [&>div]:from-indigo-500 [&>div]:via-indigo-600 [&>div]:to-indigo-500 [&>div]:shadow-[0_0_8px_rgba(99,102,241,0.4)]"
+                    : normalizedStatus === "awaiting_student_response"
+                      ? "[&>div]:bg-gradient-to-r [&>div]:from-amber-500 [&>div]:via-amber-600 [&>div]:to-amber-500 [&>div]:shadow-[0_0_8px_rgba(217,119,6,0.4)]"
+                      : "[&>div]:bg-gradient-to-r [&>div]:from-primary [&>div]:via-primary/90 [&>div]:to-primary [&>div]:shadow-[0_0_8px_rgba(var(--primary),0.3)]"
+                }`}
             />
             {ticketProgress > 0 && ticketProgress < 100 && (
-              <div 
+              <div
                 className="absolute top-0 left-0 h-2.5 rounded-full pointer-events-none overflow-hidden"
                 style={{ width: `${ticketProgress}%` }}
               >
@@ -148,7 +147,7 @@ export function TicketQuickInfo({
               <span className="text-sm font-medium text-muted-foreground">Expected Resolution</span>
             </div>
             <p className={`text-sm font-semibold break-words ${tatInfo.isOverdue ? 'text-red-700 dark:text-red-400' : ''}`}>
-              {tatInfo.expectedResolution}
+              {tatInfo.expectedResolution instanceof Date ? format(tatInfo.expectedResolution, 'MMM d, yyyy') : String(tatInfo.expectedResolution)}
             </p>
             {tatInfo.tatSetAt && tatInfo.tatSetBy && (
               <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-800">

@@ -81,6 +81,13 @@ export default async function CategoryAnalyticsDetailPage({
   const rawTickets = await db
     .select({
       id: tickets.id,
+      ticket_number: tickets.ticket_number,
+      title: tickets.title,
+      priority: tickets.priority,
+      escalated_at: tickets.escalated_at,
+      forward_count: tickets.forward_count,
+      closed_at: tickets.closed_at,
+      tat_extensions: tickets.tat_extensions,
       status_id: tickets.status_id,
       status_value: ticket_statuses.value,
       description: tickets.description,
@@ -156,6 +163,13 @@ export default async function CategoryAnalyticsDetailPage({
 
     return {
       id: ticket.id,
+      ticket_number: ticket.ticket_number,
+      title: ticket.title,
+      priority: ticket.priority,
+      escalated_at: ticket.escalated_at,
+      forward_count: ticket.forward_count,
+      closed_at: ticket.closed_at,
+      tat_extensions: ticket.tat_extensions,
       status_id: ticket.status_id || 0,
       status: ticket.status_value || null,
       description: ticket.description,
@@ -525,7 +539,14 @@ export default async function CategoryAnalyticsDetailPage({
               {allTickets.map((ticket) => {
                 const ticketForCard = {
                   id: ticket.id,
-                  title: null,
+                  ticket_number: ticket.ticket_number,
+                  title: ticket.title,
+                  priority: ticket.priority,
+                  escalated_at: ticket.escalated_at,
+                  forward_count: ticket.forward_count,
+                  closed_at: ticket.closed_at,
+                  tat_extensions: ticket.tat_extensions,
+                  attachments: [],
                   description: ticket.description,
                   location: ticket.location,
                   status_id: ticket.status_id ?? 0,

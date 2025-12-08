@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
-import type { Roles } from "@/types/globals";
+import type { Role } from "@/types/globals";
 import { UserFilters } from "./UserFilters";
 import { UserManagementTable } from "./UserManagementTable";
 import { StaffAssignmentDialog } from "./StaffAssignmentDialog";
@@ -14,7 +14,7 @@ type User = {
   name: string | null;
   emailAddresses: Array<{ emailAddress: string }>;
   publicMetadata: {
-    role?: Roles;
+    role?: Role;
   };
 };
 
@@ -186,7 +186,7 @@ export function IntegratedUserManagement({ users }: { users: User[] }) {
     return staff.find(s => s.clerkUserId === userId) || null;
   };
 
-  const handleSetRole = async (userId: string, role: Roles) => {
+  const handleSetRole = async (userId: string, role: Role) => {
     setLoading(`${userId}-${role}`);
     try {
       const response = await fetch(`/api/users/${userId}/role`, {
@@ -546,7 +546,7 @@ export function IntegratedUserManagement({ users }: { users: User[] }) {
         <CardContent className="space-y-4">
           <UserManagementTable
             users={filteredUsers}
-            staff={staff}
+
             loading={loading}
             getStaffAssignment={getStaffAssignment}
             getRoleBadgeVariant={getRoleBadgeVariant}

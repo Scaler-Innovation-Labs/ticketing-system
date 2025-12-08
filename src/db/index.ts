@@ -23,7 +23,7 @@ const fullSchema = {
 };
 
 // Create postgres client with connection pooling
-const queryClient = postgres(config.databaseUrl, {
+const clientConfig = {
   max: DB_CONFIG.MAX_CONNECTIONS,
   idle_timeout: DB_CONFIG.IDLE_TIMEOUT,
   connect_timeout: DB_CONFIG.CONNECT_TIMEOUT,
@@ -37,15 +37,20 @@ const queryClient = postgres(config.databaseUrl, {
     application_name: isDevelopment ? 'ticketing-system-dev' : 'ticketing-system',
   },
 
-  // Logging in development
-  // debug: isDevelopment ? (connection, query, params) => {
-  //   // Only log slow queries in dev
-  //   console.log('[DB Query]', query);
-  // } : undefined,
-
   // Error handling
   onnotice: isDevelopment ? console.log : undefined,
-});
+};
+
+// Singleton pattern for development to avoid connection exhaustion
+const globalForDb = globalThis as unknown as {
+  queryClient: postgres.Sql | undefined;
+};
+
+const queryClient = globalForDb.queryClient ?? postgres(config.databaseUrl, clientConfig);
+
+if (isDevelopment) {
+  globalForDb.queryClient = queryClient;
+}
 
 // Create drizzle instance
 export const db = drizzle(queryClient, { schema: fullSchema });

@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { categories } from "@/db";
+import type { SelectCategory } from "@/db/schema-tickets";
 import { eq, asc, desc } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,21 +19,7 @@ export const revalidate = 30;
 export default async function CategoriesPage() {
 
   // Fetch all categories - explicitly select columns to avoid Drizzle issues
-  let allCategories: Array<{
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    icon: string | null;
-    color: string | null;
-    sla_hours: number;
-    display_order: number;
-    active: boolean;
-    default_authority?: number | null;
-    domain_id?: number | null;
-    created_at: Date | null;
-    updated_at: Date | null;
-  }> = [];
+  let allCategories: SelectCategory[] = [];
   try {
     const categoriesData = await db
       .select({
@@ -45,6 +32,7 @@ export default async function CategoriesPage() {
         sla_hours: categories.sla_hours,
         domain_id: categories.domain_id,
         scope_id: categories.scope_id,
+        scope_mode: categories.scope_mode,
         default_admin_id: categories.default_admin_id,
         parent_category_id: categories.parent_category_id,
         is_active: categories.is_active,
@@ -56,7 +44,7 @@ export default async function CategoriesPage() {
       .where(eq(categories.is_active, true))
       .orderBy(asc(categories.display_order), desc(categories.created_at));
 
-    // Transform to match Category interface (map is_active to active, ensure numbers)
+    // Transform to match SelectCategory interface
     allCategories = categoriesData.map(cat => ({
       id: cat.id,
       name: cat.name,
@@ -64,11 +52,14 @@ export default async function CategoriesPage() {
       description: cat.description,
       icon: cat.icon,
       color: cat.color,
-      sla_hours: cat.sla_hours ?? 48,
-      display_order: cat.display_order ?? 0,
-      active: cat.is_active,
-      default_authority: null, // Note: default_admin_id is UUID, but interface expects number
-      domain_id: cat.domain_id ?? null,
+      sla_hours: cat.sla_hours,
+      display_order: cat.display_order,
+      is_active: cat.is_active,
+      default_admin_id: cat.default_admin_id,
+      domain_id: cat.domain_id,
+      scope_id: cat.scope_id,
+      scope_mode: cat.scope_mode,
+      parent_category_id: cat.parent_category_id,
       created_at: cat.created_at,
       updated_at: cat.updated_at,
     }));
