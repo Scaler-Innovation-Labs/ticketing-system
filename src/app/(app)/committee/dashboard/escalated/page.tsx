@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCachedUser, getCachedTicketStatuses, getCachedCommitteeTickets } from "@/lib/cache/cached-queries";
 import type { Ticket } from "@/db/types-only";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Force dynamic rendering since we use auth headers
 export const dynamic = "force-dynamic";

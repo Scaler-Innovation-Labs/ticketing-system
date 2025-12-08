@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db, students, hostels, class_sections, batches } from "@/db";
 import { eq, asc } from "drizzle-orm";
 import { getCachedUser } from "@/lib/cache/cached-queries";
+import { ensureUser } from "@/lib/auth/api-auth";
 import { getCategoriesHierarchy } from "@/lib/category/getCategoriesHierarchy";
 import TicketForm from "@/components/features/tickets/forms/TicketForm/TicketForm";
 
@@ -16,7 +17,13 @@ export default async function CommitteeNewTicketPage() {
   if (!userId) throw new Error("Unauthorized"); // TypeScript type guard - layout ensures this never happens
 
   // Use cached function for better performance (request-scoped deduplication)
-  const dbUser = await getCachedUser(userId);
+  let dbUser = await getCachedUser(userId);
+
+  // Fallback: ensure user exists in DB and refetch if cache miss or not found
+  if (!dbUser) {
+    await ensureUser(userId);
+    dbUser = await getCachedUser(userId);
+  }
 
   // Parallelize all database queries for better performance
   const [
@@ -60,7 +67,7 @@ export default async function CommitteeNewTicketPage() {
   const studentHostel = studentData ? hostelsList.find(h => h.id === studentData.hostel_id) : null;
 
   // Normalize student - use full_name from schema
-  const fullName = dbUser.full_name || "";
+  const fullName = dbUser?.full_name || "";
 
   const normalizedStudent = {
     fullName: fullName,
