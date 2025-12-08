@@ -28,7 +28,7 @@ const CreateStudentSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get('page') || '1', 10);
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const body = await request.json();
     const parsed = CreateStudentSchema.safeParse(body);

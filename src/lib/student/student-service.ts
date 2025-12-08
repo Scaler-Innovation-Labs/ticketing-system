@@ -337,8 +337,11 @@ export async function getStudentById(studentId: number) {
         roll_no: students.roll_no,
         room_no: students.room_no,
         hostel_id: students.hostel_id,
+        hostel_name: hostels.name,
         class_section_id: students.class_section_id,
+        section_name: class_sections.name,
         batch_id: students.batch_id,
+        batch_year: batches.year,
         department: students.department,
         blood_group: students.blood_group,
         parent_name: students.parent_name,
@@ -349,6 +352,9 @@ export async function getStudentById(studentId: number) {
       })
       .from(students)
       .innerJoin(users, eq(students.user_id, users.id))
+      .leftJoin(hostels, eq(students.hostel_id, hostels.id))
+      .leftJoin(class_sections, eq(students.class_section_id, class_sections.id))
+      .leftJoin(batches, eq(students.batch_id, batches.id))
       .where(eq(students.id, studentId))
       .limit(1);
 

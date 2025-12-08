@@ -31,7 +31,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const { id } = await params;
     const studentId = parseInt(id, 10);
@@ -60,7 +60,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const { id } = await params;
     const studentId = parseInt(id, 10);
@@ -95,7 +95,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const { id } = await params;
     const studentId = parseInt(id, 10);

@@ -322,7 +322,7 @@ function zodErrorToValidationError(
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     // Get FormData
     const formData = await request.formData();

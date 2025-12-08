@@ -67,7 +67,8 @@ export async function listAdmins(params: {
         and(
           or(
             eq(roles.name, 'admin'),
-            eq(roles.name, 'super_admin')
+            eq(roles.name, 'super_admin'),
+            eq(roles.name, 'snr_admin')
           ),
           whereConditions.length > 0 ? and(...whereConditions) : undefined
         )
@@ -85,7 +86,8 @@ export async function listAdmins(params: {
         and(
           or(
             eq(roles.name, 'admin'),
-            eq(roles.name, 'super_admin')
+            eq(roles.name, 'super_admin'),
+            eq(roles.name, 'snr_admin')
           ),
           whereConditions.length > 0 ? and(...whereConditions) : undefined
         )

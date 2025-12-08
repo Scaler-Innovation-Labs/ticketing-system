@@ -38,12 +38,18 @@ interface StudentData {
     phone: string | null;
     room_no: string | null;
     hostel_id: number | null;
-    batch_id: number | null;
-    class_section_id: number | null;
-    batch_year: number | null;
     hostel_name: string | null;
-    batch_display: string | null;
+    batch_id: number | null;
+    batch_year: number | null;
+    class_section_id: number | null;
     section_name: string | null;
+    department?: string | null;
+    blood_group?: string | null;
+    parent_name?: string | null;
+    parent_phone?: string | null;
+    is_active?: boolean;
+    created_at?: Date | string;
+    updated_at?: Date | string;
 }
 
 interface MasterData {
@@ -70,22 +76,37 @@ export function EditStudentDialog({
     const [formData, setFormData] = useState({
         full_name: "",
         phone: "",
-        roll_no: "",
         room_no: "",
         hostel_id: null as number | null,
         batch_id: null as number | null,
         class_section_id: null as number | null,
-        batch_year: null as number | null,
     });
 
-    // Fetch student data when dialog opens
+    // Fetch master data and student data when dialog opens
     useEffect(() => {
         if (open && studentId) {
-            fetchStudentData();
             fetchMasterData();
+            fetchStudentData();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, studentId]);
+
+    // Update formData when both student and masterData are available
+    // This ensures Select components can display the correct selected values
+    useEffect(() => {
+        if (student && masterData.hostels.length >= 0 && masterData.batches.length >= 0 && masterData.sections.length >= 0) {
+            const fullName = (student.full_name || "").trim();
+            setFormData({
+                full_name: fullName,
+                phone: student.phone || "",
+                room_no: student.room_no || "",
+                hostel_id: student.hostel_id,
+                batch_id: student.batch_id,
+                class_section_id: student.class_section_id,
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [student?.student_id, masterData.hostels.length, masterData.batches.length, masterData.sections.length]);
 
     const fetchStudentData = async () => {
         setFetching(true);
@@ -122,17 +143,7 @@ export function EditStudentDialog({
                 full_name: fullName,
             });
 
-            // Populate form
-            setFormData({
-                full_name: fullName,
-                phone: student.phone || "",
-                roll_no: student.roll_no || "",
-                room_no: student.room_no || "",
-                hostel_id: student.hostel_id,
-                batch_id: student.batch_id,
-                class_section_id: student.class_section_id,
-                batch_year: student.batch_year,
-            });
+            // Form data will be populated by useEffect when masterData is ready
         } catch (error) {
             console.error("Error fetching student:", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to load student data";
@@ -144,8 +155,14 @@ export function EditStudentDialog({
 
     const fetchMasterData = async () => {
         try {
-            // Fetch hostels
-            const hostelsRes = await fetch("/api/master/hostels");
+            // Fetch all master data in parallel
+            const [hostelsRes, batchesRes, sectionsRes] = await Promise.all([
+                fetch("/api/master/hostels"),
+                fetch("/api/master/batches"),
+                fetch("/api/master/class-sections"),
+            ]);
+
+            // Process hostels
             if (hostelsRes.ok) {
                 const contentType = hostelsRes.headers.get("content-type");
                 if (contentType?.includes("application/json")) {
@@ -158,8 +175,7 @@ export function EditStudentDialog({
                 console.warn(`Failed to fetch hostels: ${hostelsRes.status}`);
             }
 
-            // Fetch batches
-            const batchesRes = await fetch("/api/master/batches");
+            // Process batches
             if (batchesRes.ok) {
                 const contentType = batchesRes.headers.get("content-type");
                 if (contentType?.includes("application/json")) {
@@ -172,8 +188,7 @@ export function EditStudentDialog({
                 console.warn(`Failed to fetch batches: ${batchesRes.status}`);
             }
 
-            // Fetch sections
-            const sectionsRes = await fetch("/api/master/class-sections");
+            // Process sections
             if (sectionsRes.ok) {
                 const contentType = sectionsRes.headers.get("content-type");
                 if (contentType?.includes("application/json")) {
@@ -248,26 +263,14 @@ export function EditStudentDialog({
                         <div className="space-y-4">
                             <h3 className="font-semibold text-sm">Basic Information</h3>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Label htmlFor="full_name">Full Name *</Label>
-                                    <Input
-                                        id="full_name"
-                                        value={formData.full_name}
-                                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <Label htmlFor="roll_no">Roll Number *</Label>
-                                    <Input
-                                        id="roll_no"
-                                        value={formData.roll_no}
-                                        onChange={(e) => setFormData({ ...formData, roll_no: e.target.value })}
-                                        required
-                                    />
-                                </div>
+                            <div>
+                                <Label htmlFor="full_name">Full Name *</Label>
+                                <Input
+                                    id="full_name"
+                                    value={formData.full_name}
+                                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                                    required
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -301,7 +304,7 @@ export function EditStudentDialog({
                                 <div>
                                     <Label htmlFor="hostel">Hostel</Label>
                                     <Select
-                                        value={formData.hostel_id?.toString() || "none"}
+                                        value={formData.hostel_id ? formData.hostel_id.toString() : "none"}
                                         onValueChange={(value) =>
                                             setFormData({ ...formData, hostel_id: value === "none" ? null : parseInt(value) })
                                         }
@@ -340,7 +343,7 @@ export function EditStudentDialog({
                                 <div>
                                     <Label htmlFor="batch">Batch</Label>
                                     <Select
-                                        value={formData.batch_id?.toString() || "none"}
+                                        value={formData.batch_id ? formData.batch_id.toString() : "none"}
                                         onValueChange={(value) =>
                                             setFormData({ ...formData, batch_id: value === "none" ? null : parseInt(value) })
                                         }
@@ -352,7 +355,7 @@ export function EditStudentDialog({
                                             <SelectItem value="none">None</SelectItem>
                                             {masterData.batches.map((batch) => (
                                                 <SelectItem key={batch.id} value={batch.id.toString()}>
-                                                    {batch.display_name || batch.batch_year}
+                                                    {batch.display_name || (batch.batch_year ? batch.batch_year.toString() : 'Unknown')}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -362,7 +365,7 @@ export function EditStudentDialog({
                                 <div>
                                     <Label htmlFor="section">Class Section</Label>
                                     <Select
-                                        value={formData.class_section_id?.toString() || "none"}
+                                        value={formData.class_section_id ? formData.class_section_id.toString() : "none"}
                                         onValueChange={(value) =>
                                             setFormData({ ...formData, class_section_id: value === "none" ? null : parseInt(value) })
                                         }
@@ -382,20 +385,6 @@ export function EditStudentDialog({
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Label htmlFor="batch_year">Batch Year</Label>
-                                    <Input
-                                        id="batch_year"
-                                        type="number"
-                                        value={formData.batch_year || ""}
-                                        onChange={(e) =>
-                                            setFormData({ ...formData, batch_year: e.target.value ? parseInt(e.target.value) : null })
-                                        }
-                                        placeholder="e.g., 2027"
-                                    />
-                                </div>
-                            </div>
                         </div>
 
                         <DialogFooter>

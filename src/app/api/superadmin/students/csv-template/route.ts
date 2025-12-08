@@ -10,7 +10,7 @@ import { requireRole } from '@/lib/auth/helpers';
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(['super_admin']);
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     // Use user-friendly column names that match the header mapping
     const csvContent = `full_name,email,mobile,roll_no,room_number,hostel,class_section,batch_year,department,blood_group,parent_name,parent_phone

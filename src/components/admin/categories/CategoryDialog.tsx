@@ -182,6 +182,11 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
   // Get filtered scopes for selected domain
   const filteredScopes = (scopes || []).filter(scope => scope.domain_id === formData.domain_id);
 
+  // Find the selected admin for display
+  const selectedAdmin = formData.default_admin_id 
+    ? admins.find(admin => admin.id === formData.default_admin_id)
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose(false)}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -393,7 +398,7 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
             <div className="space-y-2">
               <Label htmlFor="default_admin_id">Default Admin (Optional)</Label>
               <Select
-                value={formData.default_admin_id || "none"}
+                value={formData.default_admin_id ? formData.default_admin_id : "none"}
                 onValueChange={(value) =>
                   setFormData((prev) => ({
                     ...prev,
@@ -407,9 +412,13 @@ export function CategoryDialog({ open, onClose, category }: CategoryDialogProps)
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No default admin</SelectItem>
-                  {admins.length === 0 ? (
+                  {loadingAdmins ? (
+                    <SelectItem value="__loading" disabled>
+                      Loading admins...
+                    </SelectItem>
+                  ) : admins.length === 0 ? (
                     <SelectItem value="__no_admins" disabled>
-                      {loadingAdmins ? "Loading admins..." : "No admins found"}
+                      No admins found
                     </SelectItem>
                   ) : (
                     admins.map((admin) => {
