@@ -29,7 +29,7 @@ export function TicketConversation({
   const canComment = normalizedStatus === "awaiting_student" || normalizedStatus === "awaiting_student_response";
   const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
   const showAlert = canComment && lastComment && lastComment.source !== "website";
-  
+
   // Merge optimistic comments with server comments, then sort oldest-first
   const allComments = [
     ...comments,
@@ -41,8 +41,10 @@ export function TicketConversation({
       author: opt.source === "website" ? "You" : undefined,
     })),
   ].sort((a, b) => {
-    const aDate = (a.createdAt || a.created_at) ? new Date(a.createdAt || a.created_at).getTime() : 0;
-    const bDate = (b.createdAt || b.created_at) ? new Date(b.createdAt || b.created_at).getTime() : 0;
+    const aDateVal = a.createdAt ?? a.created_at;
+    const bDateVal = b.createdAt ?? b.created_at;
+    const aDate = aDateVal ? new Date(aDateVal).getTime() : 0;
+    const bDate = bDateVal ? new Date(bDateVal).getTime() : 0;
     return aDate - bDate; // oldest to newest
   });
 
@@ -131,8 +133,8 @@ export function TicketConversation({
                 </AlertDescription>
               </Alert>
             )}
-            <CommentForm 
-              ticketId={ticketId} 
+            <CommentForm
+              ticketId={ticketId}
               currentStatus={status?.value || undefined}
               comments={comments}
             />

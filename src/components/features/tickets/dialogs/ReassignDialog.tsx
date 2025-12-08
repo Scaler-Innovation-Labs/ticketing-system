@@ -59,7 +59,7 @@ export function ReassignDialog({
 				onReassigned();
 			}
 		} catch (error) {
-			logger.error("Error reassigning ticket", error, { component: "ReassignDialog", ticketId });
+			logger.error({ error: String(error), component: "ReassignDialog", ticketId }, "Error reassigning ticket");
 			// Error toast is handled by api client
 		} finally {
 			setLoading(false);

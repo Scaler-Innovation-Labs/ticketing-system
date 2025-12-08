@@ -12,7 +12,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, X, ArrowUpDown } from "lucide-react";
-import type { TicketStatus } from "@/schemas/status";
+
+// Local interface for status objects with value/label (distinct from string literal TicketStatus)
+interface TicketStatusOption {
+  id: number;
+  value: string;
+  label: string;
+  description?: string | null;
+  progress_percent?: number | null;
+  badge_color?: string | null;
+  is_active?: boolean;
+  is_final?: boolean;
+  display_order?: number | null;
+}
 
 interface CategoryOption {
   value: string;
@@ -35,15 +47,15 @@ interface CategoryOption {
 interface TicketSearchProps {
   categories?: CategoryOption[];
   currentSort?: string;
-  statuses?: TicketStatus[];
+  statuses?: TicketStatusOption[];
   onSearch?: (query: string) => void;
 }
 
-export default function TicketSearch({ 
-  categories = [], 
-  currentSort = "newest", 
-  statuses = [], 
-  onSearch 
+export default function TicketSearch({
+  categories = [],
+  currentSort = "newest",
+  statuses = [],
+  onSearch
 }: TicketSearchProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -175,8 +187,8 @@ export default function TicketSearch({
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 sm:gap-3 lg:gap-4">
-        <Select 
-          value={statusFilter || "all"} 
+        <Select
+          value={statusFilter || "all"}
           onValueChange={(value) => {
             const newValue = value === "all" ? "" : value.toLowerCase();
             setStatusFilter(newValue);
@@ -196,8 +208,8 @@ export default function TicketSearch({
                 // Database stores "OPEN", "IN_PROGRESS" but URL uses "open", "in_progress"
                 const normalizedValue = status.value.toLowerCase();
                 // Map AWAITING_STUDENT to awaiting_student_response for consistency
-                const urlValue = normalizedValue === "awaiting_student" 
-                  ? "awaiting_student_response" 
+                const urlValue = normalizedValue === "awaiting_student"
+                  ? "awaiting_student_response"
                   : normalizedValue;
                 return (
                   <SelectItem key={status.value} value={urlValue}>

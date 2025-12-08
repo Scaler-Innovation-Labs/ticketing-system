@@ -12,7 +12,7 @@ import { AriaLiveRegion } from "@/lib/ui/aria-live-region";
 interface CommentFormProps {
 	ticketId: number;
 	currentStatus?: string;
-	comments?: Array<{ source?: string; author?: string; [key: string]: unknown }>;
+	comments?: Array<{ source?: string; author?: string;[key: string]: unknown }>;
 	onCommentAdded?: (comment: { text: string; source: string; createdAt: Date }) => void;
 }
 
@@ -29,7 +29,7 @@ export function CommentForm({ ticketId, currentStatus, comments = [], onCommentA
 	const lastComment = comments.length > 0 ? comments[comments.length - 1] : null;
 	const lastCommentSource = lastComment?.source;
 	const lastCommentIsFromStudent = lastCommentSource === "website";
-	
+
 	// Check if student can reply:
 	// 1. Status must be "awaiting_student" (canonical value from database)
 	// 2. Last comment must NOT be from a student (must be from admin/committee)
@@ -64,7 +64,7 @@ export function CommentForm({ ticketId, currentStatus, comments = [], onCommentA
 			const response = await fetch(`/api/tickets/${ticketId}/comments`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ 
+				body: JSON.stringify({
 					comment: commentText,
 					commentType: "student_visible" // Students can only add student-visible comments
 				}),
@@ -80,7 +80,7 @@ export function CommentForm({ ticketId, currentStatus, comments = [], onCommentA
 			}
 		} catch (error) {
 			setComment(commentText); // Restore comment text
-			logger.error("Error adding comment", error, { component: "CommentForm", ticketId });
+			logger.error({ error: String(error), component: "CommentForm", ticketId }, "Error adding comment");
 			toast.error("Failed to add comment. Please try again.");
 		} finally {
 			setLoading(false);

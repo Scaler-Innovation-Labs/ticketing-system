@@ -14,10 +14,7 @@ export interface AdminData {
   email: string;
   phone: string;
   full_name: string;
-  designation?: string;
-  department?: string;
   employee_id?: string;
-  specialization?: string;
 }
 
 /**
@@ -49,16 +46,16 @@ export async function listAdmins(params: {
 
     const roleFilter = includeCommittee
       ? or(
-          eq(roles.name, 'admin'),
-          eq(roles.name, 'super_admin'),
-          eq(roles.name, 'snr_admin'),
-          eq(roles.name, 'committee'),
-        )
+        eq(roles.name, 'admin'),
+        eq(roles.name, 'super_admin'),
+        eq(roles.name, 'snr_admin'),
+        eq(roles.name, 'committee'),
+      )
       : or(
-          eq(roles.name, 'admin'),
-          eq(roles.name, 'super_admin'),
-          eq(roles.name, 'snr_admin')
-        );
+        eq(roles.name, 'admin'),
+        eq(roles.name, 'super_admin'),
+        eq(roles.name, 'snr_admin')
+      );
 
     const adminsData = await db
       .select({
@@ -69,10 +66,7 @@ export async function listAdmins(params: {
         is_active: users.is_active,
         role_name: roles.name,
         admin_id: admin_profiles.id,
-        designation: admin_profiles.designation,
-        department: admin_profiles.department,
         employee_id: admin_profiles.employee_id,
-        specialization: admin_profiles.specialization,
         created_at: users.created_at,
       })
       .from(users)
@@ -185,10 +179,7 @@ export async function createAdmin(data: AdminData) {
         .insert(admin_profiles)
         .values({
           user_id: userId,
-          designation: data.designation || null,
-          department: data.department || null,
           employee_id: data.employee_id || null,
-          specialization: data.specialization || null,
         });
     });
 

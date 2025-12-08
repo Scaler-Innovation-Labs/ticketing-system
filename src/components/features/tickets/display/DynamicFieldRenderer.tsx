@@ -33,7 +33,7 @@ interface Field {
   slug: string;
   field_type: string;
   required: boolean;
-  
+
   // FIX: Allow undefined (backend returns it)
   placeholder: string | null | undefined;
   help_text: string | null | undefined;
@@ -116,7 +116,7 @@ export function DynamicFieldRenderer({
         // Filter valid options
         const validOptions = (field.options ?? [])
           .filter(option => option && option.value && typeof option.value === 'string' && option.value.trim() !== "");
-        
+
         // Deduplicate by ID first (if available), then by value+label combination
         // This allows options with the same value but different labels to both appear
         const seen = new Set<string>();
@@ -124,14 +124,14 @@ export function DynamicFieldRenderer({
           // Create unique key: prefer ID if available, otherwise use value+label
           const optionId = (option as { id?: number }).id;
           const key = optionId ? `id:${optionId}` : `val:${option.value}|label:${option.label || option.value}`;
-          
+
           if (seen.has(key)) {
             return false; // Skip duplicate
           }
           seen.add(key);
           return true;
         });
-        
+
         const buildOptionKey = (option: FieldOption, idx: number) => {
           const fieldId = String(field?.id ?? 0);
           const optionId = (option as { id?: number }).id;
@@ -143,13 +143,13 @@ export function DynamicFieldRenderer({
             : `val${idx}`;
           return `opt-${fieldId}-idx${idx}-${valueSafe}`;
         };
-        
+
         if (allowMultiple) {
           const selectedValues = Array.isArray(value)
             ? value.map((v) => String(v))
             : value != null
-            ? [String(value)]
-            : [];
+              ? [String(value)]
+              : [];
 
           const toggleValue = (optionValue: string, checked: boolean) => {
             const normalizedOption = String(optionValue);
@@ -170,8 +170,8 @@ export function DynamicFieldRenderer({
                     key={buildOptionKey(option, idx)}
                     className={cn(
                       "flex items-center gap-3 p-2.5 rounded-md border transition-colors cursor-pointer",
-                      isChecked 
-                        ? "bg-primary/5 border-primary/20" 
+                      isChecked
+                        ? "bg-primary/5 border-primary/20"
                         : "bg-muted/30 border-muted hover:bg-muted/50"
                     )}
                   >
@@ -205,7 +205,7 @@ export function DynamicFieldRenderer({
           return false;
         });
         const selectValue = matchingOption ? matchingOption.value : "";
-        
+
         return (
           <Select value={selectValue} onValueChange={(newValue) => {
             // Ensure we store the exact option value
@@ -233,9 +233,9 @@ export function DynamicFieldRenderer({
           if (typeof value === "string") return value.split("T")[0];
           try {
             const dateValue = value instanceof Date ? value :
-                             typeof value === 'string' ? new Date(value) :
-                             typeof value === 'number' ? new Date(value) :
-                             null;
+              typeof value === 'string' ? new Date(value) :
+                typeof value === 'number' ? new Date(value) :
+                  null;
             if (dateValue && !isNaN(dateValue.getTime())) {
               return dateValue.toISOString().split("T")[0];
             }
@@ -261,17 +261,17 @@ export function DynamicFieldRenderer({
           <Input
             id={field.slug}
             type="number"
-            value={typeof value === 'number' ? (value === 0 ? "0" : String(value)) : 
-                   typeof value === 'string' ? value : ""}
+            value={typeof value === 'number' ? (value === 0 ? "0" : String(value)) :
+              typeof value === 'string' ? value : ""}
             onChange={(e) =>
               onChange(e.target.value === "" ? "" : Number(e.target.value))
             }
             placeholder={placeholder}
             className={cn(error && "border-destructive")}
-            min={typeof field.validation_rules?.min === 'number' ? field.validation_rules.min : 
-                 typeof field.validation_rules?.min === 'string' ? Number(field.validation_rules.min) : undefined}
-            max={typeof field.validation_rules?.max === 'number' ? field.validation_rules.max : 
-                 typeof field.validation_rules?.max === 'string' ? Number(field.validation_rules.max) : undefined}
+            min={typeof field.validation_rules?.min === 'number' ? field.validation_rules.min :
+              typeof field.validation_rules?.min === 'string' ? Number(field.validation_rules.min) : undefined}
+            max={typeof field.validation_rules?.max === 'number' ? field.validation_rules.max :
+              typeof field.validation_rules?.max === 'string' ? Number(field.validation_rules.max) : undefined}
           />
         );
 
@@ -320,11 +320,11 @@ export function DynamicFieldRenderer({
 
       case "upload": {
         const images: string[] = Array.isArray(value) ? value : (value ? [String(value)] : []);
-        
+
         const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
           const files = Array.from(e.target.files ?? []);
           if (files.length === 0) return;
-          
+
           if (onImageUpload) {
             // Use the provided upload handler (from TicketForm)
             // Upload each file sequentially
@@ -335,25 +335,25 @@ export function DynamicFieldRenderer({
                 // The upload handler updates the form state via setDetail
                 // The component will re-render with updated images from value prop
               } catch (err) {
-                logger.error("Upload failed", err, { component: "DynamicFieldRenderer", fieldSlug: field.slug });
+                logger.error({ error: String(err), component: "DynamicFieldRenderer", fieldSlug: field.slug }, "Upload failed");
               }
             }
           } else {
             // Fallback: just store file objects (not recommended for production)
             onChange(files);
           }
-          
+
           // Reset input
           if (fileInputRef.current) {
             fileInputRef.current.value = "";
           }
         };
-        
+
         const removeImage = (imageUrl: string) => {
           const updatedImages = images.filter(img => img !== imageUrl);
           onChange(updatedImages.length > 0 ? updatedImages : []);
         };
-        
+
         return (
           <div className="space-y-3">
             <div className="flex gap-3 items-center">
@@ -386,7 +386,7 @@ export function DynamicFieldRenderer({
                 )}
               </Button>
             </div>
-            
+
             {images.length > 0 && (
               <div className="flex flex-wrap gap-3">
                 {images.map((imageUrl, idx) => (
@@ -411,7 +411,7 @@ export function DynamicFieldRenderer({
                 ))}
               </div>
             )}
-            
+
             {images.length === 0 && field.required && (
               <p className="text-xs text-destructive">At least one image is required</p>
             )}

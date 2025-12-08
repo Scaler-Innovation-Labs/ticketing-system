@@ -15,6 +15,13 @@
       "when": 1765111289078,
       "tag": "0001_past_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765196173226,
+      "tag": "0002_lowly_jackpot",
+      "breakpoints": true
     }
   ]
 }

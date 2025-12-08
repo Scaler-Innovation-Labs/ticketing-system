@@ -40,10 +40,7 @@ export interface AdminProfile {
   phone: string | null;
   full_name: string | null;
   avatar_url: string | null;
-  designation: string | null;
-  department: string | null;
   employee_id: string | null;
-  specialization: string | null;
 }
 
 export interface UpdateStudentProfileInput {
@@ -60,10 +57,7 @@ export interface UpdateStudentProfileInput {
 export interface UpdateAdminProfileInput {
   phone?: string;
   full_name?: string;
-  designation?: string;
-  department?: string;
   employee_id?: string;
-  specialization?: string;
 }
 
 // ============================================
@@ -167,10 +161,7 @@ export async function getAdminProfile(userId: string): Promise<AdminProfile | nu
       phone: users.phone,
       full_name: users.full_name,
       avatar_url: users.avatar_url,
-      designation: admin_profiles.designation,
-      department: admin_profiles.department,
       employee_id: admin_profiles.employee_id,
-      specialization: admin_profiles.specialization,
     })
     .from(users)
     .innerJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
@@ -206,17 +197,14 @@ export async function updateAdminProfile(
   }
 
   // Update admin fields
-  const adminFields = ['designation', 'department', 'employee_id', 'specialization'];
+  const adminFields = ['employee_id'];
   const hasAdminUpdate = adminFields.some(f => (data as any)[f] !== undefined);
 
   if (hasAdminUpdate) {
     const adminUpdate: Record<string, any> = {
       updated_at: new Date(),
     };
-    if (data.designation !== undefined) adminUpdate.designation = data.designation;
-    if (data.department !== undefined) adminUpdate.department = data.department;
     if (data.employee_id !== undefined) adminUpdate.employee_id = data.employee_id;
-    if (data.specialization !== undefined) adminUpdate.specialization = data.specialization;
 
     await db
       .update(admin_profiles)

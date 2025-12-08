@@ -5,11 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { 
-  getStudentProfile, 
-  getAdminProfile, 
+import {
+  getStudentProfile,
+  getAdminProfile,
   updateStudentProfile,
-  updateAdminProfile 
+  updateAdminProfile
 } from '@/lib/profile/profile-service';
 import { getCurrentUser } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
@@ -77,10 +77,7 @@ export async function GET() {
         email: profile.email,
         phone: profile.phone,
         avatar_url: profile.avatar_url,
-        designation: profile.designation,
-        department: profile.department,
         employee_id: profile.employee_id,
-        specialization: profile.specialization,
       });
     }
   } catch (error: any) {
@@ -97,7 +94,7 @@ export async function PATCH(request: NextRequest) {
     if (role === 'student') {
       const parsed = UpdateStudentProfileSchema.safeParse(body);
       if (!parsed.success) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'Invalid request data',
           details: parsed.error.format()
         }, { status: 400 });
@@ -111,7 +108,7 @@ export async function PATCH(request: NextRequest) {
     } else {
       const parsed = UpdateAdminProfileSchema.safeParse(body);
       if (!parsed.success) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'Invalid request data',
           details: parsed.error.format()
         }, { status: 400 });
