@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db, students, hostels, class_sections, batches } from "@/db";
 import { eq, asc } from "drizzle-orm";
 import { getCachedUser } from "@/lib/cache/cached-queries";
+import { ensureUser } from "@/lib/auth/api-auth";
 import { getCategoriesHierarchy } from "@/lib/category/getCategoriesHierarchy";
 import TicketForm from "@/components/features/tickets/forms/TicketForm/TicketForm";
 
@@ -16,7 +17,13 @@ export default async function CommitteeNewTicketPage() {
   if (!userId) throw new Error("Unauthorized"); // TypeScript type guard - layout ensures this never happens
 
   // Use cached function for better performance (request-scoped deduplication)
-  const dbUser = await getCachedUser(userId);
+  let dbUser = await getCachedUser(userId);
+
+  // Fallback: ensure user exists in DB and refetch if cache miss or not found
+  if (!dbUser) {
+    await ensureUser(userId);
+    dbUser = await getCachedUser(userId);
+  }
 
   // Parallelize all database queries for better performance
   const [
@@ -24,17 +31,12 @@ export default async function CommitteeNewTicketPage() {
     hostelsList,
     categoryHierarchy,
   ] = await Promise.all([
-    // Fetch student row from DB (committee members might also be students)
+    // Fetch optional student fields (committee members might also be students)
     db
       .select({
         student_id: students.id,
-        student_user_id: students.user_id,
-        student_roll_no: students.roll_no,
-        student_room_no: students.room_no,
-        student_hostel_id: students.hostel_id,
-        student_class_section_id: students.class_section_id,
-        student_batch_id: students.batch_id,
-        student_blood_group: students.blood_group,
+        hostel_id: students.hostel_id,
+        room_no: students.room_no,
         class_section_name: class_sections.name,
         batch_year: batches.year,
       })
@@ -44,65 +46,53 @@ export default async function CommitteeNewTicketPage() {
       .where(eq(students.user_id, dbUser.id))
       .limit(1),
 
-    // Fetch hostels to map ID to name (only active hostels)
+    // Fetch only id and name for hostels (optimized: reduce payload size)
     db
-      .select()
+      .select({
+        id: hostels.id,
+        name: hostels.name,
+      })
       .from(hostels)
       .where(eq(hostels.is_active, true))
       .orderBy(asc(hostels.name)),
 
     // Fetch full category hierarchy (categories → subcategories → sub-subcategories → fields → options)
+    // Already cached with unstable_cache for 5 minutes
     getCategoriesHierarchy(),
   ]);
 
   const [studentData] = studentDataResult;
-  const student = studentData
-    ? {
-        id: studentData.student_id,
-        user_id: studentData.student_user_id,
-        roll_no: studentData.student_roll_no,
-        room_no: studentData.student_room_no,
-        hostel_id: studentData.student_hostel_id,
-        class_section_id: studentData.student_class_section_id,
-        batch_id: studentData.student_batch_id,
-        blood_group: studentData.student_blood_group,
-      }
-    : null;
 
-  // Find the student's hostel name from ID (if student exists)
-  const studentHostel = student?.hostel_id ? hostelsList.find(h => h.id === student.hostel_id) : null;
+  // Find the student's hostel name from ID
+  const studentHostel = studentData ? hostelsList.find(h => h.id === studentData.hostel_id) : null;
 
   // Normalize student - use full_name from schema
-  const fullName = dbUser.full_name || "";
-  const normalizedStudent = student
-    ? {
-      userNumber: "",
-      fullName: fullName,
-      email: dbUser.email || "",
-      mobile: dbUser.phone || "",
-      hostel: studentHostel?.name || null,
-      roomNumber: student.room_no,
-      batchYear: studentData.batch_year,
-      classSection: studentData.class_section_name || null,
-    }
-    : {
-      userNumber: "",
-      fullName: fullName,
-      email: dbUser.email || "",
-      mobile: dbUser.phone || "",
-      hostel: null,
-      roomNumber: null,
-      batchYear: null,
-      classSection: null,
-    };
+  const fullName = dbUser?.full_name || "";
 
-  // Filter to only Committee category
-  const committeeCategory = categoryHierarchy.find(
-    cat => cat.label.toLowerCase() === "committee" || cat.value.toLowerCase() === "committee"
-  );
+  const normalizedStudent = {
+    fullName: fullName,
+    email: dbUser.email || "",
+    mobile: dbUser.phone || "",
+    hostel: studentHostel?.name || null,
+    roomNumber: studentData?.room_no ?? null,
+    batchYear: studentData?.batch_year ?? null,
+    classSection: studentData?.class_section_name ?? null,
+  };
+
+  // Filter to only Committee category (accept slug/value containing "committee" or "_committee")
+  const committeeCategory = categoryHierarchy.find((cat) => {
+    const label = (cat.label || "").toLowerCase();
+    const value = (cat.value || "").toLowerCase();
+    return label.includes("committee") || value.includes("committee") || value === "_committee";
+  });
 
   if (!committeeCategory) {
-    redirect("/committee/dashboard");
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-2">New Committee Ticket</h1>
+        <p className="text-muted-foreground">No committee category found. Please contact an admin to configure the Committee category.</p>
+      </div>
+    );
   }
 
   // Flatten hierarchy into shapes expected by TicketForm (only Committee category)
@@ -127,7 +117,7 @@ export default async function CommitteeNewTicketPage() {
       required: f.required ?? false,
       placeholder: f.placeholder ?? null,
       help_text: f.help_text ?? null,
-      validation_rules: (f.validation_rules || null) as Record<string, unknown> | null,
+      validation_rules: (f.validation_rules ?? {}) as Record<string, unknown>,
       display_order: f.display_order ?? 0,
       subcategory_id: sub.id,
       options: (f.options || []).map((opt, index) => ({
@@ -142,7 +132,7 @@ export default async function CommitteeNewTicketPage() {
   const mappedCategoryFields = subcategoriesWithSubs.flatMap((sub) => sub.fields || []);
 
   // Define standard profile fields to show for all tickets
-  // These are always shown to help admins contact committee members
+  // These are always shown to help admins contact students
   const standardProfileFields = [
     {
       field_name: "name",
@@ -165,48 +155,35 @@ export default async function CommitteeNewTicketPage() {
       editable: true,
       display_order: 3,
     },
+    {
+      field_name: "hostel",
+      storage_key: "hostel",
+      required: false,
+      editable: true,
+      display_order: 4,
+    },
+    {
+      field_name: "roomNumber",
+      storage_key: "roomNumber",
+      required: false,
+      editable: true,
+      display_order: 5,
+    },
+    {
+      field_name: "batchYear",
+      storage_key: "batchYear",
+      required: false,
+      editable: false,
+      display_order: 6,
+    },
+    {
+      field_name: "classSection",
+      storage_key: "classSection",
+      required: false,
+      editable: false,
+      display_order: 7,
+    },
   ];
-
-  // Add student-specific fields if committee member is also a student
-  if (student) {
-    standardProfileFields.push(
-      {
-        field_name: "rollNo",
-        storage_key: "rollNo",
-        required: false,
-        editable: false,
-        display_order: 4,
-      },
-      {
-        field_name: "hostel",
-        storage_key: "hostel",
-        required: false,
-        editable: true,
-        display_order: 5,
-      },
-      {
-        field_name: "roomNumber",
-        storage_key: "roomNumber",
-        required: false,
-        editable: true,
-        display_order: 6,
-      },
-      {
-        field_name: "batchYear",
-        storage_key: "batchYear",
-        required: false,
-        editable: false,
-        display_order: 7,
-      },
-      {
-        field_name: "classSection",
-        storage_key: "classSection",
-        required: false,
-        editable: false,
-        display_order: 8,
-      }
-    );
-  }
 
   return (
     <TicketForm
@@ -216,9 +193,8 @@ export default async function CommitteeNewTicketPage() {
       subcategories={subcategoriesWithSubs}
       profileFields={standardProfileFields}
       dynamicFields={mappedCategoryFields}
-      fieldOptions={[]} // No longer needed as options are nested in fields
-      hostels={hostelsList}
+      fieldOptions={[]}
+      hostels={hostelsList as Array<{ id: number; name: string }>}
     />
   );
 }
-

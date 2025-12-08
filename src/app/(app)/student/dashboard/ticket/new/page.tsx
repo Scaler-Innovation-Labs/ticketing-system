@@ -73,10 +73,12 @@ export default async function NewTicketPage() {
     classSection: studentData.class_section_name || null,  // Use class section name instead of ID
   };
 
-  // For students, hide Committee-specific categories from the create-ticket flow
-  const visibleCategories = categoryHierarchy.filter(
-    (cat) => cat.label.toLowerCase() !== "committee" && cat.value.toLowerCase() !== "committee"
-  );
+  // For students, hide ANY committee-related categories (e.g., "committee", "_committee", "food_committee")
+  const visibleCategories = categoryHierarchy.filter((cat) => {
+    const label = (cat.label || "").toLowerCase();
+    const value = (cat.value || "").toLowerCase();
+    return !label.includes("committee") && !value.includes("committee");
+  });
 
   // Flatten hierarchy into shapes expected by TicketForm (optimized: only include needed fields)
   const categoriesFromHierarchy = visibleCategories.map((cat) => ({
