@@ -121,28 +121,30 @@ export function StaffForm({
           <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">First Name *</Label>
+                <Label htmlFor="firstName">First Name {!editingStaff && "*"}</Label>
                 <Input
                   id="firstName"
                   value={formData.firstName}
                   onChange={(e) => onFormDataChange({ firstName: e.target.value })}
                   placeholder="John"
                   className={errors.firstName ? "border-destructive" : ""}
-                  required
+                  required={!editingStaff}
+                  disabled={!!editingStaff}
                 />
                 {errors.firstName && (
                   <p className="text-sm text-destructive">{errors.firstName}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name *</Label>
+                <Label htmlFor="lastName">Last Name {!editingStaff && "*"}</Label>
                 <Input
                   id="lastName"
                   value={formData.lastName}
                   onChange={(e) => onFormDataChange({ lastName: e.target.value })}
                   placeholder="Doe"
                   className={errors.lastName ? "border-destructive" : ""}
-                  required
+                  required={!editingStaff}
+                  disabled={!!editingStaff}
                 />
                 {errors.lastName && (
                   <p className="text-sm text-destructive">{errors.lastName}</p>
@@ -150,7 +152,7 @@ export function StaffForm({
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">Email {!editingStaff && "*"}</Label>
               <Input
                 id="email"
                 type="email"
@@ -158,10 +160,11 @@ export function StaffForm({
                 onChange={(e) => onFormDataChange({ email: e.target.value })}
                 placeholder="john.doe@example.com"
                 className={errors.email ? "border-destructive" : ""}
-                required
+                required={!editingStaff}
+                disabled={!!editingStaff}
               />
               <p className="text-xs text-muted-foreground">
-                User must sign up with Clerk using this email address.
+                {editingStaff ? "Email cannot be changed" : "User must sign up with Clerk using this email address."}
               </p>
               {errors.email && (
                 <p className="text-sm text-destructive">{errors.email}</p>

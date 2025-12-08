@@ -89,11 +89,16 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
   const handleOpenDialog = (staffMember?: StaffMember) => {
     if (staffMember) {
       setEditingStaff(staffMember);
+      // Parse fullName into firstName and lastName
+      const nameParts = (staffMember.fullName || "").trim().split(/\s+/);
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+      
       setFormData({
         clerkUserId: staffMember.clerkUserId || "",
         email: staffMember.email || "",
-        firstName: "",
-        lastName: "",
+        firstName: firstName,
+        lastName: lastName,
         domain: staffMember.domain,
         scope: staffMember.scope || "",
         role: staffMember.role,

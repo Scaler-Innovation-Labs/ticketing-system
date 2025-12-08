@@ -26,7 +26,7 @@ async function getStaffMembers() {
     .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
     .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
     .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
-    .where(inArray(roles.name, ["admin", "super_admin", "committee"]));
+    .where(inArray(roles.name, ["admin", "super_admin", "snr_admin", "committee"]));
 
   // Fetch committees for committee members
   const committeeMembers = staffMembers.filter(s => s.role === "committee");
@@ -46,7 +46,8 @@ async function getStaffMembers() {
 
     for (const committee of committeeRecords) {
       if (committee.head_id) {
-        committeesMap.set(committee.head_id, {
+        // Ensure both key and lookup use string representation of UUID
+        committeesMap.set(String(committee.head_id), {
           id: committee.id,
           name: committee.name,
           description: committee.description,
@@ -57,7 +58,7 @@ async function getStaffMembers() {
 
   const formattedStaff = staffMembers.map((staff) => {
     const committee = staff.role === "committee"
-      ? committeesMap.get(staff.id)
+      ? committeesMap.get(String(staff.id))
       : null;
     return {
       id: staff.id,

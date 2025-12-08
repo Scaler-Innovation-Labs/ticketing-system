@@ -176,3 +176,91 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
+const UpdateStaffSchema = z.object({
+  id: z.string().uuid(),
+  domain: z.string().nullable(),
+  scope: z.string().nullable(),
+  role: z.string(),
+  slackUserId: z.string().nullable(),
+  whatsappNumber: z.string().nullable(),
+});
+
+/**
+ * PATCH /api/admin/staff
+ * Update an existing staff member
+ */
+export async function PATCH(request: Request) {
+  try {
+    await requireRole(['super_admin']);
+
+    const body = await request.json();
+    const data = UpdateStaffSchema.parse(body);
+
+    // Verify user exists
+    const [existingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, data.id))
+      .limit(1);
+
+    if (!existingUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Resolve IDs
+    const [role] = await db.select().from(roles).where(eq(roles.name, data.role)).limit(1);
+    if (!role) return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+
+    let domainId = null;
+    if (data.domain) {
+      const [domain] = await db.select().from(domains).where(eq(domains.name, data.domain)).limit(1);
+      if (domain) domainId = domain.id;
+    }
+
+    let scopeId = null;
+    if (data.scope) {
+      const [scope] = await db.select().from(scopes).where(eq(scopes.name, data.scope)).limit(1);
+      if (scope) scopeId = scope.id;
+    }
+
+    // Update User Role and Phone
+    await db.update(users)
+      .set({
+        role_id: role.id,
+        phone: data.whatsappNumber || undefined,
+        updated_at: new Date(),
+      })
+      .where(eq(users.id, data.id));
+
+    // Upsert Admin Profile
+    await db.insert(admin_profiles)
+      .values({
+        user_id: data.id,
+        slack_user_id: data.slackUserId,
+        primary_domain_id: domainId,
+        primary_scope_id: scopeId,
+      })
+      .onConflictDoUpdate({
+        target: admin_profiles.user_id,
+        set: {
+          slack_user_id: data.slackUserId,
+          primary_domain_id: domainId,
+          primary_scope_id: scopeId,
+          updated_at: new Date(),
+        },
+      });
+
+    return NextResponse.json({ success: true }, { status: 200 });
+
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Validation Error', details: error.issues }, { status: 400 });
+    }
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+    console.error('Update Staff Error:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
