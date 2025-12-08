@@ -9,7 +9,7 @@ interface TicketTATInfoProps {
 
 export function TicketTATInfo({ tatInfo }: TicketTATInfoProps) {
   const hasTATInfo = tatInfo.tatSetAt || tatInfo.tatSetBy || tatInfo.tat;
-  const hasExtensions = tatInfo.tatExtensions.length > 0;
+  const hasExtensions = (tatInfo.tatExtensions?.length ?? 0) > 0;
 
   if (!hasTATInfo && !hasExtensions) return null;
 
@@ -63,12 +63,12 @@ export function TicketTATInfo({ tatInfo }: TicketTATInfoProps) {
               <div className="p-1.5 rounded-lg bg-primary/10">
                 <TrendingUp className="w-4 h-4 text-primary" />
               </div>
-              TAT Extensions ({tatInfo.tatExtensions.length})
+              TAT Extensions ({tatInfo.tatExtensions?.length ?? 0})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {tatInfo.tatExtensions.map((extension, index) => {
+              {(tatInfo.tatExtensions ?? []).map((extension, index) => {
                 const extendedAt = extension.extendedAt ? String(extension.extendedAt) : null;
                 const previousTAT = extension.previousTAT ? String(extension.previousTAT) : null;
                 const newTAT = extension.newTAT ? String(extension.newTAT) : null;

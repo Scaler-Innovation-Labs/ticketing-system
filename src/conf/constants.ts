@@ -189,6 +189,7 @@ export const RATING = {
   AVERAGE: 3,
   GOOD: 4,
   EXCELLENT: 5,
+  HAPPY_THRESHOLD: 4, // Rating >= this is considered happy
 } as const;
 
 export const FEEDBACK_TYPE = {
@@ -196,4 +197,6 @@ export const FEEDBACK_TYPE = {
   FEATURE: 'feature',
   IMPROVEMENT: 'improvement',
   OTHER: 'other',
+  HAPPY: '😊',
+  UNHAPPY: '😞',
 } as const;

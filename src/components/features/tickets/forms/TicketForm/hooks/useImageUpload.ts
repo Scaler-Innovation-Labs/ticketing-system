@@ -23,7 +23,7 @@ export function useImageUpload() {
       toast.success("Image uploaded");
       return response.url;
     } catch (err: unknown) {
-      logger.error("Upload failed", err, { component: "useImageUpload", fileName: file.name });
+      logger.error({ error: String(err), component: "useImageUpload", fileName: file.name }, "Upload failed");
       const errorMessage = err instanceof Error ? err.message : "Image upload failed";
       toast.error(errorMessage);
       throw err;

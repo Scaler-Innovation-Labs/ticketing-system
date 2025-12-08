@@ -76,25 +76,25 @@ export default async function CommitteeNewTicketPage() {
   const fullName = dbUser.full_name || "";
   const normalizedStudent = student
     ? {
-        userNumber: "",
-        fullName: fullName,
-        email: dbUser.email || "",
-        mobile: dbUser.phone || "",
-        hostel: studentHostel?.name || null,
-        roomNumber: student.room_no,
-        batchYear: studentData.batch_year,
-        classSection: studentData.class_section_name || null,
-      }
+      userNumber: "",
+      fullName: fullName,
+      email: dbUser.email || "",
+      mobile: dbUser.phone || "",
+      hostel: studentHostel?.name || null,
+      roomNumber: student.room_no,
+      batchYear: studentData.batch_year,
+      classSection: studentData.class_section_name || null,
+    }
     : {
-        userNumber: "",
-        fullName: fullName,
-        email: dbUser.email || "",
-        mobile: dbUser.phone || "",
-        hostel: null,
-        roomNumber: null,
-        batchYear: null,
-        classSection: null,
-      };
+      userNumber: "",
+      fullName: fullName,
+      email: dbUser.email || "",
+      mobile: dbUser.phone || "",
+      hostel: null,
+      roomNumber: null,
+      batchYear: null,
+      classSection: null,
+    };
 
   // Filter to only Committee category
   const committeeCategory = categoryHierarchy.find(
@@ -212,7 +212,7 @@ export default async function CommitteeNewTicketPage() {
     <TicketForm
       dbUserId={dbUser.id}
       student={normalizedStudent}
-      categories={categoriesFromHierarchy as Array<{ id: number; name: string; [key: string]: unknown }>}
+      categories={categoriesFromHierarchy as Array<{ id: number; name: string;[key: string]: unknown }>}
       subcategories={subcategoriesWithSubs}
       profileFields={standardProfileFields}
       dynamicFields={mappedCategoryFields}

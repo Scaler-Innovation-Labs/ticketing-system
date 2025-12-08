@@ -5,6 +5,7 @@ import { AlertTriangle, TrendingUp, Calendar, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCachedUser, getCachedTicketStatuses, getCachedCommitteeTickets } from "@/lib/cache/cached-queries";
 import type { Ticket } from "@/db/types-only";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

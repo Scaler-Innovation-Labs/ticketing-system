@@ -19,6 +19,7 @@ export interface TicketComment {
     user_id?: string;
     ticket_id?: number;
     comment?: string;
+    [key: string]: unknown; // Add index signature for compatibility
 }
 
 export interface TicketWithDetails extends Ticket {
@@ -33,6 +34,16 @@ export interface TicketStatusDisplay {
     value: string;
     color: string | null;
     badge_color?: string | null;
+    description?: string | null;
+}
+
+export interface TicketCategory {
+    name: string;
+    icon: string | null;
+}
+
+export interface TicketSubcategory {
+    name: string;
 }
 
 export interface TicketTimelineEntry {
@@ -46,6 +57,7 @@ export interface TicketTimelineEntry {
 export interface ResolvedProfileField {
     label: string;
     value: string;
+    field_name?: string;
 }
 
 export interface TATInfo {
@@ -55,6 +67,12 @@ export interface TATInfo {
     expectedResolution?: Date | null;
     tatSetAt?: Date | string | null;
     tatSetBy?: string | null;
+    tat?: string | null;
+    tatExtensions?: {
+        extendedAt: Date | string;
+        previousTAT: string;
+        newTAT: string;
+    }[];
 }
 
 export interface TicketMetadata {
@@ -66,3 +84,4 @@ export interface TicketMetadata {
     last_escalation_at?: string | Date;
     subcategory?: string | number;
 }
+
