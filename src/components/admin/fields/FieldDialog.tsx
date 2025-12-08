@@ -600,6 +600,7 @@ export function FieldDialog({
             logicValues={logicValues}
             onLogicValuesChange={handleLogicValuesChange}
             logicRequiredEnabled={logicRequiredEnabled}
+            onLogicRequiredToggle={handleLogicRequiredToggle}
             availableValueOptions={availableValueOptions}
             manualLogicInput={manualLogicInput}
             onManualLogicInputChange={handleManualLogicInputChange}

@@ -43,7 +43,7 @@ export type TicketStatusValue = TicketStatus;
 
 export const LIMITS = {
   // Ticket creation
-  WEEKLY_TICKET_LIMIT: 30, // Students can create 3 tickets per week
+  WEEKLY_TICKET_LIMIT: 50, // Students can create 50 tickets per week (increased for testing)
   MAX_DESCRIPTION_LENGTH: 20000,
   MAX_LOCATION_LENGTH: 500,
   MAX_ATTACHMENTS: 5,

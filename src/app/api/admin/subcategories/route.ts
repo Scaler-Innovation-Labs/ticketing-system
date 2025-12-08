@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const categoryId = searchParams.get('category_id');
+    const includeFields = searchParams.get('include_fields') === 'true';
 
     let query = db
       .select({
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
         sla_hours: subcategories.sla_hours,
         is_active: subcategories.is_active,
         created_at: subcategories.created_at,
+        assigned_admin_id: subcategories.assigned_admin_id,
+        display_order: subcategories.display_order,
       })
       .from(subcategories)
       .innerJoin(categories, eq(subcategories.category_id, categories.id))
@@ -48,9 +51,49 @@ export async function GET(request: NextRequest) {
       query = query.where(eq(subcategories.category_id, parseInt(categoryId, 10)));
     }
 
-    const data = await query.orderBy(desc(subcategories.created_at));
+    const subcats = await query.orderBy(desc(subcategories.created_at));
 
-    return NextResponse.json({ subcategories: data });
+    if (includeFields && subcats.length > 0) {
+      const { category_fields, field_options } = await import('@/db/schema-tickets');
+      const { inArray } = await import('drizzle-orm');
+
+      const subcatIds = subcats.map(s => s.id);
+
+      // Fetch fields
+      const fields = await db
+        .select()
+        .from(category_fields)
+        .where(inArray(category_fields.subcategory_id, subcatIds))
+        .orderBy(category_fields.display_order);
+
+      // Fetch options for fields
+      const fieldIds = fields.map(f => f.id);
+      let options: any[] = [];
+
+      if (fieldIds.length > 0) {
+        options = await db
+          .select()
+          .from(field_options)
+          .where(inArray(field_options.field_id, fieldIds))
+          .orderBy(field_options.display_order);
+      }
+
+      // Map options to fields
+      const fieldsWithOptions = fields.map(field => ({
+        ...field,
+        options: options.filter(o => o.field_id === field.id),
+      }));
+
+      // Map fields to subcategories
+      const result = subcats.map(sub => ({
+        ...sub,
+        fields: fieldsWithOptions.filter(f => f.subcategory_id === sub.id),
+      }));
+
+      return NextResponse.json({ subcategories: result });
+    }
+
+    return NextResponse.json({ subcategories: subcats });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error listing subcategories');
     return NextResponse.json(
