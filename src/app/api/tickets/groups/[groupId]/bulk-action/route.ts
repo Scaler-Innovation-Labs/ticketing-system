@@ -14,7 +14,7 @@ import { updateTicketStatus, getStatusValue } from '@/lib/ticket/ticket-status-s
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 import { TICKET_STATUS } from '@/conf/constants';
-import { db, tickets, ticket_statuses, ticket_groups } from '@/db';
+import { db, tickets, ticket_groups } from '@/db';
 import { eq, sql } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -262,31 +262,39 @@ export async function POST(req: NextRequest, context: RouteContext) {
     let groupArchived = false;
     if (action === 'close') {
       try {
-        // Check current status of all tickets in the group
-        const remainingTickets = await db
-          .select({
-            id: tickets.id,
-            status_value: ticket_statuses.value,
-          })
-          .from(tickets)
-          .innerJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-          .where(eq(tickets.group_id, id));
+        // Use raw SQL to check ticket statuses and avoid Drizzle select issues
+        // First check if group is active
+        const groupCheckResult = await db.execute<{ is_active: boolean }>(
+          sql`SELECT is_active FROM ticket_groups WHERE id = ${id} LIMIT 1`
+        );
 
-        if (remainingTickets.length > 0) {
-          const allClosedOrResolved = remainingTickets.every(
-            (t) => t.status_value === TICKET_STATUS.CLOSED || t.status_value === TICKET_STATUS.RESOLVED
+        if (!groupCheckResult || groupCheckResult.length === 0 || !groupCheckResult[0].is_active) {
+          // Group doesn't exist or is already archived
+          groupArchived = false;
+        } else {
+          // Check if all tickets are closed or resolved
+          const statusCheckResult = await db.execute<{ 
+            total_count: string; 
+            closed_or_resolved_count: string;
+          }>(
+            sql`
+              SELECT 
+                COUNT(*)::text as total_count,
+                COUNT(CASE WHEN ts.value IN ('closed', 'resolved') THEN 1 END)::text as closed_or_resolved_count
+              FROM tickets t
+              INNER JOIN ticket_statuses ts ON t.status_id = ts.id
+              WHERE t.group_id = ${id}
+            `
           );
 
-          if (allClosedOrResolved) {
-            // Check if group is already archived
-            const [group] = await db
-              .select({ is_active: ticket_groups.is_active })
-              .from(ticket_groups)
-              .where(eq(ticket_groups.id, id))
-              .limit(1);
+          if (statusCheckResult && statusCheckResult.length > 0) {
+            const check = statusCheckResult[0];
+            const totalCount = parseInt(check.total_count || '0', 10);
+            const closedOrResolvedCount = parseInt(check.closed_or_resolved_count || '0', 10);
+            const allClosedOrResolved = totalCount > 0 && totalCount === closedOrResolvedCount;
 
-            // Archive the group if it's not already archived
-            if (group && group.is_active) {
+            if (allClosedOrResolved) {
+              // Archive the group
               await db
                 .update(ticket_groups)
                 .set({
@@ -300,17 +308,36 @@ export async function POST(req: NextRequest, context: RouteContext) {
                 { 
                   groupId: id, 
                   userId: dbUser.id,
-                  ticketCount: remainingTickets.length,
+                  totalTickets: totalCount,
+                  closedOrResolved: closedOrResolvedCount,
                   allClosedOrResolved: true
                 },
                 'Group archived after bulk close action'
               );
+            } else if (totalCount === 0) {
+              // No tickets in group, archive it
+              await db
+                .update(ticket_groups)
+                .set({
+                  is_active: false,
+                  updated_at: new Date(),
+                })
+                .where(eq(ticket_groups.id, id));
+              groupArchived = true;
+              logger.info(
+                { groupId: id, userId: dbUser.id, reason: 'No tickets in group' },
+                'Group archived (no tickets)'
+              );
             }
           }
         }
-      } catch (archiveError) {
+      } catch (archiveError: any) {
         logger.error(
-          { error: archiveError, groupId: id },
+          { 
+            error: archiveError?.message || String(archiveError),
+            errorStack: archiveError?.stack,
+            groupId: id 
+          },
           'Failed to archive group after closing tickets'
         );
         // Don't fail the entire request if archiving fails
