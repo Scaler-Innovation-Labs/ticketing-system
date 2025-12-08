@@ -54,6 +54,11 @@ export function AdminActions({
 	const [commentType, setCommentType] = useState<"comment" | "question" | "internal" | "super_admin">("comment");
 
 	const DEFAULT_TAT = "48 hours";
+	
+	// Use optimistic status if set, otherwise use current status
+	const effectiveStatus = optimisticStatus || currentStatus;
+	const normalizedStatus = normalizeStatusForComparison(effectiveStatus);
+	const hasForwardTargets = Array.isArray(forwardTargets) && forwardTargets.length > 0;
 	const handleMarkInProgress = async () => {
 		// Optimistic update - update UI immediately
 		setOptimisticStatus("in_progress");
@@ -98,10 +103,6 @@ export function AdminActions({
 	};
 
 
-	// Normalize status for comparison (handles both uppercase enum and lowercase constants)
-	const normalizedStatus = normalizeStatusForComparison(currentStatus);
-	const hasForwardTargets = Array.isArray(forwardTargets) && forwardTargets.length > 0;
-
 	useEffect(() => {
 		if (!showForwardDialog) {
 			setSelectedForwardAdmin("auto");
@@ -116,22 +117,47 @@ export function AdminActions({
 		setLoading("tat");
 		try {
 			// Set TAT and update status to in_progress if not already
+			const shouldMarkInProgress = normalizedStatus !== "in_progress";
+			
+			// Optimistic update - update UI immediately
+			if (shouldMarkInProgress) {
+				setOptimisticStatus("in_progress");
+				if (onStatusChanged) {
+					onStatusChanged("in_progress");
+				}
+			}
+			
+			// If we're not in progress yet, force a "set" (not extension) so the API can change status.
+			const isExtension = normalizedStatus === "in_progress";
+
 			const response = await fetch(`/api/tickets/${ticketId}/tat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					tat,
-					markInProgress: normalizedStatus !== "in_progress",
-					isExtension: hasTAT
+					markInProgress: shouldMarkInProgress,
+					isExtension,
 				}),
 			});
 
 			if (response.ok) {
 				setTat("");
 				setShowCustomTat(false);
-				toast.success("TAT set successfully");
+				const responseData = await response.json().catch(() => ({}));
+				toast.success(responseData.message || "TAT set successfully");
+				// Wait longer for revalidation to complete, then refresh
+				await new Promise(resolve => setTimeout(resolve, 500));
 				router.refresh();
+				// Clear optimistic status after refresh
+				setTimeout(() => setOptimisticStatus(null), 100);
 			} else {
+				// Rollback optimistic update on error
+				if (shouldMarkInProgress) {
+					setOptimisticStatus(null);
+					if (onStatusChanged) {
+						onStatusChanged(currentStatus);
+					}
+				}
 				const errorData = await response.json().catch(() => ({ error: "Failed to set TAT" }));
 				logger.error({ ...errorData, component: "AdminActions", action: "setTAT" }, "TAT API error");
 				const errorMessage = typeof errorData.error === 'string' ? errorData.error : (typeof errorData.details === 'string' ? errorData.details : "Failed to set TAT");

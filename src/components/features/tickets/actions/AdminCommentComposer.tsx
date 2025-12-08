@@ -47,6 +47,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
 
     try {
       if (action === "question") {
+        // Try to move to awaiting_student_response, but don't fail the comment if transition is not allowed
         const statusResponse = await fetch(`/api/tickets/${ticketId}/status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -54,12 +55,10 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
         });
 
         if (!statusResponse.ok) {
-          // Rollback optimistic status change
-          if (onStatusChanged) {
-            // Status will be refreshed from server, so we don't need to rollback explicitly
-          }
           const statusError = await statusResponse.json().catch(() => ({ error: "Failed to update status" }));
-          throw new Error(statusError.error || "Failed to send question");
+          const msg = typeof statusError?.error === "string" ? statusError.error : "Failed to update status";
+          // Log and continue; comment will still be sent
+          logger.warn({ msg, ticketId, action: "awaiting_student_response" }, "Status transition skipped");
         }
       }
 
@@ -68,8 +67,8 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           comment: messageText,
-          isAdmin: true,
-          commentType: "student_visible",
+          is_internal: false, // Admin comments are visible to students
+          attachments: [],
         }),
       });
 

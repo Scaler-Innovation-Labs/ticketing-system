@@ -137,14 +137,7 @@ export default async function StudentTicketPage({
               dynamicFields={vm.normalizedDynamicFields}
             />
 
-            <TicketTimeline entries={vm.timelineEntries.map(entry => ({
-              title: entry.title,
-              icon: entry.type === 'creation' ? 'Plus' : entry.type === 'status_change' ? 'RotateCw' : 'MessageSquare',
-              date: entry.timestamp,
-              color: 'bg-gray-100',
-              textColor: 'text-gray-600',
-              description: entry.description || undefined
-            }))} />
+            <TicketTimeline entries={vm.timelineEntries} />
 
             <TicketConversation
               comments={vm.normalizedComments}

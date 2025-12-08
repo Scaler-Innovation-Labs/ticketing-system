@@ -8,8 +8,9 @@
  * - Feedback submission
  */
 
-import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses } from '@/db';
+import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses, users } from '@/db';
 import { eq, and, isNull } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
@@ -463,9 +464,20 @@ export async function setTAT(
     const now = new Date();
     const deadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
+    // Skip user lookup to avoid blocking TAT set on user fetch issues
+    const userName = 'Admin';
+
+    // Prepare metadata updates
+    const metadataUpdates = {
+      tatSetAt: now.toISOString(),
+      tatSetBy: userName,
+      tatDate: deadline.toISOString(),
+    };
+
     const updates: any = {
       resolution_due_at: deadline,
       updated_at: now,
+      metadata: sql`COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadataUpdates)}::jsonb`,
     };
 
     // Mark in progress if requested and not already

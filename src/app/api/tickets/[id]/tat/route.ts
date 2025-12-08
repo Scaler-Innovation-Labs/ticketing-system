@@ -54,6 +54,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
         const hours = parseTAT(tat);
         const result = await extendTAT(ticketId, dbUser.id, hours, "Manual extension via UI");
 
+        // Revalidate ticket pages to show updated TAT
+        const { revalidatePath } = await import('next/cache');
+        revalidatePath(`/student/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
+
         return ApiResponse.success({
           ticket: {
             id: result.ticket.id,
@@ -67,6 +75,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
         });
       } else {
         const result = await setTAT(ticketId, dbUser.id, tat, markInProgress);
+
+        // Revalidate ticket pages to show updated TAT and status
+        const { revalidatePath } = await import('next/cache');
+        revalidatePath(`/student/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
+        revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
 
         return ApiResponse.success({
           ticket: {
@@ -103,6 +119,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
       },
       'TAT extended via API'
     );
+
+    // Revalidate ticket pages to show updated TAT
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath(`/student/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
 
     return ApiResponse.success({
       ticket: {

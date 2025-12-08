@@ -2,6 +2,7 @@
 import { db, tickets, ticket_statuses, categories, subcategories, users, ticket_activity, ticket_attachments } from '@/db';
 import { eq, and, desc, asc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
+import { buildTimeline } from '@/lib/ticket/formatting/buildTimeline';
 
 /**
  * Get default progress percentage based on status value
@@ -83,15 +84,12 @@ export interface StudentTicketViewModel {
         type: string;
     }[];
     timelineEntries: {
-        id: number;
-        type: 'status_change' | 'comment' | 'assignment' | 'creation';
         title: string;
-        description: string | null;
-        timestamp: Date;
-        actor: {
-            name: string;
-            avatar_url: string | null;
-        } | null;
+        icon: string;
+        date: Date;
+        color: string;
+        textColor: string;
+        description?: string;
     }[];
     normalizedComments: {
         id: number;
@@ -197,26 +195,77 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         }))
         : [];
 
-    // Timeline construction
-    const timelineEntries = [
-        // Creation event
-        {
-            id: 0,
-            type: 'creation' as const,
-            title: 'Ticket Created',
-            description: null,
-            timestamp: ticket.created_at,
-            actor: { name: 'You', avatar_url: null }
-        },
-        ...activities.map(a => ({
-            id: a.id,
-            type: 'status_change' as const, // Simplified mapping
-            title: a.action.replace(/_/g, ' '),
-            description: a.details ? JSON.stringify(a.details) : null,
-            timestamp: a.created_at,
-            actor: { name: a.user_name || 'System', avatar_url: a.user_avatar }
-        }))
-    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    // Extract timestamps from metadata
+    const ticketMetadata = (metadata as Record<string, any>) || {};
+    const resolvedAt = ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at) : null;
+    const reopenedAt = ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null;
+    const acknowledgedAt = ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null;
+
+    // Build timeline using the same function as superadmin
+    const timelineEntries = buildTimeline({
+        created_at: ticket.created_at,
+        acknowledged_at: acknowledgedAt,
+        updated_at: ticket.updated_at,
+        resolved_at: resolvedAt,
+        reopened_at: reopenedAt,
+        escalation_level: ticket.escalation_level,
+        status: status?.value || null,
+    }, normalizedStatus);
+
+    // Add TAT set entry if TAT was set
+    const tatSetAt = ticketMetadata?.tatSetAt;
+    if (tatSetAt) {
+        const tatSetDate = new Date(tatSetAt);
+        if (!isNaN(tatSetDate.getTime())) {
+            timelineEntries.push({
+                title: `TAT Set by ${ticketMetadata.tatSetBy || 'Admin'}`,
+                icon: "Sparkles",
+                date: tatSetDate,
+                color: "bg-yellow-100 dark:bg-yellow-900/30",
+                textColor: "text-yellow-600 dark:text-yellow-400",
+            });
+        }
+    }
+
+    // Add TAT Extensions
+    if (Array.isArray(ticketMetadata?.tatExtensions) && ticketMetadata.tatExtensions.length > 0) {
+        ticketMetadata.tatExtensions.forEach((extension: Record<string, unknown>) => {
+            const extendedAt = extension.extendedAt ? new Date(extension.extendedAt as string) : null;
+            if (extendedAt && !isNaN(extendedAt.getTime())) {
+                timelineEntries.push({
+                    title: `TAT Extended(to ${extension.newTAT || 'new date'})`,
+                    icon: "Sparkles",
+                    date: extendedAt,
+                    color: "bg-orange-100 dark:bg-orange-900/30",
+                    textColor: "text-orange-600 dark:text-orange-400",
+                });
+            }
+        });
+    }
+
+    // Add Overdue entry if TAT date has passed and ticket is not resolved
+    const tatDate = ticket.resolution_due_at || (ticketMetadata?.tatDate ? new Date(ticketMetadata.tatDate) : null);
+    if (tatDate) {
+        const tatDateObj = new Date(tatDate);
+        const now = new Date();
+        const isResolved = normalizedStatus === "resolved" || normalizedStatus === "closed";
+
+        if (!isNaN(tatDateObj.getTime()) && tatDateObj.getTime() < now.getTime() && !isResolved) {
+            timelineEntries.push({
+                title: "Overdue",
+                icon: "AlertTriangle",
+                date: tatDateObj,
+                color: "bg-red-100 dark:bg-red-900/30",
+                textColor: "text-red-600 dark:text-red-400",
+            });
+        }
+    }
+
+    // Sort timeline by date (oldest first, like superadmin)
+    timelineEntries.sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return a.date.getTime() - b.date.getTime();
+    });
 
     return {
         ticket: {
@@ -258,6 +307,7 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
             deadline: ticket.resolution_due_at,
             isOverdue: ticket.resolution_due_at ? new Date() > ticket.resolution_due_at : false,
             formattedDeadline: ticket.resolution_due_at ? ticket.resolution_due_at.toLocaleDateString() : 'No Deadline',
+            expectedResolution: ticket.resolution_due_at || null,
             tatSetAt: null, // TODO: Implement if available
             tatSetBy: null,
             tat: null,

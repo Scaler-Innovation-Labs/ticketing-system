@@ -7,7 +7,12 @@ import {
   Clock,
   RotateCw,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  CheckCircle,
+  RotateCcw,
+  Loader2,
+  Sparkles
 } from "lucide-react";
 import { format } from "date-fns";
 import { TimelineEntry } from "@/lib/ticket/formatting/buildTimeline";
@@ -15,11 +20,16 @@ import { TimelineEntry } from "@/lib/ticket/formatting/buildTimeline";
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Calendar,
   CheckCircle2,
+  CheckCircle,
   Clock,
   AlertCircle,
   RotateCw,
+  RotateCcw,
   MessageSquare,
   AlertTriangle,
+  Plus,
+  Loader: Loader2,
+  Sparkles,
 };
 
 interface TicketTimelineProps {

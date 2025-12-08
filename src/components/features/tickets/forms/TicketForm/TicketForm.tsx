@@ -105,7 +105,9 @@ export default function TicketForm(props: TicketFormProps) {
       const nextDetails = { ...(prev.details || {}) };
       let changed = false;
       for (const field of currentSubcategory.fields || []) {
-        if (!shouldDisplayField(field, form) && nextDetails[field.slug] !== undefined) {
+        // Only check if field should be displayed based on current form state
+        // Use prev instead of form to avoid dependency loop
+        if (!shouldDisplayField(field, prev) && nextDetails[field.slug] !== undefined) {
           delete nextDetails[field.slug];
           changed = true;
         }
@@ -113,7 +115,7 @@ export default function TicketForm(props: TicketFormProps) {
       if (!changed) return prev;
       return { ...prev, details: nextDetails };
     });
-  }, [currentSubcategory, form, setFormPartial]);
+  }, [currentSubcategory?.id, form.categoryId, form.subcategoryId, setFormPartial]);
 
   // Validation
   const validateForm = useCallback(() => {

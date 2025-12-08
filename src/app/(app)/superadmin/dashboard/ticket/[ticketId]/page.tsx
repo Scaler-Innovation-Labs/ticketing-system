@@ -679,16 +679,16 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                       const isAdmin = !isStudent;
 
                       return (
-                        <div key={idx} className={`flex gap - 3 ${isAdmin ? 'justify-end' : 'justify-start'} `}>
-                          <div className={`flex gap - 3 max - w - [80 %] ${isAdmin ? 'flex-row-reverse' : 'flex-row'} `}>
-                            <div className={`flex - shrink - 0 w - 8 h - 8 rounded - full flex items - center justify - center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'} `}>
+                        <div key={idx} className={`flex gap-3 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`flex gap-3 max-w-[80%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                               <User className="w-4 h-4" />
                             </div>
-                            <div className={`flex flex - col ${isAdmin ? 'items-end' : 'items-start'} `}>
-                              <div className={`rounded - 2xl px - 4 py - 3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'} `}>
-                                <p className={`text - sm whitespace - pre - wrap leading - relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''} `}>{commentText}</p>
+                            <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
+                              <div className={`rounded-2xl px-4 py-3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'}`}>
+                                <p className={`text-sm whitespace-pre-wrap leading-relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''}`}>{commentText}</p>
                               </div>
-                              <div className={`flex items - center gap - 2 text - xs text - muted - foreground mt - 1 px - 1 ${isAdmin ? 'flex-row-reverse' : ''} `}>
+                              <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${isAdmin ? 'flex-row-reverse' : ''}`}>
                                 {commentCreatedAt ? (
                                   <>
                                     <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>
