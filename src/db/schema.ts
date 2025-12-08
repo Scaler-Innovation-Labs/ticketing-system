@@ -24,17 +24,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 // ============================================
-// Enums
-// ============================================
-
-export const roleEnum = pgEnum('role', [
-  'super_admin',
-  'admin',
-  'committee',
-  'student',
-]);
-
-// ============================================
 // Core: Users & Roles
 // ============================================
 
@@ -104,10 +93,7 @@ export const students = pgTable('students', {
   hostel_id: integer('hostel_id').references(() => hostels.id),
   class_section_id: integer('class_section_id').references(() => class_sections.id),
   batch_id: integer('batch_id').references(() => batches.id),
-  department: varchar('department', { length: 100 }),
   blood_group: varchar('blood_group', { length: 5 }),
-  parent_name: varchar('parent_name', { length: 255 }),
-  parent_phone: varchar('parent_phone', { length: 20 }),
   version: integer('version').notNull().default(1),
   created_at: timestamp('created_at').notNull().defaultNow(),
   updated_at: timestamp('updated_at').notNull().defaultNow(),
@@ -121,10 +107,7 @@ export const admin_profiles = pgTable('admin_profiles', {
   id: serial('id').primaryKey(),
   user_id: uuid('user_id').notNull().unique()
     .references(() => users.id, { onDelete: 'cascade' }),
-  designation: varchar('designation', { length: 100 }),
-  department: varchar('department', { length: 100 }),
   employee_id: varchar('employee_id', { length: 50 }).unique(),
-  specialization: text('specialization'),
   slack_user_id: varchar('slack_user_id', { length: 50 }),
   primary_domain_id: integer('primary_domain_id').references(() => domains.id),
   primary_scope_id: integer('primary_scope_id').references(() => scopes.id),
