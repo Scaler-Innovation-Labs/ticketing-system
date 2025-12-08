@@ -62,8 +62,12 @@ export function ManageGroupTicketsDialog({
 }: ManageGroupTicketsDialogProps) {
   const [loading, setLoading] = useState(false);
   const [selectedTicketsToRemove, setSelectedTicketsToRemove] = useState<number[]>([]);
-  const [currentGroup, setCurrentGroup] = useState<TicketGroup | null>(group);
-  const currentGroupRef = useRef<TicketGroup | null>(group);
+  const [currentGroup, setCurrentGroup] = useState<TicketGroup | null>(
+    group ? { ...group, tickets: group.tickets || [] } : null
+  );
+  const currentGroupRef = useRef<TicketGroup | null>(
+    group ? { ...group, tickets: group.tickets || [] } : null
+  );
   const [committees, setCommittees] = useState<Array<{ id: number; name: string; description: string | null }>>([]);
   const [loadingCommittees, setLoadingCommittees] = useState(false);
 
@@ -74,7 +78,15 @@ export function ManageGroupTicketsDialog({
 
   // Update currentGroup when group prop changes
   useEffect(() => {
-    setCurrentGroup(group);
+    if (group) {
+      // Ensure tickets is always an array
+      setCurrentGroup({
+        ...group,
+        tickets: group.tickets || [],
+      });
+    } else {
+      setCurrentGroup(null);
+    }
   }, [group]);
 
   const fetchCommittees = useCallback(async () => {
@@ -103,7 +115,14 @@ export function ManageGroupTicketsDialog({
       if (response.ok) {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
-          const updatedGroup = await response.json();
+          const responseData = await response.json();
+          // ApiResponse wraps data in { success: true, data: { group, tickets, ticket_count } }
+          const apiData = responseData.data || responseData;
+          const updatedGroup: TicketGroup = {
+            ...apiData.group,
+            tickets: apiData.tickets || [],
+            ticketCount: apiData.ticket_count || apiData.tickets?.length || 0,
+          };
           // Only update if the group structure actually changed (avoid infinite loop)
           setCurrentGroup(prev => {
             if (prev && prev.id === updatedGroup.id && prev.ticketCount === updatedGroup.ticketCount) {
@@ -200,7 +219,10 @@ export function ManageGroupTicketsDialog({
     }
 
     try {
-      const response = await fetch(`/api/tickets/groups/${currentGroup.id}`, {
+      const url = `/api/tickets/groups/${currentGroup.id}`;
+      console.log(`[handleSetGroupTAT] Calling PATCH ${url} with groupTAT:`, tat);
+      
+      const response = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -208,20 +230,34 @@ export function ManageGroupTicketsDialog({
         }),
       });
 
+      console.log(`[handleSetGroupTAT] Response status: ${response.status} ${response.statusText}`);
+
       if (response.ok) {
+        toast.success("Group TAT set successfully");
         await fetchGroupData();
         onSuccess?.();
       } else {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          throw new Error(error.error || "Failed to set group TAT");
+          const errorMessage = error.error?.message || error.error || "Failed to set group TAT";
+          console.error("[handleSetGroupTAT] API error:", error);
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
         } else {
+          const text = await response.text();
+          console.error(`[handleSetGroupTAT] Non-JSON error response (${response.status}):`, text);
+          toast.error(`Failed to set group TAT (${response.status} ${response.statusText})`);
           throw new Error(`Failed to set group TAT (${response.status} ${response.statusText})`);
         }
       }
     } catch (error) {
       console.error("Error setting group TAT:", error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to set group TAT");
+      }
       throw error;
     }
   }, [currentGroup, fetchGroupData, onSuccess]);
@@ -284,7 +320,7 @@ export function ManageGroupTicketsDialog({
             />
 
             <GroupTicketsList
-              tickets={currentGroup.tickets}
+              tickets={currentGroup.tickets || []}
               selectedTickets={selectedTicketsToRemove}
               onToggleTicket={toggleTicketToRemove}
               onRemoveTickets={handleRemoveTickets}

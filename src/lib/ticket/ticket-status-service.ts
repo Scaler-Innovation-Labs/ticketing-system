@@ -42,7 +42,7 @@ export function isValidTransition(fromStatus: string, toStatus: string): boolean
 /**
  * Get current status value from status_id
  */
-async function getStatusValue(statusId: number): Promise<string> {
+export async function getStatusValue(statusId: number): Promise<string> {
   const [status] = await db
     .select({ value: ticket_statuses.value })
     .from(ticket_statuses)
@@ -73,12 +73,25 @@ export async function updateTicketStatus(
       .where(eq(tickets.id, ticketId))
       .limit(1);
 
-    if (!ticket) {
+    if (!ticket || typeof ticket !== 'object') {
       throw Errors.notFound('Ticket', String(ticketId));
     }
 
     // 2. Get current and new status values
-    const currentStatus = await getStatusValue(ticket.status_id);
+    if (!ticket.status_id || typeof ticket.status_id !== 'number') {
+      throw Errors.invalidRequest('Ticket has no valid status_id');
+    }
+    
+    let currentStatus: string;
+    try {
+      currentStatus = await getStatusValue(ticket.status_id);
+    } catch (statusError) {
+      logger.error(
+        { error: statusError, ticketId, statusId: ticket.status_id },
+        'Failed to get current ticket status'
+      );
+      throw Errors.invalidRequest(`Failed to get current ticket status: ${statusError instanceof Error ? statusError.message : String(statusError)}`);
+    }
 
     // 3. Validate transition
     if (!isValidTransition(currentStatus, newStatusValue)) {
@@ -86,11 +99,24 @@ export async function updateTicketStatus(
     }
 
     // 4. Get new status ID
-    const newStatusId = await getStatusId(newStatusValue);
+    let newStatusId: number;
+    try {
+      newStatusId = await getStatusId(newStatusValue);
+    } catch (statusIdError) {
+      logger.error(
+        { error: statusIdError, ticketId, newStatusValue },
+        'Failed to get new status ID'
+      );
+      throw Errors.invalidRequest(`Failed to get status ID for status "${newStatusValue}": ${statusIdError instanceof Error ? statusIdError.message : String(statusIdError)}`);
+    }
+    
+    if (!newStatusId || typeof newStatusId !== 'number') {
+      throw Errors.invalidRequest(`Invalid status ID for status: ${newStatusValue}`);
+    }
 
     // 5. Update ticket
-    const updates: any = {
-      status_id: newStatusId,
+    const updates: Record<string, any> = {
+      status_id: Number(newStatusId),
       updated_at: new Date(),
     };
 
@@ -104,49 +130,89 @@ export async function updateTicketStatus(
     }
 
     if (newStatusValue === TICKET_STATUS.REOPENED) {
-      updates.reopen_count = ticket.reopen_count + 1;
+      const currentReopenCount = ticket?.reopen_count;
+      const reopenCountValue = (typeof currentReopenCount === 'number' ? currentReopenCount : 0) + 1;
+      updates.reopen_count = reopenCountValue;
       updates.resolved_at = null;
       updates.closed_at = null;
     }
 
-    const [updatedTicket] = await txn
+    const updatedTickets = await txn
       .update(tickets)
       .set(updates)
       .where(eq(tickets.id, ticketId))
       .returning();
 
+    if (!updatedTickets || updatedTickets.length === 0) {
+      throw Errors.notFound('Ticket', String(ticketId));
+    }
+
+    const [updatedTicket] = updatedTickets;
+
     // 6. Log activity
-    await txn.insert(ticket_activity).values({
-      ticket_id: ticketId,
-      user_id: userId,
-      action: 'status_changed',
-      details: {
-        from: currentStatus,
-        to: newStatusValue,
-        comment,
-      },
-    });
+    const activityDetails: Record<string, string> = {
+      from: String(currentStatus || 'unknown'),
+      to: String(newStatusValue || 'unknown'),
+    };
+    if (comment && typeof comment === 'string' && comment.trim()) {
+      activityDetails.comment = String(comment.trim());
+    }
+    
+    try {
+      await txn.insert(ticket_activity).values({
+        ticket_id: Number(ticketId),
+        user_id: String(userId),
+        action: 'status_changed',
+        details: activityDetails as any, // JSONB field
+      });
+    } catch (activityError: any) {
+      logger.error(
+        { 
+          error: activityError?.message || String(activityError), 
+          errorStack: activityError?.stack,
+          ticketId, 
+          userId 
+        },
+        'Failed to log ticket activity'
+      );
+      // Don't throw - activity logging failure shouldn't block status update
+    }
 
     // Queue notification
-    await txn.insert(outbox).values({
-      event_type: 'ticket.status_updated',
-      aggregate_type: 'ticket',
-      aggregate_id: String(ticketId),
-      payload: {
-        ticketId,
-        oldStatus: currentStatus,
-        newStatus: newStatusValue,
-        updatedBy: userId,
-      },
-    });
+    try {
+      const payload = {
+        ticketId: Number(ticketId),
+        oldStatus: String(currentStatus || 'unknown'),
+        newStatus: String(newStatusValue || 'unknown'),
+        updatedBy: String(userId || 'unknown'),
+      };
+      
+      await txn.insert(outbox).values({
+        event_type: 'ticket.status_updated',
+        aggregate_type: 'ticket',
+        aggregate_id: String(ticketId),
+        payload: payload as any, // JSONB field
+      });
+    } catch (outboxError: any) {
+      logger.error(
+        { 
+          error: outboxError?.message || String(outboxError),
+          errorStack: outboxError?.stack,
+          ticketId, 
+          userId 
+        },
+        'Failed to queue notification'
+      );
+      // Don't throw - notification queueing failure shouldn't block status update
+    }
 
     logger.info(
       {
-        ticketId,
-        ticketNumber: ticket.ticket_number,
-        from: currentStatus,
-        to: newStatusValue,
-        userId,
+        ticketId: Number(ticketId),
+        ticketNumber: ticket?.ticket_number || null,
+        from: String(currentStatus || 'unknown'),
+        to: String(newStatusValue || 'unknown'),
+        userId: String(userId || 'unknown'),
       },
       'Ticket status updated'
     );

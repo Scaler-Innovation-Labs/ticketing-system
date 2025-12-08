@@ -92,13 +92,15 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroup
       if (response.ok) {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          const nextGroups = Array.isArray(data.groups) ? data.groups : null;
+          const responseData = await response.json();
+          // ApiResponse wraps data in { success: true, data: { groups, ... } }
+          const apiData = responseData.data || responseData;
+          const nextGroups = Array.isArray(apiData.groups) ? apiData.groups : null;
           if (nextGroups) {
             setGroups(nextGroups);
           }
-          if (data.stats) {
-            setStats(data.stats);
+          if (apiData.stats) {
+            setStats(apiData.stats);
           }
         } else {
           toast.error("Server returned invalid response format");
@@ -183,17 +185,61 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroup
       if (response.ok) {
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          toast.success(
-            `Bulk action completed: ${data.summary.successful} successful, ${data.summary.failed} failed`
-          );
+          const responseData = await response.json();
+          // ApiResponse wraps data in { success: true, data: { summary, ... } }
+          const apiData = responseData.data || responseData;
+          const summary = apiData.summary || { successful: 0, failed: 0, total: 0 };
+          const groupArchived = apiData.groupArchived || false;
+          
+          // Show success message with archive info
+          let message = `Bulk action completed: ${summary.successful} successful, ${summary.failed} failed`;
+          if (groupArchived) {
+            message = `All tickets closed. Group has been archived.`;
+            // Optimistically update the group state to reflect archived status
+            if (selectedGroupId) {
+              setGroups(prevGroups => 
+                prevGroups.map(group => 
+                  group.id === selectedGroupId 
+                    ? { ...group, is_archived: true }
+                    : group
+                )
+              );
+              // Update stats optimistically
+              setStats(prevStats => {
+                if (!prevStats) return prevStats;
+                return {
+                  ...prevStats,
+                  activeGroups: Math.max(0, prevStats.activeGroups - 1),
+                  archivedGroups: prevStats.archivedGroups + 1,
+                };
+              });
+            }
+            // Switch to archived tab to show the archived group
+            setShowArchived(true);
+          }
+          
+          if (summary.failed > 0 && apiData.errors) {
+            // Show errors if any
+            const errorMessages = apiData.errors
+              .map((e: { ticketId: number; error: string }) => `Ticket #${e.ticketId}: ${e.error}`)
+              .join(", ");
+            toast.warning(message, {
+              description: errorMessages,
+              duration: 5000,
+            });
+          } else {
+            toast.success(message, {
+              duration: groupArchived ? 4000 : 3000,
+            });
+          }
         } else {
           toast.error("Server returned invalid response format");
         }
         setBulkComment("");
         setIsBulkActionDialogOpen(false);
         setSelectedGroupId(null);
-        fetchGroups();
+        // Refresh groups to get updated archive status and ticket counts
+        await fetchGroups();
         onGroupCreated?.();
       } else {
         const contentType = response.headers.get("content-type");
@@ -235,9 +281,18 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroup
       });
 
       if (response.ok) {
-        toast.success(
-          `Added ${selectedTicketIds.length} ticket${selectedTicketIds.length !== 1 ? "s" : ""} to group`
-        );
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const responseData = await response.json();
+          // ApiResponse wraps data in { success: true, data: { message, ... } }
+          const apiData = responseData.data || responseData;
+          const message = apiData.message || `Added ${selectedTicketIds.length} ticket${selectedTicketIds.length !== 1 ? "s" : ""} to group`;
+          toast.success(message);
+        } else {
+          toast.success(
+            `Added ${selectedTicketIds.length} ticket${selectedTicketIds.length !== 1 ? "s" : ""} to group`
+          );
+        }
         setIsAddToGroupDialogOpen(false);
         setTargetGroupIdForAdd(null);
         fetchGroups();
@@ -292,6 +347,93 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroup
       setLoading(false);
     }
   }, [onGroupCreated, fetchGroups]);
+
+  const handleArchiveGroup = useCallback(async (groupId: number) => {
+    // Find the group to check if it's archived
+    const group = groups.find(g => g.id === groupId);
+    const isArchived = group?.is_archived || false;
+    
+    const action = isArchived ? "unarchive" : "archive";
+    if (!confirm(`Are you sure you want to ${action} this group?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/tickets/groups/${groupId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          archive: !isArchived,
+        }),
+      });
+
+      if (response.ok) {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const responseData = await response.json();
+          const apiData = responseData.data || responseData;
+          const message = apiData.message || `Group ${action}d successfully`;
+          toast.success(message);
+        } else {
+          toast.success(`Group ${action}d successfully`);
+        }
+        
+        // Optimistically update the group state
+        setGroups(prevGroups => 
+          prevGroups.map(g => 
+            g.id === groupId 
+              ? { ...g, is_archived: !isArchived }
+              : g
+          )
+        );
+        
+        // Update stats optimistically
+        setStats(prevStats => {
+          if (!prevStats) return prevStats;
+          if (isArchived) {
+            // Unarchiving: moving from archived to active
+            return {
+              ...prevStats,
+              activeGroups: prevStats.activeGroups + 1,
+              archivedGroups: Math.max(0, prevStats.archivedGroups - 1),
+            };
+          } else {
+            // Archiving: moving from active to archived
+            return {
+              ...prevStats,
+              activeGroups: Math.max(0, prevStats.activeGroups - 1),
+              archivedGroups: prevStats.archivedGroups + 1,
+            };
+          }
+        });
+        
+        // If archiving, switch to archived tab; if unarchiving, switch to active tab
+        if (!isArchived) {
+          setShowArchived(true);
+        } else {
+          setShowArchived(false);
+        }
+        
+        fetchGroups();
+        onGroupCreated?.();
+      } else {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const error = await response.json();
+          const errorMessage = typeof error.error === 'string' ? error.error : `Failed to ${action} group`;
+          toast.error(errorMessage);
+        } else {
+          toast.error(`Failed to ${action} group (${response.status} ${response.statusText})`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing group:`, error);
+      toast.error(`Failed to ${action} group`);
+    } finally {
+      setLoading(false);
+    }
+  }, [groups, onGroupCreated, fetchGroups]);
 
   // Filter groups based on search query (memoized for performance)
   const filteredGroups = useMemo(() => {
@@ -392,6 +534,7 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroup
           setIsBulkActionDialogOpen(true);
         }}
         onDelete={handleDeleteGroup}
+        onArchive={handleArchiveGroup}
       />
 
       <GroupDialog

@@ -4,13 +4,15 @@
  * Group related tickets together for bulk operations
  */
 
-import { db, tickets, ticket_groups, ticket_activity, ticket_statuses, categories } from '@/db';
-import { eq, inArray, and } from 'drizzle-orm';
+import { db, tickets, ticket_groups, ticket_activity, ticket_statuses, categories, ticket_committee_tags, committees } from '@/db';
+import { eq, inArray, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
 import { getUserRole } from '@/lib/auth/roles';
-import { USER_ROLES } from '@/conf/constants';
+import { USER_ROLES, TICKET_STATUS } from '@/conf/constants';
+import { parseTAT } from './ticket-operations-service';
+import { getStatusId } from './ticket-service';
 
 /**
  * Create a ticket group
@@ -281,6 +283,186 @@ export async function listTicketGroups(domainId?: number) {
 }
 
 /**
+ * Update a ticket group
+ */
+export async function updateTicketGroup(
+  groupId: number,
+  userId: string,
+  updates: {
+    name?: string;
+    description?: string | null;
+    groupTAT?: string;
+    committee_id?: number | null;
+  }
+) {
+  return withTransaction(async (txn) => {
+    // Check user is admin
+    const role = await getUserRole(userId);
+    if (role === USER_ROLES.STUDENT) {
+      throw Errors.forbidden('Only admins can update ticket groups');
+    }
+
+    // Verify group exists
+    const [group] = await txn
+      .select()
+      .from(ticket_groups)
+      .where(eq(ticket_groups.id, groupId))
+      .limit(1);
+
+    if (!group) {
+      throw Errors.notFound('Ticket group', String(groupId));
+    }
+
+    // Update group fields if provided
+    const groupUpdates: any = {
+      updated_at: new Date(),
+    };
+
+    if (updates.name !== undefined) {
+      groupUpdates.name = updates.name;
+    }
+
+    if (updates.description !== undefined) {
+      groupUpdates.description = updates.description;
+    }
+
+    if (Object.keys(groupUpdates).length > 1) {
+      // Only update if there are actual changes
+      await txn
+        .update(ticket_groups)
+        .set(groupUpdates)
+        .where(eq(ticket_groups.id, groupId));
+    }
+
+    // Get all tickets in the group
+    const groupTickets = await txn
+      .select({ id: tickets.id })
+      .from(tickets)
+      .where(eq(tickets.group_id, groupId));
+
+    const ticketIds = groupTickets.map(t => t.id);
+
+    // Handle groupTAT - set TAT for all tickets in group
+    if (updates.groupTAT !== undefined && ticketIds.length > 0) {
+      const hours = parseTAT(updates.groupTAT);
+      const now = new Date();
+      const deadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
+      const userName = 'Admin';
+
+      const metadataUpdates = {
+        tatSetAt: now.toISOString(),
+        tatSetBy: userName,
+        tatDate: deadline.toISOString(),
+      };
+
+      const inProgressId = await getStatusId(TICKET_STATUS.IN_PROGRESS);
+
+      // Update all tickets in the group
+      await txn
+        .update(tickets)
+        .set({
+          resolution_due_at: deadline,
+          updated_at: now,
+          metadata: sql`COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadataUpdates)}::jsonb`,
+          status_id: inProgressId, // Mark all as in progress when TAT is set
+        })
+        .where(inArray(tickets.id, ticketIds));
+
+      // Log activity for each ticket
+      await txn.insert(ticket_activity).values(
+        ticketIds.map((ticketId) => ({
+          ticket_id: ticketId,
+          user_id: userId,
+          action: 'tat_set',
+          details: {
+            tat_string: updates.groupTAT,
+            hours,
+            deadline,
+            status_changed: true,
+            group_tat: true,
+          },
+          visibility: 'admin_only',
+        }))
+      );
+    }
+
+    // Handle committee assignment - tag all tickets in group to committee
+    if (updates.committee_id !== undefined && ticketIds.length > 0) {
+      if (updates.committee_id === null) {
+        // Remove committee tags from all tickets
+        await txn
+          .delete(ticket_committee_tags)
+          .where(inArray(ticket_committee_tags.ticket_id, ticketIds));
+      } else {
+        // Verify committee exists
+        const [committee] = await txn
+          .select()
+          .from(committees)
+          .where(eq(committees.id, updates.committee_id))
+          .limit(1);
+
+        if (!committee) {
+          throw Errors.notFound('Committee', String(updates.committee_id));
+        }
+
+        // Tag all tickets to the committee
+        // First remove existing tags
+        await txn
+          .delete(ticket_committee_tags)
+          .where(inArray(ticket_committee_tags.ticket_id, ticketIds));
+
+        // Add new tags for all tickets
+        if (ticketIds.length > 0) {
+          await txn
+            .insert(ticket_committee_tags)
+            .values(
+              ticketIds.map((ticketId) => ({
+                ticket_id: ticketId,
+                committee_id: updates.committee_id!,
+                tagged_by: userId,
+              }))
+            );
+
+          // Log activity for each ticket
+          await txn.insert(ticket_activity).values(
+            ticketIds.map((ticketId) => ({
+              ticket_id: ticketId,
+              user_id: userId,
+              action: 'committee_tagged',
+              details: {
+                committee_id: updates.committee_id,
+                committee_name: committee.name,
+                group_tagged: true,
+              },
+              visibility: 'admin_only',
+            }))
+          );
+        }
+      }
+    }
+
+    logger.info(
+      {
+        groupId,
+        userId,
+        updates,
+        ticketCount: ticketIds.length,
+      },
+      'Ticket group updated'
+    );
+
+    // Return updated group
+    const [updatedGroup] = await txn
+      .select()
+      .from(ticket_groups)
+      .where(eq(ticket_groups.id, groupId))
+      .limit(1);
+
+    return updatedGroup;
+  });
+}
+
+/**
  * Delete a ticket group
  */
 export async function deleteTicketGroup(groupId: number, userId: string) {
@@ -323,5 +505,49 @@ export async function deleteTicketGroup(groupId: number, userId: string) {
     );
 
     return group;
+  });
+}
+
+/**
+ * Archive a ticket group (set is_active to false)
+ */
+export async function archiveTicketGroup(groupId: number, userId: string) {
+  return withTransaction(async (txn) => {
+    // Check user is admin
+    const role = await getUserRole(userId);
+    if (role === USER_ROLES.STUDENT) {
+      throw Errors.forbidden('Only admins can archive ticket groups');
+    }
+
+    // Verify group exists
+    const [group] = await txn
+      .select()
+      .from(ticket_groups)
+      .where(eq(ticket_groups.id, groupId))
+      .limit(1);
+
+    if (!group) {
+      throw Errors.notFound('Ticket group', String(groupId));
+    }
+
+    // Archive group (set is_active to false)
+    const [archivedGroup] = await txn
+      .update(ticket_groups)
+      .set({
+        is_active: false,
+        updated_at: new Date(),
+      })
+      .where(eq(ticket_groups.id, groupId))
+      .returning();
+
+    logger.info(
+      {
+        groupId,
+        userId,
+      },
+      'Ticket group archived'
+    );
+
+    return archivedGroup;
   });
 }

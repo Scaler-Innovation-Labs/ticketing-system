@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { users, roles, domains, scopes, admin_profiles } from '@/db';
-import { eq, and, or, like } from 'drizzle-orm';
+import { eq, and, or, like, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -20,7 +20,19 @@ export async function GET(request: Request) {
     // Build query
     const conditions = [];
 
-    // Filter by role if specified
+    // Filter by admin roles (admin, snr_admin, super_admin) by default
+    const adminRoleNames = ['admin', 'snr_admin', 'super_admin'];
+    const adminRoles = await db
+      .select({ id: roles.id, name: roles.name })
+      .from(roles)
+      .where(or(...adminRoleNames.map(name => eq(roles.name, name))));
+
+    const adminRoleIds = adminRoles.map(r => r.id);
+    if (adminRoleIds.length > 0) {
+      conditions.push(inArray(users.role_id, adminRoleIds));
+    }
+
+    // Filter by specific role if specified (overrides default admin filter)
     if (roleFilter) {
       const role = await db
         .select({ id: roles.id })
@@ -29,6 +41,8 @@ export async function GET(request: Request) {
         .limit(1);
 
       if (role[0]) {
+        // Replace admin filter with specific role filter
+        conditions.pop(); // Remove admin filter
         conditions.push(eq(users.role_id, role[0].id));
       }
     }
@@ -44,7 +58,7 @@ export async function GET(request: Request) {
       );
     }
 
-    // Get staff members
+    // Get staff members with admin_profiles join for slack_user_id
     const staff = await db
       .select({
         id: users.id,
@@ -54,14 +68,29 @@ export async function GET(request: Request) {
         avatar_url: users.avatar_url,
         role_id: users.role_id,
         role_name: roles.name,
+        slack_user_id: admin_profiles.slack_user_id,
         created_at: users.created_at,
       })
       .from(users)
       .leftJoin(roles, eq(users.role_id, roles.id))
+      .leftJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(users.full_name);
 
-    return NextResponse.json(staff);
+    // Transform to match expected format
+    const staffFormatted = staff.map(s => ({
+      id: s.id,
+      email: s.email,
+      phone: s.phone,
+      fullName: s.full_name,
+      avatarUrl: s.avatar_url,
+      roleId: s.role_id,
+      roleName: s.role_name,
+      slackUserId: s.slack_user_id,
+      createdAt: s.created_at,
+    }));
+
+    return NextResponse.json({ staff: staffFormatted });
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });

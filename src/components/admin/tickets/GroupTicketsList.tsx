@@ -106,7 +106,10 @@ export function GroupTicketsList({
 }: GroupTicketsListProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredTickets = tickets.filter(ticket => {
+  // Safety check: ensure tickets is always an array
+  const safeTickets = tickets || [];
+
+  const filteredTickets = safeTickets.filter(ticket => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -137,7 +140,7 @@ export function GroupTicketsList({
               <Package className="w-4 h-4" />
               Tickets in Group
               <Badge variant="secondary" className="ml-2">
-                {filteredTickets.length}{tickets.length !== filteredTickets.length ? ` of ${tickets.length}` : ''}
+                {filteredTickets.length}{safeTickets.length !== filteredTickets.length ? ` of ${safeTickets.length}` : ''}
               </Badge>
             </CardTitle>
             {selectedTickets.length > 0 && (

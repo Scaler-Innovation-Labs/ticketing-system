@@ -46,6 +46,7 @@ interface GroupListProps {
   onManageTickets: (group: TicketGroup) => void;
   onBulkActions: (groupId: number) => void;
   onDelete: (groupId: number) => void;
+  onArchive?: (groupId: number) => void;
 }
 
 export function GroupList({
@@ -62,6 +63,7 @@ export function GroupList({
   onManageTickets,
   onBulkActions,
   onDelete,
+  onArchive,
 }: GroupListProps) {
   if (loading && groups.length === 0) {
     return (
@@ -290,18 +292,13 @@ export function GroupList({
                       </p>
                     )}
                   </div>
-                  {!group.is_archived && (
-                    <GroupActions
-                      onManageTickets={() => onManageTickets(group)}
-                      onBulkActions={() => onBulkActions(group.id)}
-                      onDelete={() => onDelete(group.id)}
-                    />
-                  )}
-                  {group.is_archived && (
-                    <div className="text-xs text-center text-muted-foreground py-2">
-                      All tickets resolved
-                    </div>
-                  )}
+                  <GroupActions
+                    onManageTickets={() => onManageTickets(group)}
+                    onBulkActions={() => onBulkActions(group.id)}
+                    onDelete={() => onDelete(group.id)}
+                    onArchive={onArchive ? () => onArchive(group.id) : undefined}
+                    isArchived={group.is_archived}
+                  />
                 </div>
               </CardContent>
             </Card>

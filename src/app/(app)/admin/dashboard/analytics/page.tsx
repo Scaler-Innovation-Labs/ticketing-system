@@ -43,24 +43,11 @@ export default async function AdminAnalyticsPage({
   // Use cached function for better performance (request-scoped deduplication)
   const { dbUser } = await getCachedAdminUser(userId);
 
-  const [currentStaff] = await db
-    .select({
-      id: users.id,
-      full_name: users.full_name,
-      email: users.email,
-      domain: domains.name,
-      scope: scopes.name,
-    })
-    .from(users)
-    .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
-    .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
-    .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
-    .where(eq(users.id, dbUser.id))
-    .limit(1);
-
-  if (!currentStaff) {
+  if (!dbUser) {
     redirect("/");
   }
+
+  const primaryDomainId = dbUser.primary_domain_id;
 
   // Time filter
   let timeFilter;
@@ -75,12 +62,16 @@ export default async function AdminAnalyticsPage({
     timeFilter = gte(tickets.created_at, date);
   }
 
-  let assignmentFilter: ReturnType<typeof eq> | ReturnType<typeof or> = eq(tickets.assigned_to, currentStaff.id);
-  if (currentStaff.domain) {
-    const domainFilter = and(isNull(tickets.assigned_to), eq(categories.name, currentStaff.domain));
-    if (domainFilter) {
-      assignmentFilter = or(assignmentFilter, domainFilter);
-    }
+  // Build assignment filter: tickets assigned to this admin OR unassigned tickets in their domain
+  let assignmentFilter: ReturnType<typeof eq> | ReturnType<typeof or> | ReturnType<typeof and> = eq(tickets.assigned_to, dbUser.id);
+  
+  if (primaryDomainId) {
+    // Include unassigned tickets in the admin's domain
+    const domainFilter = and(
+      isNull(tickets.assigned_to),
+      eq(categories.domain_id, primaryDomainId)
+    );
+    assignmentFilter = or(assignmentFilter, domainFilter);
   }
 
   let whereClause: ReturnType<typeof eq> | ReturnType<typeof or> | ReturnType<typeof and> = assignmentFilter;
@@ -107,7 +98,7 @@ export default async function AdminAnalyticsPage({
     .groupBy(ticket_statuses.value);
 
   const openTickets = statusRes
-    .filter((row) => ["OPEN", "IN_PROGRESS", "REOPENED", "AWAITING_STUDENT"].includes(row.status || ""))
+    .filter((row) => ["OPEN", "IN_PROGRESS", "REOPENED", "AWAITING_STUDENT_RESPONSE"].includes(row.status || ""))
     .reduce((sum, row) => sum + Number(row.count || 0), 0);
   const resolvedTickets = statusRes
     .filter((row) => ["RESOLVED", "CLOSED"].includes(row.status || ""))
@@ -171,7 +162,7 @@ export default async function AdminAnalyticsPage({
     .orderBy(desc(tickets.created_at));
 
   const totalPages = Math.ceil(totalTickets / pageSize);
-  const staffName = currentStaff.full_name?.trim() || currentStaff.email || "Admin";
+  const staffName = dbUser.full_name?.trim() || dbUser.email || "Admin";
 
   return (
     <div className="space-y-6">
@@ -336,12 +327,12 @@ export default async function AdminAnalyticsPage({
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" disabled={page <= 1} asChild>
-                  <Link href={`? page = ${page - 1}& period=${period} `}>
+                  <Link href={`?page=${page - 1}&period=${period}`}>
                     <ChevronLeft className="w-4 h-4 mr-1" /> Previous
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" disabled={page >= totalPages} asChild>
-                  <Link href={`? page = ${page + 1}& period=${period} `}>
+                  <Link href={`?page=${page + 1}&period=${period}`}>
                     Next <ChevronRight className="w-4 h-4 ml-1" />
                   </Link>
                 </Button>

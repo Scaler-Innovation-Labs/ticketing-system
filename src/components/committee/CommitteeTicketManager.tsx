@@ -9,9 +9,16 @@ import type { Ticket } from "@/db/types-only";
 
 interface CommitteeTicketManagerProps {
     tickets: Ticket[];
+    initialGroups?: any[] | null;
+    initialStats?: {
+        totalGroups: number;
+        activeGroups: number;
+        archivedGroups: number;
+        totalTicketsInGroups: number;
+    } | null;
 }
 
-export function CommitteeTicketManager({ tickets }: CommitteeTicketManagerProps) {
+export function CommitteeTicketManager({ tickets, initialGroups, initialStats }: CommitteeTicketManagerProps) {
     const [selectedTicketIds, setSelectedTicketIds] = useState<number[]>([]);
 
     return (
@@ -27,7 +34,11 @@ export function CommitteeTicketManager({ tickets }: CommitteeTicketManagerProps)
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <TicketGrouping selectedTicketIds={selectedTicketIds} />
+                    <TicketGrouping 
+                        selectedTicketIds={selectedTicketIds}
+                        initialGroups={initialGroups}
+                        initialStats={initialStats}
+                    />
                 </CardContent>
             </Card>
 

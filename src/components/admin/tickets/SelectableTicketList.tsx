@@ -12,15 +12,15 @@ import type { Ticket } from "@/db/types-only";
 export interface SelectableTicketListProps {
   tickets: Ticket[];
   basePath?: string;
-  selectedIds: number[];
-  onSelectionChange: (ids: number[]) => void;
+  selectedIds?: number[];
+  onSelectionChange?: (ids: number[]) => void;
 }
 
 export function SelectableTicketList({
   tickets,
   basePath = "/admin/dashboard",
-  selectedIds,
-  onSelectionChange
+  selectedIds = [],
+  onSelectionChange = () => {}
 }: SelectableTicketListProps) {
 
   const toggleTicket = (ticketId: number) => {

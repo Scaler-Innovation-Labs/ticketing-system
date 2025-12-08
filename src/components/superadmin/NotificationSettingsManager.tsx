@@ -109,6 +109,9 @@ export function NotificationSettingsManager() {
     slack_cc_user_ids: [] as string[],
     email_recipients: [] as string[],
   });
+  
+  // Track selected admin IDs separately (to handle duplicate slackUserIds)
+  const [selectedAdminIds, setSelectedAdminIds] = useState<string[]>([]);
 
   // Fetch data
   useEffect(() => {
@@ -228,6 +231,12 @@ export function NotificationSettingsManager() {
   const handleOpenDialog = (config?: NotificationConfig) => {
     if (config) {
       setEditingConfig(config);
+      const slackCcUserIds = Array.isArray(config.slack_cc_user_ids) ? config.slack_cc_user_ids : [];
+      // Find admin IDs that match the saved slack_cc_user_ids
+      const matchingAdminIds = admins
+        .filter(admin => admin.slackUserId && slackCcUserIds.includes(admin.slackUserId))
+        .map(admin => admin.id);
+      
       setFormData({
         scope_id: config.scope_id?.toString() || "__none__",
         category_id: config.category_id?.toString() || "__none__",
@@ -235,9 +244,10 @@ export function NotificationSettingsManager() {
         enable_slack: config.enable_slack ?? true,
         enable_email: config.enable_email ?? true,
         slack_channel: config.slack_channel || "",
-        slack_cc_user_ids: Array.isArray(config.slack_cc_user_ids) ? config.slack_cc_user_ids : [],
+        slack_cc_user_ids: slackCcUserIds,
         email_recipients: Array.isArray(config.email_recipients) ? config.email_recipients : [],
       });
+      setSelectedAdminIds(matchingAdminIds);
     } else {
       setEditingConfig(null);
       setFormData({
@@ -250,6 +260,7 @@ export function NotificationSettingsManager() {
         slack_cc_user_ids: [],
         email_recipients: [],
       });
+      setSelectedAdminIds([]);
     }
     setDialogOpen(true);
   };
@@ -267,6 +278,7 @@ export function NotificationSettingsManager() {
       slack_cc_user_ids: [],
       email_recipients: [],
     });
+    setSelectedAdminIds([]);
   };
 
   const handleSave = async () => {
@@ -284,6 +296,15 @@ export function NotificationSettingsManager() {
         ? parseInt(formData.subcategory_id, 10)
         : null;
 
+      // Convert selected admin IDs to slackUserIds and deduplicate
+      const slackCcUserIds = selectedAdminIds
+        .map(adminId => {
+          const admin = admins.find(a => a.id === adminId);
+          return admin?.slackUserId;
+        })
+        .filter((id): id is string => Boolean(id))
+        .filter((id, index, self) => self.indexOf(id) === index); // Deduplicate
+
       const payload = {
         scope_id: scopeId,
         category_id: categoryId,
@@ -291,7 +312,7 @@ export function NotificationSettingsManager() {
         enable_slack: formData.enable_slack,
         enable_email: formData.enable_email,
         slack_channel: formData.slack_channel.trim() || null,
-        slack_cc_user_ids: formData.slack_cc_user_ids.length > 0 ? formData.slack_cc_user_ids : null,
+        slack_cc_user_ids: slackCcUserIds.length > 0 ? slackCcUserIds : null,
         email_recipients: formData.email_recipients.length > 0 ? formData.email_recipients : null,
       };
 
@@ -667,35 +688,27 @@ export function NotificationSettingsManager() {
                     </p>
                   ) : (
                     admins.map((admin) => {
-                      // Use admin.id as unique key, but track by slackUserId in the array
-                      // This ensures each admin checkbox is independent
                       const slackUserId = admin.slackUserId || "";
-                      const isChecked = Boolean(slackUserId && formData.slack_cc_user_ids.includes(slackUserId));
+                      const isChecked = selectedAdminIds.includes(admin.id);
 
                       return (
                         <div key={admin.id} className="flex items-center space-x-2">
                           <Checkbox
                             id={`slack-cc-${admin.id}`}
                             checked={isChecked}
+                            disabled={!slackUserId}
                             onCheckedChange={(checked) => {
                               if (!slackUserId) return; // Skip if no slackUserId
 
-                              setFormData((prev) => {
-                                const currentIds = prev.slack_cc_user_ids || [];
+                              setSelectedAdminIds((prev) => {
                                 if (checked) {
-                                  // Only add if not already present
-                                  if (!currentIds.includes(slackUserId)) {
-                                    return {
-                                      ...prev,
-                                      slack_cc_user_ids: [...currentIds, slackUserId],
-                                    };
+                                  // Add admin ID if not already present
+                                  if (!prev.includes(admin.id)) {
+                                    return [...prev, admin.id];
                                   }
                                 } else {
-                                  // Remove this specific slackUserId
-                                  return {
-                                    ...prev,
-                                    slack_cc_user_ids: currentIds.filter((id) => id !== slackUserId),
-                                  };
+                                  // Remove admin ID
+                                  return prev.filter((id) => id !== admin.id);
                                 }
                                 return prev;
                               });

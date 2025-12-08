@@ -13,6 +13,7 @@ import { AdminTicketFilters } from "@/components/admin/tickets";
 import type { Ticket } from "@/db/types-only";
 import type { AdminTicketRow } from "@/lib/ticket/filters/adminTicketFilters";
 import { applySubcategoryFilter, applyTATFilter } from "@/lib/ticket/filters/adminTicketFilters";
+import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
 
 // Force dynamic rendering since we use auth headers
 export const dynamic = "force-dynamic";
@@ -157,12 +158,9 @@ export default async function AdminGroupsPage({
       allTickets = applyTATFilter(allTickets, tatFilter);
     }
 
-    // Fetch ticket groups to calculate stats
-    const allGroups = await db
-      .select()
-      .from(ticket_groups)
-      .where(eq(ticket_groups.is_active, true));
-
+    // Fetch ticket groups with tickets
+    const initialGroups = await listTicketGroups();
+    
     // Count tickets in groups (grouped tickets)
     const groupedTicketIds = await db
       .select({ id: tickets.id })
@@ -178,7 +176,9 @@ export default async function AdminGroupsPage({
     const availableTickets = allTickets.filter(ticket => !groupedTicketIdSet.has(ticket.id));
 
     // Calculate stats
-    const activeGroupsCount = allGroups.length;
+    const activeGroupsCount = initialGroups.filter(g => g.is_active).length;
+    const archivedGroupsCount = initialGroups.filter(g => !g.is_active).length;
+    const totalTicketsInGroups = initialGroups.reduce((acc, g) => acc + (g.ticketCount || 0), 0);
     const groupedTicketsCount = groupedTickets.length;
     const availableTicketsCount = availableTickets.length;
     const totalTicketsCount = allTickets.length;
@@ -274,7 +274,16 @@ export default async function AdminGroupsPage({
               </div>
             </CardHeader>
             <CardContent>
-              <TicketGrouping selectedTicketIds={[]} />
+              <TicketGrouping 
+                selectedTicketIds={[]}
+                initialGroups={initialGroups}
+                initialStats={{
+                  totalGroups: initialGroups.length,
+                  activeGroups: activeGroupsCount,
+                  archivedGroups: archivedGroupsCount,
+                  totalTicketsInGroups,
+                }}
+              />
             </CardContent>
           </Card>
 
