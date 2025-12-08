@@ -42,10 +42,17 @@ interface TicketGroup {
 interface TicketGroupingProps {
   selectedTicketIds: number[];
   onGroupCreated?: () => void;
+  initialGroups?: TicketGroup[] | null;
+  initialStats?: {
+    totalGroups: number;
+    activeGroups: number;
+    archivedGroups: number;
+    totalTicketsInGroups: number;
+  } | null;
 }
 
-export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGroupingProps) {
-  const [groups, setGroups] = useState<TicketGroup[]>([]);
+export function TicketGrouping({ selectedTicketIds, onGroupCreated, initialGroups, initialStats }: TicketGroupingProps) {
+  const [groups, setGroups] = useState<TicketGroup[]>(initialGroups || []);
   const [loading, setLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -65,12 +72,16 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
     activeGroups: number;
     archivedGroups: number;
     totalTicketsInGroups: number;
-  } | null>(null);
+  } | null>(initialStats || null);
+
+  const hasInitialGroups = (initialGroups?.length || 0) > 0;
 
   useEffect(() => {
-    fetchGroups();
+    if (!hasInitialGroups) {
+      fetchGroups();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasInitialGroups]);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -82,8 +93,13 @@ export function TicketGrouping({ selectedTicketIds, onGroupCreated }: TicketGrou
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
-          setGroups(data.groups || []);
-          setStats(data.stats || null);
+          const nextGroups = Array.isArray(data.groups) ? data.groups : null;
+          if (nextGroups) {
+            setGroups(nextGroups);
+          }
+          if (data.stats) {
+            setStats(data.stats);
+          }
         } else {
           toast.error("Server returned invalid response format");
         }

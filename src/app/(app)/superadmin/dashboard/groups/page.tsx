@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
 
 import type { Ticket, TicketMetadata } from "@/db/types-only";
+import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
 
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 // Removed force-dynamic to allow revalidation to work
@@ -115,12 +116,15 @@ export default async function SuperAdminGroupsPage({
   // Tickets not in any group
   const availableTicketsCount = totalTicketsCount - groupedTicketsCount;
 
-  // Group stats
-  const allGroups = await db
-    .select()
-    .from(ticket_groups);
+  // Initial groups for UI hydration
+  const initialGroups = await listTicketGroups();
+  const allGroups = initialGroups.length
+    ? initialGroups
+    : await db.select().from(ticket_groups);
 
   const activeGroupsCount = allGroups.filter(g => g.is_active).length;
+  const archivedGroupsCount = allGroups.filter(g => !g.is_active).length;
+  const totalTicketsInGroups = initialGroups.reduce((acc, g) => acc + (g.ticketCount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -224,6 +228,13 @@ export default async function SuperAdminGroupsPage({
           };
         }) as unknown as Ticket[]}
         basePath="/superadmin/dashboard"
+        initialGroups={initialGroups as any}
+        initialStats={{
+          totalGroups: initialGroups.length,
+          activeGroups: activeGroupsCount,
+          archivedGroups: archivedGroupsCount,
+          totalTicketsInGroups,
+        }}
       />
     </div>
   );

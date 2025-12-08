@@ -213,14 +213,6 @@ export function CommitteesManagement({ initialCommittees, initialMembers }: Comm
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-            Committee Management
-          </h1>
-          <p className="text-muted-foreground">
-            Manage committees and assign members to committees
-          </p>
-        </div>
         <div className="flex gap-3">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>

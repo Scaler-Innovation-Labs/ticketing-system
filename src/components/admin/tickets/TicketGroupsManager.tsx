@@ -12,9 +12,16 @@ import { AdminTicketFilters } from "./AdminTicketFilters";
 interface TicketGroupsManagerProps {
     tickets: Ticket[];
     basePath?: string;
+    initialGroups?: any[];
+    initialStats?: {
+        totalGroups: number;
+        activeGroups: number;
+        archivedGroups: number;
+        totalTicketsInGroups: number;
+    } | null;
 }
 
-export function TicketGroupsManager({ tickets, basePath = "/admin/dashboard" }: TicketGroupsManagerProps) {
+export function TicketGroupsManager({ tickets, basePath = "/admin/dashboard", initialGroups, initialStats }: TicketGroupsManagerProps) {
     const [selectedTicketIds, setSelectedTicketIds] = useState<number[]>([]);
 
     return (
@@ -31,6 +38,8 @@ export function TicketGroupsManager({ tickets, basePath = "/admin/dashboard" }: 
                     <TicketGrouping
                         selectedTicketIds={selectedTicketIds}
                         onGroupCreated={() => setSelectedTicketIds([])}
+                        initialGroups={initialGroups}
+                        initialStats={initialStats}
                     />
                 </CardContent>
             </Card>
