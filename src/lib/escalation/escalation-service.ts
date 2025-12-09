@@ -7,7 +7,7 @@
 
 import { db } from '@/db';
 import { escalation_rules, domains, scopes, users } from '@/db';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, asc, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 export interface EscalationRuleData {
@@ -38,6 +38,7 @@ export async function listEscalationRules(params?: {
         escalate_to_user_id: escalation_rules.escalate_to_user_id,
         escalate_to_name: users.full_name,
         escalate_to_email: users.email,
+        escalate_to_external_id: users.external_id,
         tat_hours: escalation_rules.tat_hours,
         notify_channel: escalation_rules.notify_channel,
         is_active: escalation_rules.is_active,
@@ -46,7 +47,7 @@ export async function listEscalationRules(params?: {
       .from(escalation_rules)
       .leftJoin(domains, eq(escalation_rules.domain_id, domains.id))
       .leftJoin(scopes, eq(escalation_rules.scope_id, scopes.id))
-      .innerJoin(users, eq(escalation_rules.escalate_to_user_id, users.id))
+      .leftJoin(users, eq(escalation_rules.escalate_to_user_id, users.id))
       .$dynamic();
 
     const conditions: any[] = [eq(escalation_rules.is_active, true)];
@@ -61,7 +62,7 @@ export async function listEscalationRules(params?: {
 
     const rules = await query
       .where(and(...conditions))
-      .orderBy(escalation_rules.level, desc(escalation_rules.created_at));
+      .orderBy(asc(escalation_rules.level), desc(escalation_rules.created_at));
 
     return rules;
   } catch (error) {
@@ -76,8 +77,27 @@ export async function listEscalationRules(params?: {
 export async function getEscalationRuleById(id: number) {
   try {
     const [rule] = await db
-      .select()
+      .select({
+        id: escalation_rules.id,
+        domain_id: escalation_rules.domain_id,
+        domain_name: domains.name,
+        scope_id: escalation_rules.scope_id,
+        scope_name: scopes.name,
+        level: escalation_rules.level,
+        escalate_to_user_id: escalation_rules.escalate_to_user_id,
+        escalate_to_name: users.full_name,
+        escalate_to_email: users.email,
+        escalate_to_external_id: users.external_id,
+        tat_hours: escalation_rules.tat_hours,
+        notify_channel: escalation_rules.notify_channel,
+        is_active: escalation_rules.is_active,
+        created_at: escalation_rules.created_at,
+        updated_at: escalation_rules.updated_at,
+      })
       .from(escalation_rules)
+      .leftJoin(domains, eq(escalation_rules.domain_id, domains.id))
+      .leftJoin(scopes, eq(escalation_rules.scope_id, scopes.id))
+      .leftJoin(users, eq(escalation_rules.escalate_to_user_id, users.id))
       .where(eq(escalation_rules.id, id))
       .limit(1);
 

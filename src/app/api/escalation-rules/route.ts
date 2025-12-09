@@ -11,6 +11,9 @@ import { listEscalationRules, createEscalationRule } from '@/lib/escalation/esca
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const CreateEscalationRuleSchema = z.object({
   domain_id: z.number().int().positive().nullable(),
   scope_id: z.number().int().positive().nullable(),
@@ -33,7 +36,28 @@ export async function GET(request: NextRequest) {
       scope_id: scope_id ? parseInt(scope_id, 10) : undefined,
     });
 
-    return NextResponse.json({ rules });
+    // Transform rules to match frontend expectations
+    const transformedRules = rules.map((rule: any) => ({
+      id: rule.id,
+      domain_id: rule.domain_id,
+      scope_id: rule.scope_id,
+      level: rule.level,
+      user_id: rule.escalate_to_user_id,
+      tat_hours: rule.tat_hours,
+      notify_channel: rule.notify_channel,
+      created_at: rule.created_at,
+      updated_at: rule.created_at, // Use created_at as fallback if updated_at not available
+      domain: rule.domain_id ? { id: rule.domain_id, name: rule.domain_name } : undefined,
+      scope: rule.scope_id ? { id: rule.scope_id, name: rule.scope_name } : undefined,
+      user: rule.escalate_to_user_id ? {
+        id: rule.escalate_to_user_id,
+        full_name: rule.escalate_to_name,
+        email: rule.escalate_to_email,
+        external_id: rule.escalate_to_external_id,
+      } : null,
+    }));
+
+    return NextResponse.json({ rules: transformedRules });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error listing escalation rules');
     return NextResponse.json(

@@ -12,8 +12,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { z } from "zod";
 import { EscalationRulesList } from "./EscalationRulesList";
 import { EscalationRuleForm } from "./EscalationRuleForm";
+
+// Validation schema matching the API
+const EscalationRuleSchema = z.object({
+  domain_id: z.number().int().positive().nullable(),
+  scope_id: z.number().int().positive().nullable(),
+  level: z.number().int().positive(),
+  escalate_to_user_id: z.string().uuid(),
+  tat_hours: z.number().int().positive(),
+  notify_channel: z.string().max(50).nullable(),
+});
 
 interface EscalationRule {
   id: number;
@@ -215,26 +226,95 @@ export function EscalationManager({ categoryName, categoryId }: EscalationManage
     setSaving(true);
 
     try {
+      // Validate required fields
+      if (!formData.user_id || formData.user_id === "none") {
+        toast.error("Please select an admin to escalate to");
+        setSaving(false);
+        return;
+      }
+
+      // Parse and prepare payload
+      const level = parseInt(formData.level, 10);
+      const tatHours = parseInt(formData.tat_hours, 10) || 48;
+      const scopeId = formData.scope_id === "all" ? null : parseInt(formData.scope_id, 10);
+
+      // Validate scope_id if not "all"
+      if (formData.scope_id !== "all") {
+        if (scopeId === null || isNaN(scopeId) || scopeId <= 0) {
+          toast.error("Invalid scope selected");
+          setSaving(false);
+          return;
+        }
+      }
+
       const payload = {
-        domain_id: categoryId,
-        scope_id: formData.scope_id === "all" ? null : parseInt(formData.scope_id, 10),
-        level: parseInt(formData.level, 10),
-        user_id: formData.user_id && formData.user_id !== "none" ? formData.user_id : null,
-        tat_hours: parseInt(formData.tat_hours, 10) || 48,
-        notify_channel: formData.notify_channel,
+        domain_id: categoryId && categoryId > 0 ? categoryId : null,
+        scope_id: scopeId,
+        level: level,
+        escalate_to_user_id: formData.user_id,
+        tat_hours: tatHours,
+        notify_channel: formData.notify_channel || null,
       };
 
-      const response = editingRule
-        ? await fetch(`/api/escalation-rules/${editingRule.id}`, { // Note: API might not support PATCH by ID yet, need to check
-          method: "PATCH", // Assuming PATCH is supported or I need to implement it
+      // Validate with Zod
+      const validationResult = EscalationRuleSchema.safeParse(payload);
+      
+      if (!validationResult.success) {
+        const errors = validationResult.error.issues;
+        const errorMessages = errors.map((err: z.ZodIssue) => {
+          const field = err.path.join('.');
+          return `${field}: ${err.message}`;
+        }).join(', ');
+        toast.error(`Validation failed: ${errorMessages}`);
+        console.error("Validation errors:", errors);
+        setSaving(false);
+        return;
+      }
+
+      // Use validated payload
+      const validatedPayload = validationResult.data;
+
+      // Validate editingRule has an id if we're editing
+      if (editingRule && !editingRule.id) {
+        toast.error("Invalid escalation rule: missing ID");
+        setSaving(false);
+        return;
+      }
+
+      const url = editingRule
+        ? `/api/escalation-rules/${editingRule.id}`
+        : "/api/escalation-rules";
+      
+      const method = editingRule ? "PATCH" : "POST";
+
+      console.log(`[EscalationManager] ${method} ${url}`, { 
+        payload: validatedPayload, 
+        editingRule: editingRule?.id,
+        editingRuleExists: !!editingRule 
+      });
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: method,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-        : await fetch("/api/escalation-rules", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(validatedPayload),
         });
+        console.log(`[EscalationManager] Response status: ${response.status} ${response.statusText}`);
+      } catch (fetchError) {
+        console.error("[EscalationManager] Network error:", {
+          error: fetchError,
+          url,
+          method,
+          payload: validatedPayload,
+          errorType: fetchError instanceof Error ? fetchError.constructor.name : typeof fetchError,
+          errorMessage: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          errorStack: fetchError instanceof Error ? fetchError.stack : undefined,
+        });
+        toast.error(`Network error: ${fetchError instanceof Error ? fetchError.message : 'Failed to connect to server'}`);
+        setSaving(false);
+        return;
+      }
 
       if (response.ok) {
         toast.success(editingRule ? "Escalation rule updated" : "Escalation rule created");
@@ -244,7 +324,19 @@ export function EscalationManager({ categoryName, categoryId }: EscalationManage
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const error = await response.json();
-          toast.error(error.error || "Failed to save escalation rule");
+          let errorMessage = error.error || "Failed to save escalation rule";
+          
+          // Show validation details if available
+          if (error.details && Array.isArray(error.details)) {
+            const detailMessages = error.details.map((d: any) => {
+              const field = d.path?.join('.') || 'field';
+              return `${field}: ${d.message}`;
+            }).join(', ');
+            errorMessage = `${errorMessage}. ${detailMessages}`;
+          }
+          
+          toast.error(errorMessage);
+          console.error("Escalation rule API error:", error);
         } else {
           toast.error(`Failed to save escalation rule (${response.status} ${response.statusText})`);
         }
