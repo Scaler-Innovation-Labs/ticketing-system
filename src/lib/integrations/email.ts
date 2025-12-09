@@ -33,8 +33,18 @@ function getResendClient(): Resend | null {
 const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
 
-// Temporary: Redirect all emails to this address for testing (until domain is verified)
+// Test email redirect - ONLY for non-production environments
 const TEST_EMAIL = 'n.vedvarshit@gmail.com';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Helper to determine recipient - use actual recipients in production, test email otherwise
+function getRecipients(actualRecipients: string[]): string[] {
+    if (IS_PRODUCTION) {
+        return actualRecipients;
+    }
+    // In development/test, redirect to test email
+    return [TEST_EMAIL];
+}
 
 // ============================================
 // Types
@@ -99,7 +109,7 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
                 // Convert Buffer to base64
                 content = att.content.toString('base64');
             }
-            
+
             return {
                 filename: att.filename,
                 content,
@@ -108,7 +118,7 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
 
         // Handle recipients - Resend expects arrays
         const to = Array.isArray(options.to) ? options.to : [options.to];
-        
+
         // Build email payload - only include defined fields
         const emailPayload: any = {
             from: `${FROM_NAME} <${FROM_EMAIL}>`,
@@ -133,7 +143,7 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
         if (options.text) {
             emailPayload.text = options.text;
         }
-        
+
         // If neither text nor html provided, use text as fallback
         if (!emailPayload.text && !emailPayload.html) {
             emailPayload.text = options.subject; // Fallback to subject
@@ -272,21 +282,25 @@ export async function notifyNewTicketEmail(
     ticket: TicketEmailData,
     recipientEmails: string[]
 ): Promise<string | null> {
-    // Temporary: Redirect to test email, but include original recipients in body
+    const recipients = getRecipients(recipientEmails);
     const originalRecipients = recipientEmails.join(', ');
-    const emailBody = buildNewTicketEmail(ticket);
-    const emailBodyWithRecipients = emailBody.replace(
-        '</div>',
-        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
-            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
-        </div></div>`
-    );
-    
+    let emailBody = buildNewTicketEmail(ticket);
+
+    // Add debug note only in non-production
+    if (!IS_PRODUCTION) {
+        emailBody = emailBody.replace(
+            '</div>',
+            `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+                <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+            </div></div>`
+        );
+    }
+
     return sendEmail({
-        to: [TEST_EMAIL],
+        to: recipients,
         subject: `[${ticket.ticketNumber}] New Ticket: ${ticket.title}`,
-        html: emailBodyWithRecipients,
-        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${ticket.link}`,
+        html: emailBody,
+        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nView: ${ticket.link}`,
     });
 }
 
@@ -302,21 +316,25 @@ export async function notifyStatusUpdateEmail(
     link: string,
     recipientEmails: string[]
 ): Promise<string | null> {
-    // Temporary: Redirect to test email, but include original recipients in body
-    const originalRecipients = recipientEmails.join(', ');
-    const emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
-    const emailBodyWithRecipients = emailBody.replace(
-        '</div>',
-        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
-            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
-        </div></div>`
-    );
-    
+    const recipients = getRecipients(recipientEmails);
+    let emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
+
+    // Add debug note only in non-production
+    if (!IS_PRODUCTION) {
+        const originalRecipients = recipientEmails.join(', ');
+        emailBody = emailBody.replace(
+            '</div>',
+            `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+                <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+            </div></div>`
+        );
+    }
+
     return sendEmail({
-        to: [TEST_EMAIL],
+        to: recipients,
         subject: `[${ticketNumber}] Status Updated: ${newStatus}`,
-        html: emailBodyWithRecipients,
-        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${link}`,
+        html: emailBody,
+        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nView: ${link}`,
     });
 }
 
@@ -331,9 +349,17 @@ export async function notifyAssignmentEmail(
     link: string,
     recipientEmail: string
 ): Promise<string | null> {
-    // Temporary: Redirect to test email, but include original recipient in body
+    const recipients = getRecipients([recipientEmail]);
+
+    // Build HTML - only add debug note in non-production
+    const debugNote = !IS_PRODUCTION
+        ? `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
+           </div>`
+        : '';
+
     return sendEmail({
-        to: [TEST_EMAIL],
+        to: recipients,
         subject: `[${ticketNumber}] Ticket Assigned to You`,
         html: `
       <div style="font-family: sans-serif; padding: 20px;">
@@ -343,11 +369,9 @@ export async function notifyAssignmentEmail(
         <p>Assigned to: ${assignedTo}</p>
         <p>Assigned by: ${assignedBy}</p>
         <a href="${link}" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Ticket</a>
-        <div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
-            <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
-        </div>
+        ${debugNote}
       </div>
     `,
-        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nOriginal recipient: ${recipientEmail}\nView: ${link}`,
+        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nView: ${link}`,
     });
 }
