@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
-import { db, tickets, categories, users, roles, students, hostels, ticket_statuses, ticket_activity } from "@/db";
+import { db, tickets, categories, users, roles, students, hostels, ticket_statuses, ticket_activity, ticket_attachments } from "@/db";
 import { eq, aliasedTable, desc } from "drizzle-orm";
 import { AdminActions } from "@/components/features/tickets/actions/AdminActions";
 import { CommitteeTagging } from "@/components/admin/committees";
@@ -130,7 +130,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
   };
 
   // Fetch student data, profile fields, category schema, and statuses in parallel
-  const [studentDataResult, profileFieldsConfig, categorySchema, ticketStatuses] = await Promise.all([
+  const [studentDataResult, profileFieldsConfig, categorySchema, ticketStatuses, ticketAttachments] = await Promise.all([
     // Fetch student data for profile fields
     db
       .select({
@@ -154,6 +154,12 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
       ? getCategorySchema(ticket.category_id)
       : Promise.resolve(null),
     getCachedTicketStatuses().catch(() => []),
+
+    // Fetch ticket attachments (images)
+    db
+      .select()
+      .from(ticket_attachments)
+      .where(eq(ticket_attachments.ticket_id, id)),
   ]);
 
   const forwardTargetsRaw = await db
@@ -505,16 +511,23 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
               )}
 
               {/* Attachments - Enhanced */}
-              {metadata.images && Array.isArray(metadata.images) && metadata.images.length > 0 && (
-                <div className="p-4 rounded-lg bg-muted/50 border">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Attachments ({metadata.images.length})</p>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {metadata.images
-                      .filter((imageUrl: unknown): imageUrl is string => typeof imageUrl === 'string' && imageUrl.trim().length > 0)
-                      .map((imageUrl: string, index: number) => (
+              {(() => {
+                const dbImages = ticketAttachments.map(att => att.file_url);
+                const metadataImages = (metadata.images && Array.isArray(metadata.images))
+                  ? metadata.images.filter((img: unknown): img is string => typeof img === 'string' && img.trim().length > 0)
+                  : [];
+                const allImages = dbImages.length > 0 ? dbImages : metadataImages;
+
+                if (allImages.length === 0) return null;
+
+                return (
+                  <div className="p-4 rounded-lg bg-muted/50 border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Attachments ({allImages.length})</p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {allImages.map((imageUrl: string, index: number) => (
                         <a
                           key={index}
                           href={imageUrl}
@@ -524,7 +537,7 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                         >
                           <Image
                             src={imageUrl}
-                            alt={`Ticket image ${index + 1} `}
+                            alt={`Ticket image ${index + 1}`}
                             fill
                             className="object-cover"
                             sizes="(max-width: 768px) 50vw, 33vw"
@@ -533,9 +546,10 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                         </a>
                       ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Additional Dynamic Fields - Filter out TAT-related fields */}
               {(() => {

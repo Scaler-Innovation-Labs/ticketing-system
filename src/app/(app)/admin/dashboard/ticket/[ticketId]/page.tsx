@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
 
-import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains } from "@/db";
+import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains, ticket_attachments } from "@/db";
 
 import { eq, desc } from "drizzle-orm";
 
@@ -255,7 +255,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   // Fetch student data, profile fields, and category schema after we have ticket data
 
-  const [studentDataResult, profileFieldsConfig, categorySchema] = await Promise.all([
+  const [studentDataResult, profileFieldsConfig, categorySchema, ticketAttachments] = await Promise.all([
 
     // Fetch student data for profile fields
 
@@ -298,6 +298,13 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
       ? getCategorySchema(ticketRows[0].category_id)
 
       : Promise.resolve(null),
+
+
+    // Fetch ticket attachments (images)
+    db
+      .select()
+      .from(ticket_attachments)
+      .where(eq(ticket_attachments.ticket_id, id)),
 
   ]);
 
@@ -1048,25 +1055,31 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
               {/* Attachments - Enhanced */}
 
-              {metadata.images && Array.isArray(metadata.images) && metadata.images.length > 0 && (
+              {(() => {
+                // Combine database attachments with metadata images
+                const dbImages = ticketAttachments.map(att => att.file_url);
+                const metadataImages = (metadata.images && Array.isArray(metadata.images))
+                  ? metadata.images.filter((img: unknown): img is string => typeof img === 'string' && img.trim().length > 0)
+                  : [];
+                // Use database attachments first, fallback to metadata
+                const allImages = dbImages.length > 0 ? dbImages : metadataImages;
 
-                <div className="p-4 rounded-lg bg-muted/50 border">
+                if (allImages.length === 0) return null;
 
-                  <div className="flex items-center gap-2 mb-3">
+                return (
+                  <div className="p-4 rounded-lg bg-muted/50 border">
 
-                    <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center gap-2 mb-3">
 
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Attachments ({metadata.images.length})</p>
+                      <ImageIcon className="w-4 h-4 text-muted-foreground" />
 
-                  </div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Attachments ({allImages.length})</p>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    </div>
 
-                    {metadata.images
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
 
-                      .filter((imageUrl: unknown): imageUrl is string => typeof imageUrl === 'string' && imageUrl.trim().length > 0)
-
-                      .map((imageUrl: string, index: number) => (
+                      {allImages.map((imageUrl: string, index: number) => (
 
                         <a
 
@@ -1104,11 +1117,11 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
                       ))}
 
+                    </div>
+
                   </div>
-
-                </div>
-
-              )}
+                );
+              })()}
 
 
 
