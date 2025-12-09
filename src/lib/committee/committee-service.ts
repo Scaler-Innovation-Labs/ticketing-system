@@ -5,7 +5,7 @@
  */
 
 import { db } from '@/db';
-import { committees, committee_members, users } from '@/db';
+import { committees, committee_members, users, roles } from '@/db';
 import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
@@ -96,12 +96,67 @@ export async function createCommittee(input: CreateCommitteeInput) {
       throw new Error('A committee with this name already exists');
     }
 
+    let headId = input.head_id;
+
+    // If contact_email is provided but head_id is not, create or find user and assign committee role
+    if (input.contact_email && !headId) {
+      const email = input.contact_email.trim().toLowerCase();
+      
+      // Check if user exists
+      let [existingUser] = await db
+        .select({ id: users.id, role_id: users.role_id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      // Get committee role
+      const [committeeRole] = await db
+        .select({ id: roles.id })
+        .from(roles)
+        .where(eq(roles.name, 'committee'))
+        .limit(1);
+
+      if (!committeeRole) {
+        throw new Error('Committee role not found in database');
+      }
+
+      if (existingUser) {
+        // User exists - update their role to committee if not already
+        if (existingUser.role_id !== committeeRole.id) {
+          await db
+            .update(users)
+            .set({
+              role_id: committeeRole.id,
+              is_active: true,
+              updated_at: new Date(),
+            })
+            .where(eq(users.id, existingUser.id));
+        }
+        headId = existingUser.id;
+      } else {
+        // Create new user with committee role
+        const [newUser] = await db
+          .insert(users)
+          .values({
+            email: email,
+            external_id: `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            auth_provider: 'clerk',
+            role_id: committeeRole.id,
+            is_active: true,
+          })
+          .returning();
+        
+        headId = newUser.id;
+        logger.info({ userId: newUser.id, email }, 'Created new user for committee head');
+      }
+    }
+
     // If head_id provided, verify user exists
-    if (input.head_id) {
+    if (headId) {
       const [headUser] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.id, input.head_id))
+        .where(eq(users.id, headId))
         .limit(1);
 
       if (!headUser) {
@@ -115,12 +170,12 @@ export async function createCommittee(input: CreateCommitteeInput) {
         name: input.name.trim(),
         description: input.description?.trim() || null,
         contact_email: input.contact_email?.trim().toLowerCase() || null,
-        head_id: input.head_id || null,
+        head_id: headId,
         is_active: true,
       })
       .returning();
 
-    logger.info({ committeeId: committee.id, name: committee.name }, 'Committee created');
+    logger.info({ committeeId: committee.id, name: committee.name, headId }, 'Committee created');
     return committee;
   } catch (error) {
     logger.error({ error, input }, 'Failed to create committee');
@@ -155,12 +210,75 @@ export async function updateCommittee(
       }
     }
 
-    // If head_id is being updated, verify user exists
-    if (input.head_id !== undefined && input.head_id !== null) {
+    let headId: string | null | undefined = input.head_id;
+
+    // If contact_email is being updated and head_id is not explicitly set, create or find user
+    if (input.contact_email !== undefined && input.head_id === undefined) {
+      const email = input.contact_email?.trim().toLowerCase();
+      
+      if (email) {
+        // Check if user exists
+        let [existingUser] = await db
+          .select({ id: users.id, role_id: users.role_id })
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+
+        // Get committee role
+        const [committeeRole] = await db
+          .select({ id: roles.id })
+          .from(roles)
+          .where(eq(roles.name, 'committee'))
+          .limit(1);
+
+        if (!committeeRole) {
+          throw new Error('Committee role not found in database');
+        }
+
+        if (existingUser) {
+          // User exists - update their role to committee if not already
+          if (existingUser.role_id !== committeeRole.id) {
+            await db
+              .update(users)
+              .set({
+                role_id: committeeRole.id,
+                is_active: true,
+                updated_at: new Date(),
+              })
+              .where(eq(users.id, existingUser.id));
+          }
+          headId = existingUser.id;
+        } else {
+          // Create new user with committee role
+          const [newUser] = await db
+            .insert(users)
+            .values({
+              email: email,
+              external_id: `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+              auth_provider: 'clerk',
+              role_id: committeeRole.id,
+              is_active: true,
+            })
+            .returning();
+          
+          headId = newUser.id;
+          logger.info({ userId: newUser.id, email }, 'Created new user for committee head');
+        }
+      } else {
+        // If contact_email is being cleared, keep existing head_id
+        headId = existing.head_id;
+      }
+    } else if (input.head_id === undefined) {
+      // If head_id is not being updated, keep existing
+      headId = existing.head_id;
+    }
+
+    // If head_id is set, verify user exists
+    if (headId !== undefined && headId !== null) {
       const [headUser] = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.id, input.head_id))
+        .where(eq(users.id, headId))
         .limit(1);
 
       if (!headUser) {
@@ -181,8 +299,8 @@ export async function updateCommittee(
     if (input.contact_email !== undefined) {
       updateData.contact_email = input.contact_email?.trim().toLowerCase() || null;
     }
-    if (input.head_id !== undefined) {
-      updateData.head_id = input.head_id;
+    if (headId !== undefined) {
+      updateData.head_id = headId;
     }
 
     const [updated] = await db
