@@ -12,6 +12,10 @@ import { eq, desc, asc, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
+// Force dynamic, run on Node to avoid edge/SSR fetch issues
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const CreateFieldSchema = z.object({
   subcategory_id: z.number().int().positive(),
   name: z.string().min(1).max(100),
