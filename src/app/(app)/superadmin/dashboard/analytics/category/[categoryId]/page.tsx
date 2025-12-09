@@ -17,6 +17,10 @@ import {
   CheckCircle2,
   Users,
   TrendingUp,
+  Target,
+  Award,
+  Activity,
+  AlertTriangle,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -244,6 +248,28 @@ export default async function CategoryAnalyticsDetailPage({
   const openRate = totalTickets > 0 ? Math.round((openTickets.length / totalTickets) * 100) : 0;
   const inProgressRate = totalTickets > 0 ? Math.round((inProgressTickets.length / totalTickets) * 100) : 0;
 
+  // Quality metrics
+  const ratedTickets = allTickets.filter((ticket) => ticket.rating !== null && ticket.rating !== undefined);
+  const avgRating =
+    ratedTickets.length > 0
+      ? ratedTickets.reduce((sum, ticket) => sum + (ticket.rating || 0), 0) / ratedTickets.length
+      : 0;
+  const highRatingCount = ratedTickets.filter((ticket) => (ticket.rating || 0) >= 4).length;
+  const satisfactionRate = ratedTickets.length > 0 ? Math.round((highRatingCount / ratedTickets.length) * 100) : 0;
+
+  const overdueTickets = allTickets.filter((ticket) => {
+    const normalized = normalizeStatusForComparison(ticket.status);
+    const isFinal = normalized === "resolved" || normalized === "closed";
+    return !isFinal && ticket.due_at && new Date(ticket.due_at) < now;
+  });
+
+  const escalatedTickets = allTickets.filter((ticket) => (ticket.escalation_level || 0) > 0);
+  const escalationsByLevel = {
+    level1: escalatedTickets.filter((t) => t.escalation_level === 1).length,
+    level2: escalatedTickets.filter((t) => t.escalation_level === 2).length,
+    level3: escalatedTickets.filter((t) => t.escalation_level === 3).length,
+  };
+
   const resolvedWithTime = resolvedTickets.filter((ticket) => ticket.created_at && ticket.resolved_at);
   const avgResolutionHours =
     resolvedWithTime.length > 0
@@ -295,7 +321,7 @@ export default async function CategoryAnalyticsDetailPage({
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" asChild>
-            <Link href="/superadmin/dashboard/analytics">
+            <Link href="/superadmin/analytics">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Analytics
             </Link>
@@ -314,7 +340,7 @@ export default async function CategoryAnalyticsDetailPage({
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         <Card className="border-2">
           <CardHeader className="flex items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
@@ -330,52 +356,81 @@ export default async function CategoryAnalyticsDetailPage({
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-amber-200 dark:border-amber-800">
-          <CardHeader className="flex items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{openTickets.length}</div>
-            <div className="mt-2">
-              <Progress value={openRate} className="h-2" />
-              <p className="text-xs text-muted-foreground mt-1">{openRate}% of total</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 border-blue-200 dark:border-blue-800">
-          <CardHeader className="flex items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{inProgressTickets.length}</div>
-            <div className="mt-2">
-              <Progress value={inProgressRate} className="h-2" />
-              <p className="text-xs text-muted-foreground mt-1">{inProgressRate}% of total</p>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card className="border-2 border-green-200 dark:border-green-800">
           <CardHeader className="flex items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Resolved</CardTitle>
+            <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
             <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <Target className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{resolvedTickets.length}</div>
-            <div className="mt-2">
-              <Progress value={resolutionRate} className="h-2" />
-              <p className="text-xs text-muted-foreground mt-1">
-                {resolutionRate}% resolution rate • {resolvedToday} today
-              </p>
+            <div className="text-3xl font-bold">{resolutionRate}%</div>
+            <Progress value={resolutionRate} className="mt-2 h-2" />
+            <p className="text-xs text-muted-foreground mt-1">
+              {resolvedTickets.length} / {totalTickets} resolved
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-purple-200 dark:border-purple-800">
+          <CardHeader className="flex items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg Rating</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+              <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">
+              {avgRating.toFixed(1)}<span className="text-base text-muted-foreground">/5.0</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{satisfactionRate}% satisfaction</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-amber-200 dark:border-amber-800">
+          <CardHeader className="flex items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Tickets</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
+              <Activity className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{totalTickets - resolvedTickets.length}</div>
+            <div className="space-y-1 text-xs mt-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Unassigned:</span>
+                <span className="font-medium">{unassignedTickets}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Overdue:</span>
+                <span className="font-medium text-red-600">{overdueTickets.length}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-2 border-red-200 dark:border-red-800">
+          <CardHeader className="flex items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Escalated</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-600">{escalatedTickets.length}</div>
+            <div className="space-y-1 text-xs mt-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Level 1:</span>
+                <span className="font-medium">{escalationsByLevel.level1}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Level 2:</span>
+                <span className="font-medium">{escalationsByLevel.level2}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Level 3:</span>
+                <span className="font-medium">{escalationsByLevel.level3}</span>
+              </div>
             </div>
           </CardContent>
         </Card>

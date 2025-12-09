@@ -245,6 +245,9 @@ export function StudentsManagement({
 		try {
 			const response = await fetch(`/api/superadmin/students/${deletingStudentId}`, {
 				method: "DELETE",
+				headers: {
+					"Content-Type": "application/json",
+				},
 			});
 
 			if (response.ok) {
@@ -258,15 +261,28 @@ export function StudentsManagement({
 				// Revert optimistic update on error
 				setStudents(previousStudents);
 				setPagination(prev => ({ ...prev, total: prev.total + 1 }));
-				const error = await response.json();
-				toast.error(error.error || "Failed to delete student");
+				let errorMessage = `Failed to delete student (${response.status})`;
+				try {
+					const contentType = response.headers.get("content-type");
+					if (contentType && contentType.includes("application/json")) {
+						const error = await response.json();
+						errorMessage = error.error || error.message || errorMessage;
+					} else {
+						const text = await response.text();
+						errorMessage = text || errorMessage;
+					}
+				} catch (parseError) {
+					console.error("Error parsing delete response:", parseError);
+				}
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			// Revert optimistic update on error
 			setStudents(previousStudents);
 			setPagination(prev => ({ ...prev, total: prev.total + 1 }));
 			console.error("Delete error:", error);
-			toast.error("Failed to delete student");
+			const errorMessage = error instanceof Error ? error.message : "Failed to delete student";
+			toast.error(errorMessage);
 		}
 	};
 

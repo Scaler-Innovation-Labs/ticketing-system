@@ -121,6 +121,14 @@ export async function createStudent(data: StudentData) {
   try {
     let studentId: number;
 
+    // Normalize optional fields to null when empty
+    const rollNo = data.roll_no && data.roll_no.trim() !== "" ? data.roll_no.trim() : null;
+    const roomNo = data.room_no && data.room_no.trim() !== "" ? data.room_no.trim() : null;
+    const department = data.department && data.department.trim() !== "" ? data.department.trim() : null;
+    const bloodGroup = data.blood_group && data.blood_group.trim() !== "" ? data.blood_group.trim() : null;
+    const parentName = data.parent_name && data.parent_name.trim() !== "" ? data.parent_name.trim() : null;
+    const parentPhone = data.parent_phone && data.parent_phone.trim() !== "" ? data.parent_phone.trim() : null;
+
     await db.transaction(async (tx) => {
       // Get student role ID
       const [studentRole] = await tx
@@ -149,7 +157,50 @@ export async function createStudent(data: StudentData) {
           .limit(1);
 
         if (existingStudent) {
-          throw new Error('Student profile already exists for this user');
+          // Reactivate/update the existing student instead of erroring
+          await tx
+            .update(users)
+            .set({
+              full_name: data.full_name,
+              phone: data.phone,
+              role_id: studentRole.id,
+              is_active: true,
+              updated_at: new Date(),
+            })
+            .where(eq(users.id, user.id));
+
+          // Update student profile - try to include class_section_id and blood_group
+          try {
+            await tx
+              .update(students)
+              .set({
+                roll_no: rollNo,
+                room_no: roomNo,
+                hostel_id: data.hostel_id || null,
+                class_section_id: data.class_section_id || null,
+                batch_id: data.batch_id || null,
+                blood_group: bloodGroup,
+              })
+              .where(eq(students.id, existingStudent.id));
+          } catch (err: any) {
+            // If columns don't exist, fall back to minimal update
+            if (err?.code === '42703') {
+              await tx
+                .update(students)
+                .set({
+                  roll_no: rollNo,
+                  room_no: roomNo,
+                  hostel_id: data.hostel_id || null,
+                  batch_id: data.batch_id || null,
+                })
+                .where(eq(students.id, existingStudent.id));
+            } else {
+              throw err;
+            }
+          }
+
+          studentId = existingStudent.id;
+          return;
         }
 
         // Update user details if provided (optional, but good practice)
@@ -177,24 +228,37 @@ export async function createStudent(data: StudentData) {
           .returning();
       }
 
-      // Create student profile
-      const [student] = await tx
-        .insert(students)
-        .values({
-          user_id: user.id,
-          roll_no: data.roll_no || null,
-          room_no: data.room_no || null,
-          hostel_id: data.hostel_id || null,
-          class_section_id: data.class_section_id || null,
-          batch_id: data.batch_id || null,
-          department: data.department || null,
-          blood_group: data.blood_group || null,
-          parent_name: data.parent_name || null,
-          parent_phone: data.parent_phone || null,
-        })
-        .returning();
+      // Create student profile: try including class_section_id and blood_group, fallback to minimal if columns don't exist
+      let insertResult;
+      try {
+        // Try full insert with class_section_id and blood_group
+        insertResult = await tx.execute(sql`
+          insert into students (user_id, roll_no, room_no, hostel_id, class_section_id, batch_id, blood_group)
+          values (${user.id}, ${rollNo}, ${roomNo}, ${data.hostel_id || null}, ${data.class_section_id || null}, ${data.batch_id || null}, ${bloodGroup})
+          returning id
+        `);
+      } catch (err: any) {
+        // If columns don't exist (error code 42703), fall back to minimal insert
+        if (err?.code === '42703') {
+          insertResult = await tx.execute(sql`
+            insert into students (user_id, roll_no, room_no, hostel_id, batch_id)
+            values (${user.id}, ${rollNo}, ${roomNo}, ${data.hostel_id || null}, ${data.batch_id || null})
+            returning id
+          `);
+        } else {
+          throw err;
+        }
+      }
 
-      studentId = student.id;
+      const insertedId =
+        (insertResult as any)?.rows?.[0]?.id ??
+        (Array.isArray(insertResult) ? (insertResult[0] as any)?.id : undefined);
+
+      if (typeof insertedId !== 'number') {
+        throw new Error('Failed to retrieve inserted student id');
+      }
+
+      studentId = insertedId;
     });
 
     logger.info({ email: data.email }, 'Student created');

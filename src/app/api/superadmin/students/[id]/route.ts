@@ -12,6 +12,9 @@ import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const UpdateStudentSchema = z.object({
   full_name: z.string().min(1).max(255).optional(),
   email: z.string().email().optional(),

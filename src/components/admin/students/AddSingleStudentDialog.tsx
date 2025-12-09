@@ -303,23 +303,21 @@ export function AddSingleStudentDialog({
 				}),
 			});
 
-			// Check Content-Type before parsing JSON
-			const contentType = response.headers.get("content-type");
-			if (!contentType || !contentType.includes("application/json")) {
-				throw new Error(`Server returned non-JSON response (${response.status} ${response.statusText})`);
+			const contentType = response.headers.get("content-type") || "";
+			let data: any = null;
+			if (contentType.includes("application/json")) {
+				data = await response.json().catch(() => null);
 			}
 
-			const data = await response.json();
-
 			if (!response.ok) {
-				if (data.details && Array.isArray(data.details)) {
-					// Handle Zod validation errors
-					const validationErrors = data.details.map((issue: any) =>
-						`${issue.path.join('.')}: ${issue.message}`
-					).join('\n');
+				if (data?.details && Array.isArray(data.details)) {
+					const validationErrors = data.details
+						.map((issue: any) => `${issue.path.join('.')}: ${issue.message}`)
+						.join('\n');
 					throw new Error(validationErrors || data.error || "Failed to create student");
 				}
-				throw new Error(data.error || "Failed to create student");
+				const fallback = data?.error || data?.message || `Failed to create student (${response.status})`;
+				throw new Error(fallback);
 			}
 
 			toast.success("Student created successfully");

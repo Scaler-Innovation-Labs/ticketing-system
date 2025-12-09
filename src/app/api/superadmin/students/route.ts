@@ -11,6 +11,9 @@ import { listStudents, createStudent } from '@/lib/student/student-service';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const CreateStudentSchema = z.object({
   full_name: z.string().min(1).max(255),
   email: z.string().email(),
@@ -76,9 +79,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ id: studentId }, { status: 201, headers: { 'content-type': 'application/json' } });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating student');
+    const message = error.message || 'Failed to create student';
+    const isUnauthorized = message.toLowerCase().includes('unauthorized');
+    const isConflict = message.toLowerCase().includes('already exists');
     return NextResponse.json(
-      { error: error.message || 'Failed to create student' },
-      { status: error.message.includes('Unauthorized') ? 401 : 500 }
+      { error: message },
+      { status: isUnauthorized ? 401 : isConflict ? 409 : 500 }
     );
   }
 }
