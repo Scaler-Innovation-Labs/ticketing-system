@@ -78,8 +78,10 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
     try {
       const response = await fetch(`/api/tickets/${ticketId}/committee-tags`);
       if (response.ok) {
-        const data = await response.json();
-        setTags(data.committees || data.tags || []);
+        const responseData = await response.json();
+        // ApiResponse wraps data in { success: true, data: { committees: [...] } }
+        const tags = responseData?.data?.committees || responseData?.committees || responseData?.tags || [];
+        setTags(tags);
       } else {
         console.error("Failed to fetch tags:", response.status);
         // Try to read text to avoid crashing caller when response isn't JSON
@@ -115,11 +117,21 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
       });
 
       if (response.ok) {
+        const responseData = await response.json();
         toast.success("Ticket tagged to committee successfully");
         setSelectedCommitteeId("");
         setReason("");
         setIsDialogOpen(false);
-        fetchTags();
+        
+        // Update tags optimistically from response if available
+        if (responseData?.data?.committees) {
+          setTags(responseData.data.committees);
+        } else if (responseData?.committees) {
+          setTags(responseData.committees);
+        }
+        
+        // Also refetch to ensure we have the latest data
+        await fetchTags();
         onTagAdded?.();
       } else {
         let errorMessage = "Failed to tag ticket";
@@ -133,23 +145,45 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         }
         toast.error(errorMessage);
       }
-    } catch (error) {
-      console.error("Error tagging ticket:", error);
-      toast.error("Failed to tag ticket");
+    } catch (error: unknown) {
+      // Extract error message from various error types
+      let errorMessage = "Failed to tag ticket";
+      let errorDetails: any = {};
+
+      if (error instanceof Error) {
+        errorMessage = error.message || errorMessage;
+        errorDetails = {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        };
+      } else if (error && typeof error === 'object') {
+        if ('message' in error && typeof error.message === 'string') {
+          errorMessage = error.message;
+        }
+        errorDetails = { ...error };
+      } else {
+        errorDetails = { raw: String(error) };
+      }
+
+      console.error("Error tagging ticket:", errorDetails);
+      toast.error(errorMessage || "Failed to tag ticket");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRemoveTag = async (tagId: number) => {
+  const handleRemoveTag = async (tagId: number, committeeId: number) => {
     if (!confirm("Are you sure you want to remove this committee tag?")) {
       return;
     }
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/tickets/${ticketId}/committee-tags?tagId=${tagId}`, {
+      const response = await fetch(`/api/tickets/${ticketId}/committee-tags`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ committeeId }),
       });
 
       if (response.ok) {
@@ -161,9 +195,29 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
         const errorMessage = typeof error.error === 'string' ? error.error : "Failed to remove tag";
         toast.error(errorMessage);
       }
-    } catch (error) {
-      console.error("Error removing tag:", error);
-      toast.error("Failed to remove tag");
+    } catch (error: unknown) {
+      // Extract error message from various error types
+      let errorMessage = "Failed to remove tag";
+      let errorDetails: any = {};
+
+      if (error instanceof Error) {
+        errorMessage = error.message || errorMessage;
+        errorDetails = {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        };
+      } else if (error && typeof error === 'object') {
+        if ('message' in error && typeof error.message === 'string') {
+          errorMessage = error.message;
+        }
+        errorDetails = { ...error };
+      } else {
+        errorDetails = { raw: String(error) };
+      }
+
+      console.error("Error removing tag:", errorDetails);
+      toast.error(errorMessage || "Failed to remove tag");
     } finally {
       setLoading(false);
     }
@@ -265,7 +319,7 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
               <Users className="w-3 h-3" />
               <span>{tag.committee.name}</span>
               <button
-                onClick={() => handleRemoveTag(tag.id)}
+                onClick={() => handleRemoveTag(tag.id, tag.committee_id)}
                 className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
                 disabled={loading}
               >

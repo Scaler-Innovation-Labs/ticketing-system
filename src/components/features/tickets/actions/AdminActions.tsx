@@ -130,7 +130,8 @@ export function AdminActions({
 			// If we're not in progress yet, force a "set" (not extension) so the API can change status.
 			const isExtension = normalizedStatus === "in_progress";
 
-			const response = await fetch(`/api/tickets/${ticketId}/tat`, {
+			const url = `/api/tickets/${ticketId}/tat`;
+			const response = await fetch(url, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
@@ -175,9 +176,39 @@ export function AdminActions({
 				const errorMessage = typeof errorData.error === 'string' ? errorData.error : (typeof errorData.details === 'string' ? errorData.details : "Failed to set TAT");
 				toast.error(errorMessage);
 			}
-		} catch (error) {
-			logger.error({ error, component: "AdminActions", action: "setTAT" }, "Error setting TAT");
-			toast.error("Failed to set TAT. Please try again.");
+		} catch (error: unknown) {
+			// Extract error message from various error types
+			let errorMessage = "Failed to set TAT";
+			let errorDetails: any = {};
+
+			if (error instanceof Error) {
+				errorMessage = error.message || errorMessage;
+				errorDetails = {
+					message: error.message,
+					name: error.name,
+					stack: error.stack,
+				};
+			} else if (error && typeof error === 'object') {
+				if ('message' in error && typeof error.message === 'string') {
+					errorMessage = error.message;
+				}
+				errorDetails = { ...error };
+			} else {
+				errorDetails = { raw: String(error) };
+			}
+
+			logger.error(
+				{
+					error: errorDetails,
+					errorMessage,
+					component: "AdminActions",
+					action: "setTAT",
+					ticketId,
+					url: `/api/tickets/${ticketId}/tat`,
+				},
+				"Error setting TAT"
+			);
+			toast.error(errorMessage || "Failed to set TAT. Please try again.");
 		} finally {
 			setLoading(null);
 		}

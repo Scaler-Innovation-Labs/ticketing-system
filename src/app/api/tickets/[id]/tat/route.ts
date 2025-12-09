@@ -12,6 +12,10 @@ import { extendTAT, setTAT, parseTAT } from '@/lib/ticket/ticket-operations-serv
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+// Ensure this route runs on Node (for DB/network access)
+export const runtime = 'nodejs';
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };

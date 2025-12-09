@@ -8,9 +8,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { db, category_fields, field_options, subcategories } from '@/db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, asc, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+
+// Force dynamic, run on Node to avoid edge/SSR fetch issues
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const CreateFieldSchema = z.object({
   subcategory_id: z.number().int().positive(),
@@ -56,18 +60,24 @@ export async function GET(request: NextRequest) {
       .innerJoin(subcategories, eq(category_fields.subcategory_id, subcategories.id))
       .$dynamic();
 
+    // Filter by is_active and optionally by subcategory_id
+    const conditions = [eq(category_fields.is_active, true)];
     if (subcategoryId) {
-      query = query.where(eq(category_fields.subcategory_id, parseInt(subcategoryId, 10)));
+      conditions.push(eq(category_fields.subcategory_id, parseInt(subcategoryId, 10)));
     }
+    query = query.where(and(...conditions));
 
-    const fields = await query.orderBy(category_fields.display_order, desc(category_fields.created_at));
+    // Order by display_order, then by created_at
+    const fields = await query.orderBy(asc(category_fields.display_order), desc(category_fields.created_at));
 
     // Fetch options for select/multiselect fields
     const fieldIds = fields.map(f => f.id);
+    const { inArray: inArrayOptions } = await import('drizzle-orm');
     const options = fieldIds.length > 0 ? await db
       .select()
       .from(field_options)
-      .where(eq(field_options.field_id, fieldIds[0])) // This is simplified, ideally use IN clause
+      .where(inArrayOptions(field_options.field_id, fieldIds))
+      .orderBy(asc(field_options.display_order))
       : [];
 
     // Group options by field_id
@@ -93,10 +103,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let body: any = null;
   try {
     await requireRole(['super_admin']);
 
-    let body;
     try {
       body = await request.json();
     } catch (error) {
@@ -129,12 +139,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use provided slug or generate from name
+    const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/\s+/g, '-');
+    
+    // Check for duplicate slug within the same subcategory
+    const existing = await db
+      .select({ id: category_fields.id })
+      .from(category_fields)
+      .where(
+        and(
+          eq(category_fields.subcategory_id, parsed.data.subcategory_id),
+          eq(category_fields.slug, slug),
+          eq(category_fields.is_active, true)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: `A field with slug "${slug}" already exists in this subcategory` },
+        { status: 409 }
+      );
+    }
+
     let fieldId: number;
 
     await db.transaction(async (tx) => {
-      // Use provided slug or generate from name
-      const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/\s+/g, '-');
-      
       // Use validation_rules if provided, otherwise use validation
       const validation = parsed.data.validation_rules || parsed.data.validation || null;
       
@@ -172,6 +202,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ id: fieldId! }, { status: 201 });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating field');
+    
+    // Handle unique constraint violations
+    if (error.message?.includes('unique') || error.code === '23505') {
+      const slug = body?.slug || body?.name?.toLowerCase().replace(/\s+/g, '-') || 'unknown';
+      return NextResponse.json(
+        { error: `A field with slug "${slug}" already exists in this subcategory` },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Failed to create field' },
       { status: error.message.includes('Unauthorized') ? 401 : 500 }

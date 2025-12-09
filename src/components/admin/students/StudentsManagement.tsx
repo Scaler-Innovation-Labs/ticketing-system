@@ -237,6 +237,11 @@ export function StudentsManagement({
 	const handleDelete = async () => {
 		if (!deletingStudentId) return;
 
+		// Optimistically remove the student from the UI
+		const previousStudents = students;
+		setStudents(prev => prev.filter(s => s.student_id !== deletingStudentId));
+		setPagination(prev => ({ ...prev, total: prev.total - 1 }));
+
 		try {
 			const response = await fetch(`/api/superadmin/students/${deletingStudentId}`, {
 				method: "DELETE",
@@ -247,12 +252,19 @@ export function StudentsManagement({
 				toast.success(data.message || "Student deleted successfully");
 				setIsDeleteDialogOpen(false);
 				setDeletingStudentId(null);
+				// Refresh to get updated data from server
 				refreshData();
 			} else {
+				// Revert optimistic update on error
+				setStudents(previousStudents);
+				setPagination(prev => ({ ...prev, total: prev.total + 1 }));
 				const error = await response.json();
 				toast.error(error.error || "Failed to delete student");
 			}
 		} catch (error) {
+			// Revert optimistic update on error
+			setStudents(previousStudents);
+			setPagination(prev => ({ ...prev, total: prev.total + 1 }));
 			console.error("Delete error:", error);
 			toast.error("Failed to delete student");
 		}

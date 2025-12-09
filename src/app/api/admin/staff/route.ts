@@ -123,7 +123,7 @@ export async function POST(request: Request) {
 
     let userId = data.clerkUserId;
 
-    // 1. Handle User Creation/Retrieval
+    // 1. Handle User Creation/Retrieval (upsert if already exists)
     if (data.newUser) {
       // Check if user exists
       const existingUser = await db.query.users.findFirst({
@@ -131,20 +131,30 @@ export async function POST(request: Request) {
       });
 
       if (existingUser) {
-        return NextResponse.json({ error: 'User with this email already exists' }, { status: 409 });
+        // Reuse existing user instead of failing with 409
+        userId = existingUser.id;
+        // Optionally update basic info
+        await db.update(users)
+          .set({
+            full_name: `${data.newUser.firstName} ${data.newUser.lastName}`,
+            phone: data.newUser.phone || existingUser.phone,
+            is_active: true,
+            updated_at: new Date(),
+          })
+          .where(eq(users.id, userId));
+      } else {
+        // Create new user
+        const [newUser] = await db.insert(users).values({
+          email: data.newUser.email,
+          full_name: `${data.newUser.firstName} ${data.newUser.lastName}`,
+          phone: data.newUser.phone,
+          external_id: `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`, // Placeholder
+          auth_provider: 'clerk',
+          is_active: true,
+        }).returning();
+
+        userId = newUser.id;
       }
-
-      // Create new user
-      const [newUser] = await db.insert(users).values({
-        email: data.newUser.email,
-        full_name: `${data.newUser.firstName} ${data.newUser.lastName}`,
-        phone: data.newUser.phone,
-        external_id: `pending_${Date.now()}_${Math.random().toString(36).substring(7)}`, // Placeholder
-        auth_provider: 'clerk',
-        is_active: true,
-      }).returning();
-
-      userId = newUser.id;
     } else if (!userId) {
       return NextResponse.json({ error: 'User ID or New User details required' }, { status: 400 });
     }

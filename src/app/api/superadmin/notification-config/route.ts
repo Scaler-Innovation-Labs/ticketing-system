@@ -14,15 +14,15 @@ import { requireRole } from '@/lib/auth/helpers';
 import { logger } from '@/lib/logger';
 
 const CreateNotificationConfigSchema = z.object({
-    scope_id: z.number().int().positive().optional(),
-    category_id: z.number().int().positive().optional(),
-    subcategory_id: z.number().int().positive().optional(),
+    scope_id: z.number().int().positive().nullable().optional(),
+    category_id: z.number().int().positive().nullable().optional(),
+    subcategory_id: z.number().int().positive().nullable().optional(),
     enable_slack: z.boolean().default(true),
     enable_email: z.boolean().default(true),
-    slack_channel: z.string().max(255).optional().nullable(),
-    slack_cc_user_ids: z.array(z.string()).optional().nullable(),
-    email_recipients: z.array(z.string().email()).optional().nullable(),
-    priority: z.number().int().min(0).max(100).default(0),
+    slack_channel: z.string().max(255).nullable().optional(),
+    slack_cc_user_ids: z.array(z.string()).nullable().optional(),
+    email_recipients: z.array(z.string().email()).nullable().optional(),
+    priority: z.number().int().min(0).max(100).optional(),
 });
 
 /**
@@ -87,21 +87,33 @@ export async function POST(request: NextRequest) {
 
         const data = parsed.data;
 
-        // Allow global defaults (all IDs null)
-        // if (!data.scope_id && !data.category_id && !data.subcategory_id) { ... }
+        // Calculate priority based on specificity:
+        // Subcategory (20) > Category (10) > Scope (5) > Global Default (0)
+        let calculatedPriority = data.priority ?? 0;
+        if (calculatedPriority === 0) {
+            if (data.subcategory_id) {
+                calculatedPriority = 20;
+            } else if (data.category_id) {
+                calculatedPriority = 10;
+            } else if (data.scope_id) {
+                calculatedPriority = 5;
+            } else {
+                calculatedPriority = 0; // Global default
+            }
+        }
 
         const [config] = await db
             .insert(notification_config)
             .values({
-                scope_id: data.scope_id || null,
-                category_id: data.category_id || null,
-                subcategory_id: data.subcategory_id || null,
+                scope_id: data.scope_id ?? null,
+                category_id: data.category_id ?? null,
+                subcategory_id: data.subcategory_id ?? null,
                 enable_slack: data.enable_slack,
                 enable_email: data.enable_email,
-                slack_channel: data.slack_channel,
-                slack_cc_user_ids: data.slack_cc_user_ids,
-                email_recipients: data.email_recipients,
-                priority: data.priority,
+                slack_channel: data.slack_channel ?? null,
+                slack_cc_user_ids: data.slack_cc_user_ids ?? null,
+                email_recipients: data.email_recipients ?? null,
+                priority: calculatedPriority,
                 is_active: true,
             })
             .returning();

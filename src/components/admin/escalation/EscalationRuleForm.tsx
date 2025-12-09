@@ -135,13 +135,30 @@ export function EscalationRuleForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No admin assigned</SelectItem>
-                {adminUsers.map((admin) => (
-                  <SelectItem key={admin.id} value={admin.id}>
-                    {admin.name}
-                    {admin.role === "super_admin" && " (Super Admin)"}
-                    {admin.domain && ` (${admin.domain}${admin.scope ? ` - ${admin.scope}` : ""})`}
-                  </SelectItem>
-                ))}
+                {adminUsers
+                  .filter((admin) => !!admin.id) // only render selectable admins with an id
+                  .map((admin, idx) => {
+                    const key = admin.id ?? `admin-${idx}`;
+                    const value = String(admin.id);
+                    const label =
+                      admin.name ||
+                      (admin as any).email ||
+                      value ||
+                      `Admin ${idx + 1}`;
+                    const suffix =
+                      admin.domain && admin.scope
+                        ? ` (${admin.domain} - ${admin.scope})`
+                        : admin.domain
+                          ? ` (${admin.domain})`
+                          : "";
+                    return (
+                      <SelectItem key={key} value={value}>
+                        {label}
+                        {admin.role === "super_admin" && " (Super Admin)"}
+                        {suffix}
+                      </SelectItem>
+                    );
+                  })}
               </SelectContent>
             </Select>
           </div>

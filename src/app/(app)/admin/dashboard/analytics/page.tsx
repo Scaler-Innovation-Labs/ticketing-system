@@ -27,6 +27,10 @@ import {
 } from "@/components/ui/table";
 import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 
+// Force dynamic rendering on Node to avoid edge/SSR data issues
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export default async function AdminAnalyticsPage({
   searchParams,
 }: {
@@ -97,11 +101,14 @@ export default async function AdminAnalyticsPage({
     .where(whereClause)
     .groupBy(ticket_statuses.value);
 
+  const norm = (s: string | null) => (s || "").toLowerCase();
   const openTickets = statusRes
-    .filter((row) => ["OPEN", "IN_PROGRESS", "REOPENED", "AWAITING_STUDENT_RESPONSE"].includes(row.status || ""))
+    .filter((row) =>
+      ["open", "in_progress", "reopened", "awaiting_student_response", "awaiting_student"].includes(norm(row.status))
+    )
     .reduce((sum, row) => sum + Number(row.count || 0), 0);
   const resolvedTickets = statusRes
-    .filter((row) => ["RESOLVED", "CLOSED"].includes(row.status || ""))
+    .filter((row) => ["resolved", "closed"].includes(norm(row.status)))
     .reduce((sum, row) => sum + Number(row.count || 0), 0);
   const resolutionRate = totalTickets > 0 ? (resolvedTickets / totalTickets) * 100 : 0;
 
@@ -133,9 +140,10 @@ export default async function AdminAnalyticsPage({
     }
     const countValue = Number(row.count || 0);
     categoryStatsMap[name].total += countValue;
-    if (["RESOLVED", "CLOSED"].includes(row.status || "")) {
+    const status = norm(row.status);
+    if (["resolved", "closed"].includes(status)) {
       categoryStatsMap[name].resolved += countValue;
-    } else if (row.status === "OPEN") {
+    } else if (["open", "awaiting_student_response", "awaiting_student"].includes(status)) {
       categoryStatsMap[name].open += countValue;
     } else {
       categoryStatsMap[name].inProgress += countValue;

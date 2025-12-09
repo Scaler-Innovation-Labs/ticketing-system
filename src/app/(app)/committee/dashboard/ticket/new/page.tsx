@@ -131,57 +131,21 @@ export default async function CommitteeNewTicketPage() {
   // Flatten dynamic fields for TicketForm (still accepts flat list)
   const mappedCategoryFields = subcategoriesWithSubs.flatMap((sub) => sub.fields || []);
 
-  // Define standard profile fields to show for all tickets
-  // These are always shown to help admins contact students
+  // For committee tickets, only show basic identity fields
   const standardProfileFields = [
     {
-      field_name: "name",
+      field_name: "Full Name",
       storage_key: "name",
       required: false,
       editable: false,
       display_order: 1,
     },
     {
-      field_name: "email",
+      field_name: "Email",
       storage_key: "email",
       required: false,
       editable: false,
       display_order: 2,
-    },
-    {
-      field_name: "phone",
-      storage_key: "phone",
-      required: false,
-      editable: true,
-      display_order: 3,
-    },
-    {
-      field_name: "hostel",
-      storage_key: "hostel",
-      required: false,
-      editable: true,
-      display_order: 4,
-    },
-    {
-      field_name: "roomNumber",
-      storage_key: "roomNumber",
-      required: false,
-      editable: true,
-      display_order: 5,
-    },
-    {
-      field_name: "batchYear",
-      storage_key: "batchYear",
-      required: false,
-      editable: false,
-      display_order: 6,
-    },
-    {
-      field_name: "classSection",
-      storage_key: "classSection",
-      required: false,
-      editable: false,
-      display_order: 7,
     },
   ];
 

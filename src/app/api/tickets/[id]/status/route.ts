@@ -14,6 +14,10 @@ import { logger } from '@/lib/logger';
 import { USER_ROLES } from '@/conf/constants';
 import { z } from 'zod';
 
+// Force dynamic and Node runtime to avoid edge/SSR fetch issues
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -87,7 +91,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const { revalidatePath } = await import('next/cache');
     revalidatePath(`/student/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
     revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
+    revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
 
     return ApiResponse.success({
       message: `Status updated to ${status}`,

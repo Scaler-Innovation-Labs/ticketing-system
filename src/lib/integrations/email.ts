@@ -1,44 +1,40 @@
 /**
  * Email Integration Service
  * 
- * Handles email notifications using Nodemailer
+ * Handles email notifications using Resend
  */
 
-import nodemailer, { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import { logger } from '@/lib/logger';
 
 // ============================================
 // Configuration
 // ============================================
 
-let transporter: Transporter | null = null;
+let resendClient: Resend | null = null;
 
-// Initialize transporter from environment variables
-function getTransporter(): Transporter | null {
-    if (transporter) return transporter;
+// Initialize Resend client from environment variables
+function getResendClient(): Resend | null {
+    if (resendClient) return resendClient;
 
-    const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const apiKey = process.env.RESEND_API_KEY;
 
-    if (!host || !user || !pass) {
-        logger.warn('Email not configured - missing SMTP credentials');
+    if (!apiKey) {
+        logger.warn('Email not configured - missing RESEND_API_KEY');
         return null;
     }
 
-    transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-    });
-
-    return transporter;
+    resendClient = new Resend(apiKey);
+    return resendClient;
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@ticketing.example.com';
+// Use Resend's test domain if no EMAIL_FROM is set (for testing)
+// For production, set EMAIL_FROM to your verified domain email
+const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
+
+// Temporary: Redirect all emails to this address for testing (until domain is verified)
+const TEST_EMAIL = 'n.vedvarshit@gmail.com';
 
 // ============================================
 // Types
@@ -78,38 +74,88 @@ export interface TicketEmailData {
  * Check if email is configured
  */
 export function isEmailConfigured(): boolean {
-    return !!getTransporter();
+    return !!getResendClient();
 }
 
 /**
  * Send an email
  */
 export async function sendEmail(options: EmailOptions): Promise<string | null> {
-    const transport = getTransporter();
+    const client = getResendClient();
 
-    if (!transport) {
+    if (!client) {
         logger.warn('Email not configured, skipping send');
         return null;
     }
 
     try {
-        const result = await transport.sendMail({
-            from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-            to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-            cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
-            replyTo: options.replyTo,
-            subject: options.subject,
-            text: options.text,
-            html: options.html,
-            attachments: options.attachments,
+        // Convert attachments format for Resend (base64 encoded)
+        const attachments = options.attachments?.map(att => {
+            let content: string;
+            if (typeof att.content === 'string') {
+                // If already a string, assume it's base64 or convert to base64
+                content = att.content;
+            } else {
+                // Convert Buffer to base64
+                content = att.content.toString('base64');
+            }
+            
+            return {
+                filename: att.filename,
+                content,
+            };
         });
 
+        // Handle recipients - Resend expects arrays
+        const to = Array.isArray(options.to) ? options.to : [options.to];
+        
+        // Build email payload - only include defined fields
+        const emailPayload: any = {
+            from: `${FROM_NAME} <${FROM_EMAIL}>`,
+            to,
+            subject: options.subject,
+        };
+
+        // Add cc if provided
+        if (options.cc) {
+            emailPayload.cc = Array.isArray(options.cc) ? options.cc : [options.cc];
+        }
+
+        // Add replyTo if provided
+        if (options.replyTo) {
+            emailPayload.replyTo = options.replyTo;
+        }
+
+        // Resend requires at least one of text or html
+        if (options.html) {
+            emailPayload.html = options.html;
+        }
+        if (options.text) {
+            emailPayload.text = options.text;
+        }
+        
+        // If neither text nor html provided, use text as fallback
+        if (!emailPayload.text && !emailPayload.html) {
+            emailPayload.text = options.subject; // Fallback to subject
+        }
+
+        // Add attachments if provided
+        if (attachments && attachments.length > 0) {
+            emailPayload.attachments = attachments;
+        }
+
+        const result = await client.emails.send(emailPayload);
+
+        if (result.error) {
+            throw new Error(result.error.message || 'Failed to send email');
+        }
+
         logger.info(
-            { messageId: result.messageId, to: options.to },
+            { messageId: result.data?.id, to: options.to },
             'Email sent successfully'
         );
 
-        return result.messageId;
+        return result.data?.id || null;
     } catch (error: any) {
         logger.error(
             { to: options.to, subject: options.subject, error: error.message },
@@ -226,11 +272,21 @@ export async function notifyNewTicketEmail(
     ticket: TicketEmailData,
     recipientEmails: string[]
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipients in body
+    const originalRecipients = recipientEmails.join(', ');
+    const emailBody = buildNewTicketEmail(ticket);
+    const emailBodyWithRecipients = emailBody.replace(
+        '</div>',
+        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+        </div></div>`
+    );
+    
     return sendEmail({
-        to: recipientEmails,
+        to: [TEST_EMAIL],
         subject: `[${ticket.ticketNumber}] New Ticket: ${ticket.title}`,
-        html: buildNewTicketEmail(ticket),
-        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nView: ${ticket.link}`,
+        html: emailBodyWithRecipients,
+        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${ticket.link}`,
     });
 }
 
@@ -246,11 +302,21 @@ export async function notifyStatusUpdateEmail(
     link: string,
     recipientEmails: string[]
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipients in body
+    const originalRecipients = recipientEmails.join(', ');
+    const emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
+    const emailBodyWithRecipients = emailBody.replace(
+        '</div>',
+        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+        </div></div>`
+    );
+    
     return sendEmail({
-        to: recipientEmails,
+        to: [TEST_EMAIL],
         subject: `[${ticketNumber}] Status Updated: ${newStatus}`,
-        html: buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link),
-        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nView: ${link}`,
+        html: emailBodyWithRecipients,
+        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${link}`,
     });
 }
 
@@ -265,18 +331,23 @@ export async function notifyAssignmentEmail(
     link: string,
     recipientEmail: string
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipient in body
     return sendEmail({
-        to: recipientEmail,
+        to: [TEST_EMAIL],
         subject: `[${ticketNumber}] Ticket Assigned to You`,
         html: `
       <div style="font-family: sans-serif; padding: 20px;">
         <h2>Ticket Assigned to You</h2>
         <p>You have been assigned to ticket <strong>${ticketNumber}</strong>:</p>
         <p><strong>${title}</strong></p>
+        <p>Assigned to: ${assignedTo}</p>
         <p>Assigned by: ${assignedBy}</p>
         <a href="${link}" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Ticket</a>
+        <div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
+        </div>
       </div>
     `,
-        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned by: ${assignedBy}\nView: ${link}`,
+        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nOriginal recipient: ${recipientEmail}\nView: ${link}`,
     });
 }

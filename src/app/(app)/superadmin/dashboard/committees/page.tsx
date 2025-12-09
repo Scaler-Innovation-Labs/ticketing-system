@@ -26,30 +26,47 @@ async function getCommitteeMembers(committeeId: number): Promise<CommitteeMember
       id: committees.id,
       name: committees.name,
       head_id: committees.head_id,
+      contact_email: committees.contact_email,
     })
     .from(committees)
     .where(eq(committees.id, committeeId))
     .limit(1);
 
-  if (!committee || !committee.head_id) {
-    return [];
+  if (!committee) return [];
+
+  // Prefer explicit head_id; otherwise fall back to contact_email to infer head
+  let member =
+    committee.head_id
+      ? await db
+          .select({
+            id: users.id,
+            auth_provider: users.auth_provider,
+            external_id: users.external_id,
+            full_name: users.full_name,
+            email: users.email,
+          })
+          .from(users)
+          .where(eq(users.id, committee.head_id))
+          .limit(1)
+          .then((rows) => rows[0])
+      : null;
+
+  if (!member && committee.contact_email) {
+    member = await db
+      .select({
+        id: users.id,
+        auth_provider: users.auth_provider,
+        external_id: users.external_id,
+        full_name: users.full_name,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.email, committee.contact_email))
+      .limit(1)
+      .then((rows) => rows[0]);
   }
 
-  const [member] = await db
-    .select({
-      id: users.id,
-      auth_provider: users.auth_provider,
-      external_id: users.external_id,
-      full_name: users.full_name,
-      email: users.email,
-    })
-    .from(users)
-    .where(eq(users.id, committee.head_id))
-    .limit(1);
-
-  if (!member) {
-    return [];
-  }
+  if (!member) return [];
 
   const [firstName, ...restNameParts] = (member.full_name || "").split(" ").filter(Boolean);
   const lastName = restNameParts.length > 0 ? restNameParts.join(" ") : null;

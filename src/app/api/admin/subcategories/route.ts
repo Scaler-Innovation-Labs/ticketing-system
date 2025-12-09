@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { db } from '@/db';
 import { subcategories, categories } from '@/db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, asc, and } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
@@ -19,6 +19,7 @@ const CreateSubcategorySchema = z.object({
   slug: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   sla_hours: z.number().int().positive().optional(),
+  display_order: z.number().int().default(0).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -47,11 +48,15 @@ export async function GET(request: NextRequest) {
       .innerJoin(categories, eq(subcategories.category_id, categories.id))
       .$dynamic();
 
+    // Filter by category_id and is_active
+    const conditions = [eq(subcategories.is_active, true)];
     if (categoryId) {
-      query = query.where(eq(subcategories.category_id, parseInt(categoryId, 10)));
+      conditions.push(eq(subcategories.category_id, parseInt(categoryId, 10)));
     }
+    query = query.where(and(...conditions));
 
-    const subcats = await query.orderBy(desc(subcategories.created_at));
+    // Order by display_order, then by created_at
+    const subcats = await query.orderBy(asc(subcategories.display_order), desc(subcategories.created_at));
 
     if (includeFields && subcats.length > 0) {
       const { category_fields, field_options } = await import('@/db/schema-tickets');
@@ -59,12 +64,15 @@ export async function GET(request: NextRequest) {
 
       const subcatIds = subcats.map(s => s.id);
 
-      // Fetch fields
+      // Fetch fields (only active ones)
       const fields = await db
         .select()
         .from(category_fields)
-        .where(inArray(category_fields.subcategory_id, subcatIds))
-        .orderBy(category_fields.display_order);
+        .where(and(
+          inArray(category_fields.subcategory_id, subcatIds),
+          eq(category_fields.is_active, true)
+        ))
+        .orderBy(asc(category_fields.display_order), desc(category_fields.created_at));
 
       // Fetch options for fields
       const fieldIds = fields.map(f => f.id);
@@ -104,10 +112,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let body: any = null;
   try {
     await requireRole(['super_admin']);
 
-    const body = await request.json();
+    body = await request.json();
     const parsed = CreateSubcategorySchema.safeParse(body);
 
     if (!parsed.success) {
@@ -131,6 +140,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate slug within the same category
+    const existing = await db
+      .select({ id: subcategories.id })
+      .from(subcategories)
+      .where(
+        and(
+          eq(subcategories.category_id, parsed.data.category_id),
+          eq(subcategories.slug, parsed.data.slug),
+          eq(subcategories.is_active, true)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: `A subcategory with slug "${parsed.data.slug}" already exists in this category` },
+        { status: 409 }
+      );
+    }
+
     const [subcategory] = await db
       .insert(subcategories)
       .values(parsed.data)
@@ -140,6 +169,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(subcategory, { status: 201 });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating subcategory');
+    
+    // Handle unique constraint violations
+    if (error.message?.includes('unique') || error.code === '23505') {
+      const slug = body?.slug || 'unknown';
+      return NextResponse.json(
+        { error: `A subcategory with slug "${slug}" already exists in this category` },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { error: error.message || 'Failed to create subcategory' },
       { status: error.message.includes('Unauthorized') ? 401 : 500 }

@@ -55,10 +55,12 @@ export async function resolveTicketScope(
 
   // Dynamic scope - resolve from user profile
   if (scope_mode === 'dynamic') {
+    // For dynamic scope mode, scope_id is optional - it's used to configure which field to use
+    // If no scope_id, we can't resolve dynamically, so return null (no scoping)
     if (!scope_id) {
-      logger.warn(
+      logger.debug(
         { categoryId, scopeMode: scope_mode },
-        'Category has dynamic scope mode but no scope_id'
+        'Category has dynamic scope mode but no scope_id - skipping scope resolution'
       );
       return null;
     }

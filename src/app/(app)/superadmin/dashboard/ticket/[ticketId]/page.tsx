@@ -236,12 +236,6 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
 
 
   // Extract dynamic fields from metadata (after metadata is initialized)
-  console.log('[Super Admin Ticket] Metadata for dynamic fields:', {
-    type: typeof metadata,
-    isNull: metadata === null,
-    isUndefined: metadata === undefined,
-    value: metadata
-  });
   const dynamicFields = extractDynamicFields(metadata as Record<string, unknown>, categorySchema || {});
 
   // Normalize status for comparisons

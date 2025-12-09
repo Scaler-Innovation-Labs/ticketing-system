@@ -96,13 +96,24 @@ export function applyTATFilter(tickets: AdminTicketRow[], tat: string) {
 }
 
 export function calculateTicketStats(tickets: AdminTicketRow[]) {
+    const statusVal = (t: AdminTicketRow) => (getStatusValue(t) || "").toLowerCase();
+
+    const open = tickets.filter(t => statusVal(t) === 'open').length;
+    const inProgress = tickets.filter(t => statusVal(t) === 'in_progress').length;
+    const resolved = tickets.filter(t => statusVal(t) === 'resolved').length;
+    const closed = tickets.filter(t => statusVal(t) === 'closed').length;
+    const awaitingStudent = tickets.filter(t => ['awaiting_student_response', 'awaiting_student'].includes(statusVal(t))).length;
+    const escalated = tickets.filter(t => (t.escalation_level || 0) > 0).length;
+    const unassigned = tickets.filter(t => !t.assigned_to).length;
+
     return {
         total: tickets.length,
-        open: tickets.filter(t => getStatusValue(t) === 'open').length,
-        inProgress: tickets.filter(t => getStatusValue(t) === 'in_progress').length,
-        resolved: tickets.filter(t => getStatusValue(t) === 'resolved').length,
-        escalated: tickets.filter(t => (t.escalation_level || 0) > 0).length,
-        unassigned: tickets.filter(t => !t.assigned_to).length,
-        awaitingStudent: tickets.filter(t => getStatusValue(t) === 'awaiting_response').length,
+        open,
+        inProgress,
+        resolved,
+        closed,
+        escalated,
+        unassigned,
+        awaitingStudent,
     };
 }

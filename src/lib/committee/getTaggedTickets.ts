@@ -1,15 +1,35 @@
-import { db, tickets, ticket_committee_tags, committee_members, categories, ticket_statuses } from "@/db";
-import { eq, inArray, desc } from "drizzle-orm";
+import { db, tickets, ticket_committee_tags, committee_members, categories, ticket_statuses, committees, users } from "@/db";
+import { eq, inArray, desc, or } from "drizzle-orm";
 import type { Ticket } from "@/db/types-only";
 
 export async function getTaggedTickets(userId: string): Promise<Ticket[]> {
-    // 1. Get user's committees
+    // 0. Fetch user email for fallback matching
+    const [user] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+    // 1. Get user's committees via membership
     const userCommittees = await db
         .select({ committeeId: committee_members.committee_id })
         .from(committee_members)
         .where(eq(committee_members.user_id, userId));
 
-    const committeeIds = userCommittees.map(c => c.committeeId);
+    let committeeIds = userCommittees.map(c => c.committeeId);
+
+    // 1b. Fallback: committees where user is head or contact_email matches
+    const extraCommittees = await db
+        .select({ id: committees.id })
+        .from(committees)
+        .where(
+            or(
+                eq(committees.head_id, userId),
+                user?.email ? eq(committees.contact_email, user.email) : eq(committees.id, -1) // noop when no email
+            )
+        );
+
+    committeeIds = Array.from(new Set([...committeeIds, ...extraCommittees.map(c => c.id)]));
 
     if (committeeIds.length === 0) {
         return [];

@@ -25,6 +25,7 @@ import { db, committees, ticket_groups } from '@/db';
 import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 type RouteContext = {
   params: Promise<{ groupId: string }>;

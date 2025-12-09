@@ -131,7 +131,18 @@ export function EscalationManager({ categoryName, categoryId }: EscalationManage
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
-          setAdminUsers(data.admins || []);
+          const adminsRaw = data.admins || [];
+          // Normalize to expected shape for the select
+          const normalized = adminsRaw
+            .filter((a: any) => a?.user_id) // need an id to select
+            .map((a: any) => ({
+              id: a.user_id,
+              name: a.full_name || a.email || a.user_id,
+              role: a.role_name || a.role,
+              domain: a.domain || null,
+              scope: a.scope || null,
+            }));
+          setAdminUsers(normalized);
         } else {
           console.error("Server returned non-JSON response when fetching admins");
         }

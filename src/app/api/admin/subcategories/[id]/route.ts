@@ -18,6 +18,7 @@ const UpdateSubcategorySchema = z.object({
   slug: z.string().min(1).max(100).optional(),
   description: z.string().max(500).nullable().optional(),
   sla_hours: z.number().int().positive().nullable().optional(),
+  display_order: z.number().int().optional(),
   is_active: z.boolean().optional(),
 });
 
