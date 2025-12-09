@@ -130,9 +130,14 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
   const normalizedStatus = normalizeStatusForComparison(statusValue);
 
+  // Align with student detail behavior: use status when present, otherwise null
   const statusDisplay: TicketStatusDisplay | null = ticket.status
-
-    ? { value: ticket.status.value, label: ticket.status.label, color: ticket.status.color, badge_color: ticket.status.color }
+    ? {
+        value: ticket.status.value,
+        label: ticket.status.label,
+        color: ticket.status.color,
+        badge_color: ticket.status.color,
+      }
     : null;
 
 

@@ -21,15 +21,20 @@ export { getUserRole, getUserRoleFromDB } from './roles';
  * Call this in layouts to ensure user record exists before any DB operations.
  */
 export async function ensureUser(clerkUserId: string): Promise<string> {
-    // Check if user exists in our database
-    const [existingUser] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.external_id, clerkUserId))
-        .limit(1);
+    try {
+        // Check if user exists in our database
+        const [existingUser] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.external_id, clerkUserId))
+            .limit(1);
 
-    if (existingUser) {
-        return existingUser.id;
+        if (existingUser) {
+            return existingUser.id;
+        }
+    } catch (e) {
+        // If the lookup failed, we'll still try to sync below
+        console.error('ensureUser lookup failed, attempting sync:', e);
     }
 
     // User doesn't exist - fetch from Clerk and sync
@@ -55,7 +60,13 @@ export async function ensureUser(clerkUserId: string): Promise<string> {
     };
 
     // Sync user to database
-    return await syncUser(userData);
+    try {
+        return await syncUser(userData);
+    } catch (e) {
+        console.error('ensureUser sync failed:', e);
+        // As a last resort, return the Clerk ID so callers don't crash
+        return clerkUser.id;
+    }
 }
 
 /**

@@ -82,6 +82,13 @@ export async function getCommitteeTicketData(ticketId: number) {
       };
     });
 
+    // Fallbacks for status if join is missing
+    const statusValue = ticketRow.status_value || "open";
+    const statusLabel = ticketRow.status_label || statusValue;
+    const statusColor = ticketRow.status_color || "blue";
+    const statusLabelCapitalized =
+      statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1).replace(/_/g, " ");
+
     return {
       ticket: {
         id: ticketRow.id,
@@ -97,14 +104,12 @@ export async function getCommitteeTicketData(ticketId: number) {
         resolution_due_at: ticketRow.resolution_due_at,
         acknowledgement_due_at: ticketRow.acknowledgement_due_at,
         escalation_level: ticketRow.escalation_level,
-        status: ticketRow.status_value
-          ? {
-              id: ticketRow.status_id || null,
-              value: ticketRow.status_value,
-              label: ticketRow.status_label || ticketRow.status_value,
-              color: ticketRow.status_color || null,
-            }
-          : null,
+        status: {
+          id: ticketRow.status_id || null,
+          value: statusValue,
+          label: statusLabelCapitalized,
+          color: statusColor,
+        },
         rating: null as number | null, // Placeholder
       },
       category: ticketRow.category_id
