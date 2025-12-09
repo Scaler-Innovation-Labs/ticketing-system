@@ -106,7 +106,16 @@ export function SubcategoryDialog({
       setFormData((prev) => ({
         ...prev,
         name,
-        slug: prev.slug || newSlug,
+        slug: newSlug,
+      }));
+    });
+  };
+
+  const handleSlugChange = (slug: string) => {
+    handleSlugChangeCallback(slug, (newSlug) => {
+      setFormData((prev) => ({
+        ...prev,
+        slug: newSlug,
       }));
     });
   };
@@ -179,14 +188,13 @@ export function SubcategoryDialog({
               <Input
                 id="slug"
                 value={formData.slug}
-                onChange={(e) => {
-                  handleSlugChangeCallback(e.target.value, (newSlug) => {
-                    setFormData((prev) => ({ ...prev, slug: newSlug }));
-                  });
-                }}
+                onChange={(e) => handleSlugChange(e.target.value)}
                 placeholder="e.g., maintenance, mess, wifi-issues"
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                URL-friendly identifier (auto-generated from name)
+              </p>
             </div>
           </div>
 
