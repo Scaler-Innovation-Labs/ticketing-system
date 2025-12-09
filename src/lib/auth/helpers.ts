@@ -8,6 +8,7 @@
  */
 
 import { auth, currentUser } from '@clerk/nextjs/server';
+import { cache } from 'react';
 import { type UserRole } from '@/conf/constants';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -57,15 +58,16 @@ export async function requireAuth() {
 }
 
 /**
- * Get or create user in local database from Clerk session
+ * Get or create user in local database from Clerk session (cached per request)
  * 
  * This syncs the Clerk user to our database if needed.
+ * Uses React cache() for request-level deduplication.
  * Use this when you need the database user record.
  * 
  * @example
  * const { user, dbUser } = await requireDbUser();
  */
-export async function requireDbUser() {
+export const requireDbUser = cache(async () => {
   const { userId } = await auth();
 
   if (!userId) {
@@ -102,7 +104,7 @@ export async function requireDbUser() {
     user: clerkUser,
     dbUser,
   };
-}
+});
 
 /**
  * Require specific role(s) or throw
@@ -131,9 +133,10 @@ export async function requireRole(allowedRoles: UserRole[]) {
 }
 
 /**
- * Get current user with role
+ * Get current user with role (cached per request)
  * 
  * Convenience function that returns user + role.
+ * Uses React cache() for request-level deduplication.
  * Use this when you need role-based logic.
  * 
  * @example
@@ -142,7 +145,7 @@ export async function requireRole(allowedRoles: UserRole[]) {
  *   // Show admin options
  * }
  */
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async () => {
   const { dbUser } = await requireDbUser();
   const role = await getUserRole(dbUser.id);
 
@@ -155,7 +158,7 @@ export async function getCurrentUser() {
     dbUser,
     role,
   };
-}
+});
 
 /**
  * Create API response helpers

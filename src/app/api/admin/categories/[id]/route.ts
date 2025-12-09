@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { requireRole } from '@/lib/auth/helpers';
 import { getCategorySchema, updateCategory, deleteCategory } from '@/lib/category/category-service';
 import { logger } from '@/lib/logger';
+import { invalidateCategoryCaches } from '@/lib/cache/cache-utils';
 
 const UpdateCategorySchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -82,6 +83,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
+    // Invalidate category caches after update
+    invalidateCategoryCaches();
+
     return NextResponse.json({ category });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error updating category');
@@ -107,6 +111,9 @@ export async function DELETE(
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
+
+    // Invalidate category caches after deletion
+    invalidateCategoryCaches();
 
     return NextResponse.json({ message: 'Category deleted successfully' });
   } catch (error: any) {

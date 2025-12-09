@@ -61,6 +61,26 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const { comment, is_internal, attachments } = validation.data;
 
+    // Check ticket ownership for students
+    if (role === USER_ROLES.STUDENT) {
+      const { db: dbInstance, tickets: ticketsTable } = await import('@/db');
+      const { eq } = await import('drizzle-orm');
+      
+      const [ticket] = await dbInstance
+        .select({ created_by: ticketsTable.created_by })
+        .from(ticketsTable)
+        .where(eq(ticketsTable.id, ticketId))
+        .limit(1);
+
+      if (!ticket) {
+        throw Errors.notFound('Ticket', String(ticketId));
+      }
+
+      if (ticket.created_by !== dbUser.id) {
+        throw Errors.forbidden('You can only comment on your own tickets');
+      }
+    }
+
     // Only admins can add internal notes
     if (is_internal && role === USER_ROLES.STUDENT) {
       throw Errors.forbidden('Students cannot add internal notes');

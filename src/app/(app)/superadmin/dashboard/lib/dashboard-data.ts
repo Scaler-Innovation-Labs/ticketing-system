@@ -58,13 +58,26 @@ export async function fetchSuperAdminTickets(
   const roleName = dbUser?.roleName || null;
   const primaryDomainId = dbUser?.primary_domain_id || null;
 
-  const conditions: any[] = [
-    or(
+  // Base condition: for snr_admin with domain, show tickets assigned to them OR unassigned tickets in their domain
+  // For others, show unassigned OR assigned to them OR escalated
+  let baseCondition;
+  if (roleName === "snr_admin" && primaryDomainId && dbUser) {
+    baseCondition = or(
+      eq(tickets.assigned_to, dbUser.id),
+      and(
+        isNull(tickets.assigned_to),
+        sql`${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`
+      )
+    );
+  } else {
+    baseCondition = or(
       isNull(tickets.assigned_to),
       dbUser ? eq(tickets.assigned_to, dbUser.id) : sql`false`,
       sql`${tickets.escalation_level} > 0`
-    )
-  ];
+    );
+  }
+
+  const conditions: any[] = [baseCondition];
 
   // Apply filters to DB query
   if (filters.escalated === "true") {
@@ -127,10 +140,6 @@ export async function fetchSuperAdminTickets(
     }
   }
 
-  // Restrict snr_admin to their primary domain (if set)
-  if (roleName === "snr_admin" && primaryDomainId) {
-    conditions.push(sql`${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`);
-  }
 
   const whereConditions = and(...conditions);
 

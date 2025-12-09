@@ -118,11 +118,51 @@ export async function PATCH(
     }
 
     if (title) {
+      // Students can only update their own tickets
+      if (role === USER_ROLES.STUDENT) {
+        const { db: dbInstance, tickets: ticketsTable } = await import('@/db');
+        const { eq } = await import('drizzle-orm');
+        
+        const [ticket] = await dbInstance
+          .select({ created_by: ticketsTable.created_by })
+          .from(ticketsTable)
+          .where(eq(ticketsTable.id, ticketId))
+          .limit(1);
+
+        if (!ticket) {
+          throw Errors.notFound('Ticket', String(ticketId));
+        }
+
+        if (ticket.created_by !== dbUser.id) {
+          throw Errors.forbidden('You can only update your own tickets');
+        }
+      }
+
       await updateTicketTitle(ticketId, dbUser.id, title);
       return ApiResponse.success({ message: 'Ticket title updated' });
     }
 
     if (description) {
+      // Students can only update their own tickets
+      if (role === USER_ROLES.STUDENT) {
+        const { db: dbInstance, tickets: ticketsTable } = await import('@/db');
+        const { eq } = await import('drizzle-orm');
+        
+        const [ticket] = await dbInstance
+          .select({ created_by: ticketsTable.created_by })
+          .from(ticketsTable)
+          .where(eq(ticketsTable.id, ticketId))
+          .limit(1);
+
+        if (!ticket) {
+          throw Errors.notFound('Ticket', String(ticketId));
+        }
+
+        if (ticket.created_by !== dbUser.id) {
+          throw Errors.forbidden('You can only update your own tickets');
+        }
+      }
+
       await updateTicketDescription(ticketId, dbUser.id, description);
       return ApiResponse.success({ message: 'Ticket description updated' });
     }

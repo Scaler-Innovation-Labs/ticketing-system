@@ -11,6 +11,9 @@ import { requireRole } from '@/lib/auth/helpers';
 import { listCommittees, createCommittee } from '@/lib/committee/committee-service';
 import { logger } from '@/lib/logger';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const CreateCommitteeSchema = z.object({
   name: z.string().min(1).max(140),
   description: z.string().optional().nullable(),
@@ -20,11 +23,11 @@ const CreateCommitteeSchema = z.object({
 
 /**
  * GET /api/committees
- * List all committees (available to admin, committee, super_admin)
+ * List all committees (available to admin, snr_admin, committee, super_admin)
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(['admin', 'super_admin', 'committee']);
+    await requireRole(['admin', 'snr_admin', 'super_admin', 'committee']);
 
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('active_only') === 'true';

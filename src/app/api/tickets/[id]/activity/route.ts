@@ -7,9 +7,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/helpers';
 import { db } from '@/db';
-import { ticket_activity, users } from '@/db';
+import { ticket_activity, users, tickets } from '@/db';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { USER_ROLES } from '@/conf/constants';
+import { Errors } from '@/lib/errors';
 
 /**
  * GET /api/tickets/[id]/activity
@@ -30,6 +32,26 @@ export async function GET(
         { error: 'Invalid ticket ID' },
         { status: 400 }
       );
+    }
+
+    // Check ticket ownership for students
+    if (role === USER_ROLES.STUDENT) {
+      const [ticket] = await db
+        .select({ created_by: tickets.created_by })
+        .from(tickets)
+        .where(eq(tickets.id, ticketId))
+        .limit(1);
+
+      if (!ticket) {
+        return NextResponse.json(
+          { error: 'Ticket not found' },
+          { status: 404 }
+        );
+      }
+
+      if (ticket.created_by !== dbUser.id) {
+        throw Errors.forbidden('You can only view activity for your own tickets');
+      }
     }
 
     // Get all activity with user details
@@ -58,10 +80,12 @@ export async function GET(
 
     return NextResponse.json({ activities: filteredActivities });
   } catch (error: any) {
-    logger.error({ error: error.message }, 'Failed to get ticket activity');
+    logger.error({ error: error.message || error }, 'Failed to get ticket activity');
+    const status = error?.statusCode || error?.status || 500;
+    const message = error?.message || 'Failed to get ticket activity';
     return NextResponse.json(
-      { error: error.message || 'Failed to get ticket activity' },
-      { status: error.status || 500 }
+      { error: message },
+      { status }
     );
   }
 }

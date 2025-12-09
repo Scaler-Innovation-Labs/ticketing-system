@@ -2,15 +2,27 @@
  * Cached Queries
  * 
  * Provides cached database queries using React's cache() and Next.js unstable_cache
+ * 
+ * Caching Strategy:
+ * - React cache() for request-level deduplication (same request, multiple calls)
+ * - unstable_cache for persistent caching across requests
+ * - Cache tags for selective invalidation
+ * - TTLs based on data volatility
  */
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles } from '@/db';
-import { eq, desc } from 'drizzle-orm';
+import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles, hostels, batches, class_sections, domains, scopes, subcategories, category_fields, field_options } from '@/db';
+import { eq, desc, and, inArray } from 'drizzle-orm';
+import { CACHE_TTL } from '@/conf/constants';
+
+// ============================================
+// User & Role Caching
+// ============================================
 
 /**
  * Get user from database by Clerk external ID (cached)
+ * Uses React cache() for request-level deduplication
  */
 export const getCachedUser = cache(async (clerkUserId: string) => {
     const [user] = await db
@@ -29,33 +41,6 @@ export const getCachedUser = cache(async (clerkUserId: string) => {
 
     return user || null;
 });
-
-/**
- * Get all ticket statuses (cached with revalidation)
- */
-export const getCachedTicketStatuses = unstable_cache(
-    async () => {
-        const statuses = await db
-            .select({
-                id: ticket_statuses.id,
-                value: ticket_statuses.value,
-                label: ticket_statuses.label,
-                description: ticket_statuses.description,
-                color: ticket_statuses.color,
-                progress_percent: ticket_statuses.progress_percent,
-                is_active: ticket_statuses.is_active,
-                display_order: ticket_statuses.display_order,
-                is_final: ticket_statuses.is_final,
-            })
-            .from(ticket_statuses)
-            .where(eq(ticket_statuses.is_active, true))
-            .orderBy(ticket_statuses.display_order);
-
-        return statuses;
-    },
-    ['ticket-statuses'],
-    { revalidate: 3600 } // Cache for 1 hour
-);
 
 /**
  * Get user role by Clerk ID (cached)
@@ -122,8 +107,293 @@ export const getCachedAdminAssignment = cache(async (userId: string): Promise<{ 
     return { domain: null, scope: null };
 });
 
+// ============================================
+// Ticket Status Caching
+// ============================================
+
+/**
+ * Get all ticket statuses (cached with revalidation)
+ * Cache for 1 hour, invalidate with 'ticket-statuses' tag
+ */
+export const getCachedTicketStatuses = unstable_cache(
+    async () => {
+        const statuses = await db
+            .select({
+                id: ticket_statuses.id,
+                value: ticket_statuses.value,
+                label: ticket_statuses.label,
+                description: ticket_statuses.description,
+                color: ticket_statuses.color,
+                progress_percent: ticket_statuses.progress_percent,
+                is_active: ticket_statuses.is_active,
+                display_order: ticket_statuses.display_order,
+                is_final: ticket_statuses.is_final,
+            })
+            .from(ticket_statuses)
+            .where(eq(ticket_statuses.is_active, true))
+            .orderBy(ticket_statuses.display_order);
+
+        return statuses;
+    },
+    ['ticket-statuses'],
+    { 
+        revalidate: CACHE_TTL.TICKET_STATUS / 1000, // Convert ms to seconds
+        tags: ['ticket-statuses']
+    }
+);
+
+// ============================================
+// Category & Subcategory Caching
+// ============================================
+
+/**
+ * Get all active categories with subcategories and fields (cached)
+ * Cache for 1 hour, invalidate with 'categories' tag
+ */
+export const getCachedCategoriesHierarchy = unstable_cache(
+    async () => {
+        // Fetch categories
+        const cats = await db
+            .select({
+                id: categories.id,
+                name: categories.name,
+                slug: categories.slug,
+                description: categories.description,
+                icon: categories.icon,
+                color: categories.color,
+                sla_hours: categories.sla_hours,
+                domain_id: categories.domain_id,
+                scope_id: categories.scope_id,
+                display_order: categories.display_order,
+            })
+            .from(categories)
+            .where(eq(categories.is_active, true))
+            .orderBy(categories.display_order);
+
+        if (cats.length === 0) return [];
+
+        // Fetch subcategories
+        const subcats = await db
+            .select()
+            .from(subcategories)
+            .where(
+                and(
+                    inArray(subcategories.category_id, cats.map(c => c.id)),
+                    eq(subcategories.is_active, true)
+                )
+            )
+            .orderBy(subcategories.display_order);
+
+        // Fetch fields
+        const subcatIds = subcats.map(s => s.id);
+        const fields = subcatIds.length > 0 ? await db
+            .select()
+            .from(category_fields)
+            .where(
+                and(
+                    inArray(category_fields.subcategory_id, subcatIds),
+                    eq(category_fields.is_active, true)
+                )
+            )
+            .orderBy(category_fields.display_order) : [];
+
+        // Fetch field options
+        const fieldIds = fields.map(f => f.id);
+        const options = fieldIds.length > 0 ? await db
+            .select()
+            .from(field_options)
+            .where(inArray(field_options.field_id, fieldIds))
+            .orderBy(field_options.display_order) : [];
+
+        // Build nested structure
+        return cats.map(cat => ({
+            id: cat.id,
+            value: cat.slug || '',
+            label: cat.name || '',
+            name: cat.name || '',
+            slug: cat.slug || '',
+            description: cat.description || null,
+            icon: cat.icon || null,
+            color: cat.color || null,
+            domain_id: cat.domain_id || null,
+            scope_id: cat.scope_id || null,
+            sla_hours: cat.sla_hours || null,
+            display_order: cat.display_order ?? null,
+            subcategories: subcats
+                .filter(s => s.category_id === cat.id)
+                .map(sub => ({
+                    id: sub.id,
+                    value: sub.slug || '',
+                    label: sub.name || '',
+                    name: sub.name || '',
+                    slug: sub.slug || '',
+                    description: sub.description || null,
+                    display_order: sub.display_order ?? 0,
+                    category_id: sub.category_id,
+                    fields: fields
+                        .filter(f => f.subcategory_id === sub.id)
+                        .map(field => ({
+                            id: field.id,
+                            name: field.name || '',
+                            slug: field.slug || '',
+                            type: field.field_type || 'text',
+                            required: field.required ?? false,
+                            placeholder: field.placeholder || null,
+                            help_text: null,
+                            validation_rules: field.validation || null,
+                            display_order: field.display_order || 0,
+                            options: options
+                                .filter(o => o.field_id === field.id)
+                                .map((opt, idx) => ({
+                                    id: opt.id || idx,
+                                    label: opt.label || opt.value || '',
+                                    value: opt.value || '',
+                                })),
+                        })),
+                })),
+        }));
+    },
+    ['categories-hierarchy'],
+    {
+        revalidate: CACHE_TTL.CATEGORY_LIST / 1000, // Convert ms to seconds
+        tags: ['categories', 'subcategories', 'category-fields']
+    }
+);
+
+/**
+ * Get simple categories list (without fields) - cached
+ */
+export const getCachedCategories = unstable_cache(
+    async () => {
+        return await db
+            .select({
+                id: categories.id,
+                name: categories.name,
+                slug: categories.slug,
+                description: categories.description,
+                icon: categories.icon,
+                color: categories.color,
+                domain_id: categories.domain_id,
+                scope_id: categories.scope_id,
+                display_order: categories.display_order,
+            })
+            .from(categories)
+            .where(eq(categories.is_active, true))
+            .orderBy(categories.display_order);
+    },
+    ['categories-simple'],
+    {
+        revalidate: CACHE_TTL.CATEGORY_LIST / 1000,
+        tags: ['categories']
+    }
+);
+
+// ============================================
+// Master Data Caching
+// ============================================
+
+/**
+ * Get all active hostels (cached)
+ * Cache for 1 hour, rarely changes
+ */
+export const getCachedHostels = unstable_cache(
+    async () => {
+        return await db
+            .select()
+            .from(hostels)
+            .where(eq(hostels.is_active, true))
+            .orderBy(hostels.name);
+    },
+    ['hostels'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'hostels']
+    }
+);
+
+/**
+ * Get all active batches (cached)
+ * Cache for 1 hour, rarely changes
+ */
+export const getCachedBatches = unstable_cache(
+    async () => {
+        return await db
+            .select()
+            .from(batches)
+            .where(eq(batches.is_active, true))
+            .orderBy(batches.year);
+    },
+    ['batches'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'batches']
+    }
+);
+
+/**
+ * Get all active class sections (cached)
+ * Cache for 1 hour, rarely changes
+ */
+export const getCachedClassSections = unstable_cache(
+    async () => {
+        return await db
+            .select()
+            .from(class_sections)
+            .where(eq(class_sections.is_active, true))
+            .orderBy(class_sections.name);
+    },
+    ['class-sections'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'class-sections']
+    }
+);
+
+/**
+ * Get all active domains (cached)
+ * Cache for 1 hour, rarely changes
+ */
+export const getCachedDomains = unstable_cache(
+    async () => {
+        return await db
+            .select()
+            .from(domains)
+            .where(eq(domains.is_active, true))
+            .orderBy(domains.name);
+    },
+    ['domains'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'domains']
+    }
+);
+
+/**
+ * Get all active scopes (cached)
+ * Cache for 1 hour, rarely changes
+ */
+export const getCachedScopes = unstable_cache(
+    async () => {
+        return await db
+            .select()
+            .from(scopes)
+            .where(eq(scopes.is_active, true))
+            .orderBy(scopes.name);
+    },
+    ['scopes'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'scopes']
+    }
+);
+
+// ============================================
+// Ticket Data Caching (with short TTL)
+// ============================================
+
 /**
  * Get all tickets for admin dashboard (cached)
+ * Short TTL since tickets change frequently
  */
 export const getCachedAdminTickets = unstable_cache(
     async (adminUserId: string, adminAssignment: any) => {
@@ -169,11 +439,15 @@ export const getCachedAdminTickets = unstable_cache(
         return rows;
     },
     ['admin-tickets'],
-    { revalidate: 30, tags: ['tickets'] }
+    { 
+        revalidate: 30, // 30 seconds - tickets change frequently
+        tags: ['tickets'] 
+    }
 );
 
 /**
  * Get tickets for committee dashboard (cached)
+ * Short TTL since tickets change frequently
  */
 export const getCachedCommitteeTickets = unstable_cache(
     async (userId: string) => {
@@ -219,5 +493,8 @@ export const getCachedCommitteeTickets = unstable_cache(
         return rows;
     },
     ['committee-tickets'],
-    { revalidate: 30, tags: ['tickets'] }
+    { 
+        revalidate: 30, // 30 seconds
+        tags: ['tickets'] 
+    }
 );

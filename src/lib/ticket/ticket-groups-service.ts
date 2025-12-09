@@ -5,7 +5,7 @@
  */
 
 import { db, tickets, ticket_groups, ticket_activity, ticket_statuses, categories, ticket_committee_tags, committees } from '@/db';
-import { eq, inArray, and, sql } from 'drizzle-orm';
+import { eq, inArray, and, sql, or, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
@@ -236,7 +236,7 @@ export async function getTicketGroup(groupId: number) {
 /**
  * List all ticket groups
  */
-export async function listTicketGroups(domainId?: number) {
+export async function listTicketGroups(domainId?: number, userId?: string) {
   const groups = await db
     .select()
     .from(ticket_groups)
@@ -247,6 +247,28 @@ export async function listTicketGroups(domainId?: number) {
   }
 
   const groupIds = groups.map((g) => g.id);
+
+  // Build where condition: for snr_admin, show tickets assigned to them OR unassigned tickets in their domain
+  let ticketsWhere;
+  if (domainId && userId) {
+    // For snr_admin: tickets assigned to them OR unassigned tickets in their domain (no scope check)
+    ticketsWhere = and(
+      inArray(tickets.group_id, groupIds),
+      or(
+        eq(tickets.assigned_to, userId),
+        and(
+          isNull(tickets.assigned_to),
+          eq(categories.domain_id, domainId)
+        )
+      )
+    );
+  } else if (domainId) {
+    // Domain-only filter (existing behavior)
+    ticketsWhere = and(inArray(tickets.group_id, groupIds), eq(categories.domain_id, domainId));
+  } else {
+    // No filter (existing behavior)
+    ticketsWhere = inArray(tickets.group_id, groupIds);
+  }
 
   const groupTickets = await db
     .select({
@@ -264,7 +286,7 @@ export async function listTicketGroups(domainId?: number) {
     .from(tickets)
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
-    .where(domainId ? and(inArray(tickets.group_id, groupIds), eq(categories.domain_id, domainId)) : inArray(tickets.group_id, groupIds));
+    .where(ticketsWhere);
 
   // Map tickets to groups
   const groupsWithTickets = groups.map((group) => {

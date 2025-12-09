@@ -22,6 +22,8 @@ import {
 } from '@/db';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { USER_ROLES } from '@/conf/constants';
+import { Errors } from '@/lib/errors';
 
 /**
  * GET /api/tickets/[id]/full
@@ -94,6 +96,11 @@ export async function GET(
         { error: 'Ticket not found' },
         { status: 404 }
       );
+    }
+
+    // Check ticket ownership for students
+    if (role === USER_ROLES.STUDENT && ticket.created_by !== dbUser.id) {
+      throw Errors.forbidden('You can only view your own tickets');
     }
 
     // Get assigned user if exists
@@ -191,10 +198,12 @@ export async function GET(
       attachments,
     });
   } catch (error: any) {
-    logger.error({ error: error.message }, 'Failed to get full ticket details');
+    logger.error({ error: error.message || error }, 'Failed to get full ticket details');
+    const status = error?.statusCode || error?.status || 500;
+    const message = error?.message || 'Failed to get ticket details';
     return NextResponse.json(
-      { error: error.message || 'Failed to get ticket details' },
-      { status: error.status || 500 }
+      { error: message },
+      { status }
     );
   }
 }

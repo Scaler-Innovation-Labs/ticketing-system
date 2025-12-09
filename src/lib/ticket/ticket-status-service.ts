@@ -32,11 +32,14 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 /**
- * Validate status transition
+ * Validate status transition (case-insensitive)
  */
 export function isValidTransition(fromStatus: string, toStatus: string): boolean {
-  const allowedTransitions = VALID_TRANSITIONS[fromStatus] || [];
-  return allowedTransitions.includes(toStatus);
+  const normalizedFrom = (fromStatus || '').toLowerCase();
+  const normalizedTo = (toStatus || '').toLowerCase();
+  const allowedTransitions = VALID_TRANSITIONS[normalizedFrom] || [];
+  // VALID_TRANSITIONS values are already lowercase, so direct comparison
+  return allowedTransitions.includes(normalizedTo);
 }
 
 /**
@@ -93,15 +96,19 @@ export async function updateTicketStatus(
       throw Errors.invalidRequest(`Failed to get current ticket status: ${statusError instanceof Error ? statusError.message : String(statusError)}`);
     }
 
+    // 3. Normalize status values for comparison (case-insensitive)
+    const normalizedCurrentStatus = (currentStatus || '').toLowerCase();
+    const normalizedNewStatus = (newStatusValue || '').toLowerCase();
+    
     // 3. Validate transition
-    if (!isValidTransition(currentStatus, newStatusValue)) {
+    if (!isValidTransition(normalizedCurrentStatus, normalizedNewStatus)) {
       throw Errors.invalidStatusTransition(currentStatus, newStatusValue);
     }
 
-    // 4. Get new status ID
+    // 4. Get new status ID (use normalized value for lookup)
     let newStatusId: number;
     try {
-      newStatusId = await getStatusId(newStatusValue);
+      newStatusId = await getStatusId(normalizedNewStatus);
     } catch (statusIdError) {
       logger.error(
         { error: statusIdError, ticketId, newStatusValue },
@@ -120,16 +127,16 @@ export async function updateTicketStatus(
       updated_at: new Date(),
     };
 
-    // Track specific status changes
-    if (newStatusValue === TICKET_STATUS.RESOLVED) {
+    // Track specific status changes (use normalized value for comparison)
+    if (normalizedNewStatus === TICKET_STATUS.RESOLVED.toLowerCase()) {
       updates.resolved_at = new Date();
     }
 
-    if (newStatusValue === TICKET_STATUS.CLOSED) {
+    if (normalizedNewStatus === TICKET_STATUS.CLOSED.toLowerCase()) {
       updates.closed_at = new Date();
     }
 
-    if (newStatusValue === TICKET_STATUS.REOPENED) {
+    if (normalizedNewStatus === TICKET_STATUS.REOPENED.toLowerCase()) {
       const currentReopenCount = ticket?.reopen_count;
       const reopenCountValue = (typeof currentReopenCount === 'number' ? currentReopenCount : 0) + 1;
       updates.reopen_count = reopenCountValue;

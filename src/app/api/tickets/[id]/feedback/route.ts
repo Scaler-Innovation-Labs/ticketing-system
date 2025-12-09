@@ -11,6 +11,10 @@ import { handleApiError, Errors } from '@/lib/errors';
 import { submitFeedback } from '@/lib/ticket/ticket-operations-service';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+import { getUserRole } from '@/lib/auth/roles';
+import { USER_ROLES } from '@/conf/constants';
+import { db, tickets } from '@/db';
+import { eq } from 'drizzle-orm';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -43,6 +47,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const { rating, feedback } = validation.data;
+
+    // Check ticket ownership for students
+    const role = await getUserRole(dbUser.id);
+    if (role === USER_ROLES.STUDENT) {
+      const [ticket] = await db
+        .select({ created_by: tickets.created_by })
+        .from(tickets)
+        .where(eq(tickets.id, ticketId))
+        .limit(1);
+
+      if (!ticket) {
+        throw Errors.notFound('Ticket', String(ticketId));
+      }
+
+      if (ticket.created_by !== dbUser.id) {
+        throw Errors.forbidden('You can only submit feedback for your own tickets');
+      }
+    }
 
     const result = await submitFeedback(ticketId, dbUser.id, rating, feedback);
 

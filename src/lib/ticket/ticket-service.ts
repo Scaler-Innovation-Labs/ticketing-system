@@ -4,8 +4,8 @@
  * Business logic for ticket management
  */
 
-import { db, tickets, ticket_activity, ticket_statuses, categories, subcategories, users, outbox, ticket_attachments } from '@/db';
-import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { db, tickets, ticket_activity, ticket_statuses, categories, subcategories, users, outbox, ticket_attachments, category_assignments, type DbTransaction } from '@/db';
+import { eq, and, desc, gte, sql, or, isNull } from 'drizzle-orm';
 import { LIMITS, TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -138,6 +138,54 @@ export function calculateDeadlines(slaHours: number) {
 }
 
 /**
+ * Find the best assignee for a category
+ * Priority: 1. Primary assignment, 2. Any assignment, 3. Default admin, 4. Null
+ */
+async function findCategoryAssignee(
+  categoryId: number,
+  defaultAdminId: string | null,
+  txn?: DbTransaction
+): Promise<string | null> {
+  try {
+    const dbInstance = txn || db;
+
+    // Priority 1: Find primary assignment (assignment_type = 'primary')
+    const [primaryAssignment] = await dbInstance
+      .select({ user_id: category_assignments.user_id })
+      .from(category_assignments)
+      .where(
+        and(
+          eq(category_assignments.category_id, categoryId),
+          eq(category_assignments.assignment_type, 'primary')
+        )
+      )
+      .limit(1);
+
+    if (primaryAssignment) {
+      return primaryAssignment.user_id;
+    }
+
+    // Priority 2: Find any assignment (first one found)
+    const [anyAssignment] = await dbInstance
+      .select({ user_id: category_assignments.user_id })
+      .from(category_assignments)
+      .where(eq(category_assignments.category_id, categoryId))
+      .limit(1);
+
+    if (anyAssignment) {
+      return anyAssignment.user_id;
+    }
+
+    // Priority 3: Use default admin from category
+    return defaultAdminId;
+  } catch (error) {
+    logger.error({ error, categoryId }, 'Error finding category assignee');
+    // Fallback to default admin on error
+    return defaultAdminId;
+  }
+}
+
+/**
  * Create a new ticket
  */
 export async function createTicket(
@@ -178,6 +226,9 @@ export async function createTicket(
     // 4. Get status ID for 'open'
     const openStatusId = await getStatusId(TICKET_STATUS.OPEN);
 
+    // 4.5. Find best assignee from category assignments or default admin
+    const assignedTo = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
+
     // 5. Create ticket
     const [ticket] = await txn
       .insert(tickets)
@@ -191,7 +242,7 @@ export async function createTicket(
         status_id: openStatusId,
         priority: input.priority || 'medium',
         created_by: userId,
-        assigned_to: category.default_admin_id || null,
+        assigned_to: assignedTo,
         metadata: input.metadata || {},
         attachments: input.attachments || [],
         ...deadlines,

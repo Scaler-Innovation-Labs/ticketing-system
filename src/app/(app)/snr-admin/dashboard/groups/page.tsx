@@ -1,5 +1,5 @@
 import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
-import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
+import { desc, eq, isNotNull, and, sql, ilike, or, isNull } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
 import { TicketGroupManager } from "@/components/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,9 +80,18 @@ export default async function SnrAdminGroupsPage({
   // Fetch all tickets for snr admin with proper joins
   const creatorUser = aliasedTable(users, "creator");
 
+  // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain (no scope check)
   const domainConditions = [...conditions];
-  if (!isGlobal && primaryDomainId !== null) {
-    domainConditions.push(eq(categories.domain_id, primaryDomainId));
+  if (!isGlobal && primaryDomainId !== null && dbUser?.id) {
+    domainConditions.push(
+      or(
+        eq(tickets.assigned_to, dbUser.id),
+        and(
+          isNull(tickets.assigned_to),
+          eq(categories.domain_id, primaryDomainId)
+        )
+      )!
+    );
   }
 
   const allTicketRows = await db
@@ -112,7 +121,7 @@ export default async function SnrAdminGroupsPage({
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
     .leftJoin(creatorUser, eq(tickets.created_by, creatorUser.id))
-    .where(domainConditions.length > 0 ? and(...domainConditions) : undefined)
+    .where(domainConditions.length > 0 ? and(...domainConditions) : sql`true`)
     .orderBy(desc(tickets.created_at))
     .limit(500); // Reduced limit for better performance - can paginate if needed
 
@@ -120,21 +129,36 @@ export default async function SnrAdminGroupsPage({
   const totalTicketsCount = allTicketRows.length;
 
   // Group stats: domain-scoped when primaryDomainId set, otherwise global
+  // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain
+  let groupedTicketWhere;
+  if (!isGlobal && primaryDomainId !== null && dbUser) {
+    groupedTicketWhere = and(
+      isNotNull(tickets.group_id),
+      or(
+        eq(tickets.assigned_to, dbUser.id),
+        and(
+          isNull(tickets.assigned_to),
+          eq(categories.domain_id, primaryDomainId)
+        )
+      )
+    );
+  } else {
+    groupedTicketWhere = and(
+      isNotNull(tickets.group_id),
+      sql`true`
+    );
+  }
+
   const groupedTicketIds = await db
     .select({ id: tickets.id })
     .from(tickets)
     .leftJoin(categories, eq(tickets.category_id, categories.id))
-    .where(
-      and(
-        isNotNull(tickets.group_id),
-        !isGlobal && primaryDomainId !== null ? eq(categories.domain_id, primaryDomainId) : sql`true`
-      )
-    );
+    .where(groupedTicketWhere);
 
   const groupedTicketIdSet = new Set(groupedTicketIds.map(t => t.id));
   const groupedTicketsCountFromTickets = groupedTicketIdSet.size;
 
-  const initialGroups = await listTicketGroups(isGlobal ? undefined : primaryDomainId || undefined);
+  const initialGroups = await listTicketGroups(isGlobal ? undefined : primaryDomainId || undefined, dbUser?.id);
   const groupsForStats = initialGroups;
   const activeGroupsCount = groupsForStats.filter(g => g.is_active).length;
   const archivedGroupsCount = groupsForStats.filter(g => !g.is_active).length;

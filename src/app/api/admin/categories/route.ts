@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { requireRole } from '@/lib/auth/helpers';
 import { getActiveCategories, getAllCategories, createCategory } from '@/lib/category/category-service';
 import { logger } from '@/lib/logger';
+import { invalidateCategoryCaches } from '@/lib/cache/cache-utils';
 
 const CreateCategorySchema = z.object({
   name: z.string().min(1).max(100),
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
     }
 
     const category = await createCategory(parsed.data);
+
+    // Invalidate category caches after creation
+    invalidateCategoryCaches();
 
     return NextResponse.json({ category }, { status: 201 });
   } catch (error: any) {

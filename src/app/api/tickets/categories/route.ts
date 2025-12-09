@@ -6,9 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/helpers';
-import { db } from '@/db';
-import { categories, subcategories } from '@/db';
-import { eq } from 'drizzle-orm';
+import { getCachedCategories } from '@/lib/cache/cached-queries';
 import { logger } from '@/lib/logger';
 
 /**
@@ -18,22 +16,19 @@ import { logger } from '@/lib/logger';
 export async function GET() {
   try {
     await requireAuth();
-    // Fetch all active categories
-    const categoryRows = await db
-      .select({
-        id: categories.id,
-        name: categories.name,
-        description: categories.description,
-      })
-      .from(categories)
-      .where(eq(categories.is_active, true))
-      .orderBy(categories.name);
+    
+    // Use cached categories for better performance
+    const categoryRows = await getCachedCategories();
 
     if (categoryRows.length === 0) {
       return NextResponse.json([]);
     }
 
-    // Fetch all active subcategories
+    // Fetch subcategories (could be cached too, but keeping simple for now)
+    const { db } = await import('@/db');
+    const { subcategories } = await import('@/db');
+    const { eq, inArray, and } = await import('drizzle-orm');
+    
     const subcategoryRows = await db
       .select({
         id: subcategories.id,
@@ -42,7 +37,12 @@ export async function GET() {
         description: subcategories.description,
       })
       .from(subcategories)
-      .where(eq(subcategories.is_active, true))
+      .where(
+        and(
+          eq(subcategories.is_active, true),
+          inArray(subcategories.category_id, categoryRows.map(c => c.id))
+        )
+      )
       .orderBy(subcategories.name);
 
     // Organize into hierarchical structure

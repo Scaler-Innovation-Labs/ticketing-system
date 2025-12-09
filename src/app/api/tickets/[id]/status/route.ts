@@ -101,7 +101,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
       status,
     });
   } catch (error) {
-    logger.error({ error }, 'Failed to update ticket status');
+    logger.error({ 
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      } : error,
+    }, 'Failed to update ticket status');
     return handleApiError(error);
   }
 }

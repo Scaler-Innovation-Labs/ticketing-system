@@ -1,5 +1,5 @@
 import { db, tickets, categories, users, roles, domains, scopes, admin_profiles, ticket_statuses } from "@/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, or, isNull, and } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -33,6 +33,20 @@ export default async function SnrAdminAnalyticsPage() {
 
         // === SYSTEM-WIDE DATA COLLECTION ===
 
+        // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain (no scope check)
+        let ticketsWhere;
+        if (primaryDomainId && dbUser) {
+            ticketsWhere = or(
+                eq(tickets.assigned_to, dbUser.id),
+                and(
+                    isNull(tickets.assigned_to),
+                    eq(categories.domain_id, primaryDomainId)
+                )
+            );
+        } else {
+            ticketsWhere = undefined;
+        }
+
         // Fetch ALL tickets with comprehensive data
         const allTicketsRaw = await db
             .select({
@@ -59,7 +73,7 @@ export default async function SnrAdminAnalyticsPage() {
             .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
             .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
             .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
-            .where(primaryDomainId ? eq(categories.domain_id, primaryDomainId) : undefined);
+            .where(ticketsWhere);
 
         // Extract metadata fields and transform
         const allTickets = allTicketsRaw.map(t => {

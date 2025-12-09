@@ -12,6 +12,8 @@ import { db, ticket_attachments, tickets } from '@/db';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+import { getUserRole } from '@/lib/auth/roles';
+import { USER_ROLES } from '@/conf/constants';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -84,15 +86,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const { attachments } = validation.data;
 
-    // Verify ticket exists
+    // Verify ticket exists and check ownership for students
+    const role = await getUserRole(dbUser.id);
     const [ticket] = await db
-      .select()
+      .select({ created_by: tickets.created_by })
       .from(tickets)
       .where(eq(tickets.id, ticketId))
       .limit(1);
 
     if (!ticket) {
       throw Errors.notFound('Ticket', String(ticketId));
+    }
+
+    // Students can only add attachments to their own tickets
+    if (role === USER_ROLES.STUDENT && ticket.created_by !== dbUser.id) {
+      throw Errors.forbidden('You can only add attachments to your own tickets');
     }
 
     // Insert attachments
