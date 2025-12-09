@@ -86,7 +86,12 @@ export function buildCategorySchemas(
     const rawSubs = categoryId ? subsByCat.get(categoryId) || [] : [];
     const subs = rawSubs.map((s) => {
       const subcategoryId = typeof s === 'object' && s !== null && 'id' in s ? (s as { id: number }).id : null;
-      const rawFields = subcategoryId ? fieldsBySub.get(subcategoryId) || [] : [];
+      // Prefer flattened dynamic fields; if none were provided, fall back to fields embedded on the subcategory
+      const fallbackFields =
+        Array.isArray((s as Subcategory).fields) && (s as Subcategory).fields!.length > 0
+          ? (s as Subcategory).fields!
+          : [];
+      const rawFields = subcategoryId ? fieldsBySub.get(subcategoryId) || fallbackFields : fallbackFields;
       const fields = rawFields.map((f) => {
         const fieldOptions = (f as DynamicField).options && Array.isArray((f as DynamicField).options) && (f as DynamicField).options!.length > 0
           ? (f as DynamicField).options!

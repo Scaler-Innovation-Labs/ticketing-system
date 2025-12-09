@@ -75,8 +75,18 @@ export function CommentForm({ ticketId, currentStatus, comments = [], onCommentA
 				router.refresh(); // Refresh to show new comment from server
 			} else {
 				setComment(commentText); // Restore comment text
-				const error = await response.json().catch(() => ({ error: "Failed to add comment" }));
-				toast.error(error.error || "Failed to add comment");
+				// Try to extract meaningful error
+				let errorMessage = `Failed to add comment (${response.status})`;
+				try {
+					const error = await response.json();
+					if (typeof error?.error === "string") errorMessage = error.error;
+					else if (typeof error?.message === "string") errorMessage = error.message;
+				} catch {
+					const text = await response.text().catch(() => "");
+					if (text) errorMessage = text;
+				}
+				logger.error({ status: response.status, ticketId, component: "CommentForm" }, "Error adding comment response");
+				toast.error(errorMessage);
 			}
 		} catch (error) {
 			setComment(commentText); // Restore comment text

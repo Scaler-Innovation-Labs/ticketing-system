@@ -7,6 +7,9 @@ import { logger } from '@/lib/logger';
 import { USER_ROLES } from '@/conf/constants';
 import { z } from 'zod';
 
+// Force dynamic so the route is always available (avoids build-time fetch issues)
+export const dynamic = 'force-dynamic';
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
