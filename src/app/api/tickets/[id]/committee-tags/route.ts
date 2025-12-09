@@ -22,6 +22,8 @@ import {
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -48,9 +50,24 @@ export async function GET(req: NextRequest, context: RouteContext) {
       throw Errors.validation('Invalid ticket ID');
     }
 
-    const committees = await getTicketCommittees(ticketId);
+    const tags = await getTicketCommittees(ticketId);
 
-    return ApiResponse.success({ committees });
+    // Transform the tags to match the expected format
+    const formattedTags = tags.map((tag) => ({
+      id: tag.tag_id,
+      ticket_id: ticketId,
+      committee_id: tag.committee_id,
+      tagged_by: null, // Not returned by getTicketCommittees
+      reason: null, // Not stored in DB currently
+      created_at: tag.tagged_at,
+      committee: {
+        id: tag.committee_id,
+        name: tag.committee_name,
+        description: tag.committee_description,
+      },
+    }));
+
+    return ApiResponse.success({ committees: formattedTags });
   } catch (error) {
     logger.error({ error }, 'Failed to get ticket committees');
     return handleApiError(error);
@@ -83,7 +100,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const { committeeIds } = validation.data;
 
-    const tags = await tagTicketToCommittee(ticketId, committeeIds, dbUser.id);
+    await tagTicketToCommittee(ticketId, committeeIds, dbUser.id);
 
     logger.info(
       {
@@ -94,8 +111,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
       'Ticket tagged to committees via API'
     );
 
+    // Fetch and return formatted tags to match GET response format
+    const tags = await getTicketCommittees(ticketId);
+    const formattedTags = tags.map((tag) => ({
+      id: tag.tag_id,
+      ticket_id: ticketId,
+      committee_id: tag.committee_id,
+      tagged_by: null, // Not returned by getTicketCommittees
+      reason: null, // Not stored in DB currently
+      created_at: tag.tagged_at,
+      committee: {
+        id: tag.committee_id,
+        name: tag.committee_name,
+        description: tag.committee_description,
+      },
+    }));
+
     return ApiResponse.success({
-      tags,
+      committees: formattedTags,
       message: `Ticket tagged to ${committeeIds.length} committee(s)`,
     });
   } catch (error) {

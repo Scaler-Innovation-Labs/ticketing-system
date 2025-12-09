@@ -32,6 +32,7 @@ export default clerkMiddleware(async (auth, req) => {
 
   // Verify cron secret for cron routes
   if (isCronRoute(req)) {
+    
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;
     

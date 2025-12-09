@@ -11,10 +11,8 @@ export function formatDynamicFields(fields: any) {
 
 export function extractDynamicFields(metadata: Record<string, any>, schema: any = {}): Array<{ key: string; label: string; value: unknown; fieldType: string }> {
     if (!metadata) {
-        console.log('[extractDynamicFields] Metadata is null/undefined');
         return [];
     }
-    console.log('[extractDynamicFields] Processing metadata:', { type: typeof metadata, keys: Object.keys(metadata || {}) });
 
     const knownFields = ['subcategory', 'comments', 'images', 'tat', 'tatDate', 'tatSetAt', 'tatSetBy', 'tatExtensions', 'resolved_at', 'reopened_at', 'acknowledged_at'];
 
