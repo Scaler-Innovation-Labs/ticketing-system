@@ -28,8 +28,13 @@ function getResendClient(): Resend | null {
     return resendClient;
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@ticketing.example.com';
+// Use Resend's test domain if no EMAIL_FROM is set (for testing)
+// For production, set EMAIL_FROM to your verified domain email
+const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
+
+// Temporary: Redirect all emails to this address for testing (until domain is verified)
+const TEST_EMAIL = 'n.vedvarshit@gmail.com';
 
 // ============================================
 // Types
@@ -267,11 +272,21 @@ export async function notifyNewTicketEmail(
     ticket: TicketEmailData,
     recipientEmails: string[]
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipients in body
+    const originalRecipients = recipientEmails.join(', ');
+    const emailBody = buildNewTicketEmail(ticket);
+    const emailBodyWithRecipients = emailBody.replace(
+        '</div>',
+        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+        </div></div>`
+    );
+    
     return sendEmail({
-        to: recipientEmails,
+        to: [TEST_EMAIL],
         subject: `[${ticket.ticketNumber}] New Ticket: ${ticket.title}`,
-        html: buildNewTicketEmail(ticket),
-        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nView: ${ticket.link}`,
+        html: emailBodyWithRecipients,
+        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${ticket.link}`,
     });
 }
 
@@ -287,11 +302,21 @@ export async function notifyStatusUpdateEmail(
     link: string,
     recipientEmails: string[]
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipients in body
+    const originalRecipients = recipientEmails.join(', ');
+    const emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
+    const emailBodyWithRecipients = emailBody.replace(
+        '</div>',
+        `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipients: ${originalRecipients || 'None'}
+        </div></div>`
+    );
+    
     return sendEmail({
-        to: recipientEmails,
+        to: [TEST_EMAIL],
         subject: `[${ticketNumber}] Status Updated: ${newStatus}`,
-        html: buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link),
-        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nView: ${link}`,
+        html: emailBodyWithRecipients,
+        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nOriginal recipients: ${originalRecipients || 'None'}\n\nView: ${link}`,
     });
 }
 
@@ -306,18 +331,23 @@ export async function notifyAssignmentEmail(
     link: string,
     recipientEmail: string
 ): Promise<string | null> {
+    // Temporary: Redirect to test email, but include original recipient in body
     return sendEmail({
-        to: recipientEmail,
+        to: [TEST_EMAIL],
         subject: `[${ticketNumber}] Ticket Assigned to You`,
         html: `
       <div style="font-family: sans-serif; padding: 20px;">
         <h2>Ticket Assigned to You</h2>
         <p>You have been assigned to ticket <strong>${ticketNumber}</strong>:</p>
         <p><strong>${title}</strong></p>
+        <p>Assigned to: ${assignedTo}</p>
         <p>Assigned by: ${assignedBy}</p>
         <a href="${link}" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Ticket</a>
+        <div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+            <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
+        </div>
       </div>
     `,
-        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned by: ${assignedBy}\nView: ${link}`,
+        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nOriginal recipient: ${recipientEmail}\nView: ${link}`,
     });
 }

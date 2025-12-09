@@ -219,9 +219,12 @@ export async function getTicketStats(userId: string) {
             case 'in_progress':
                 stats.inProgress += count;
                 break;
+            case 'awaiting_student_response':
+            case 'awaiting_student':
+                stats.awaitingStudent += count;
+                break;
             case 'resolved':
                 stats.resolved += count;
-                stats.awaitingStudent += count; // Resolved tickets await student confirmation
                 break;
             case 'closed':
                 stats.closed += count;

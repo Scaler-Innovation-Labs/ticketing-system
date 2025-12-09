@@ -39,6 +39,8 @@ const STATUS_STYLES: Record<string, string> = {
     "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800",
   AWAITING_STUDENT:
     "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800",
+  AWAITING_STUDENT_RESPONSE:
+    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800",
   ESCALATED:
     "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800",
   RESOLVED:

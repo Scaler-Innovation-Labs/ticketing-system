@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { updateStudent, deactivateStudent, getStudentById } from '@/lib/student/student-service';
 import { logger } from '@/lib/logger';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 const UpdateStudentSchema = z.object({
@@ -105,7 +106,11 @@ export async function DELETE(
 
     await deactivateStudent(studentId);
 
-    return NextResponse.json({ success: true });
+    // Revalidate the students page to immediately reflect the change
+    revalidatePath('/superadmin/dashboard/students');
+    revalidatePath('/superadmin/dashboard/students/batch');
+
+    return NextResponse.json({ success: true, message: 'Student deactivated successfully' });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error deactivating student');
     return NextResponse.json(
