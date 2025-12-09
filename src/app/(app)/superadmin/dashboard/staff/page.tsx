@@ -1,9 +1,10 @@
 import { db, users, domains, scopes, roles, admin_profiles, committees, hostels, batches, class_sections } from "@/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { StaffManagement } from "@/components/admin/staff";
 
-// Use ISR - revalidate every 5 minutes (staff changes infrequently)
-export const revalidate = 300;
+// Force dynamic rendering to ensure fresh data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 async function getStaffMembers() {
   const allowedRoles = ["admin", "super_admin", "snr_admin", "committee"];
@@ -90,11 +91,11 @@ async function getStaffMembers() {
 async function getMasterData() {
   // Fetch all master data in parallel
   const [domainsList, scopesList, hostelsList, batchesList, classSectionsList, rolesList] = await Promise.all([
-    db.select().from(domains),
-    db.select().from(scopes),
-    db.select().from(hostels),
-    db.select().from(batches),
-    db.select().from(class_sections),
+    db.select().from(domains).where(eq(domains.is_active, true)),
+    db.select().from(scopes).where(eq(scopes.is_active, true)),
+    db.select().from(hostels).where(eq(hostels.is_active, true)),
+    db.select().from(batches).where(eq(batches.is_active, true)),
+    db.select().from(class_sections).where(eq(class_sections.is_active, true)),
     db.select().from(roles),
   ]);
 
