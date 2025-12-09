@@ -113,7 +113,28 @@ export async function createBatch(year: number, name: string) {
       .returning();
     logger.info({ batchId: batch.id }, 'Batch created');
     return batch;
-  } catch (error) {
+  } catch (error: any) {
+    // If batch with this year already exists, reactivate and update it
+    if (error?.code === '23505' || error?.cause?.code === '23505') {
+      const [existingBatch] = await db
+        .select()
+        .from(batches)
+        .where(eq(batches.year, year))
+        .limit(1);
+      
+      if (existingBatch) {
+        const [updatedBatch] = await db
+          .update(batches)
+          .set({ 
+            name: name.trim(),
+            is_active: true 
+          })
+          .where(eq(batches.id, existingBatch.id))
+          .returning();
+        logger.info({ batchId: updatedBatch.id }, 'Batch reactivated and updated');
+        return updatedBatch;
+      }
+    }
     logger.error({ error, year }, 'Failed to create batch');
     throw error;
   }

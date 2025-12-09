@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole } from '@/lib/auth/helpers';
 import { updateClassSection, deleteClassSection } from '@/lib/master-data/master-data-service';
+import { revalidatePath } from 'next/cache';
 
 const UpdateClassSectionSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -27,6 +28,7 @@ export async function PATCH(
     const data = UpdateClassSectionSchema.parse(body);
 
     const section = await updateClassSection(sectionId, data.name, data.department, data.batch_id, data.is_active);
+    revalidatePath('/superadmin/dashboard/master-data');
     return NextResponse.json(section);
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
@@ -58,6 +60,7 @@ export async function DELETE(
     }
 
     await deleteClassSection(sectionId);
+    revalidatePath('/superadmin/dashboard/master-data');
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {

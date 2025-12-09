@@ -24,21 +24,34 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let parsedData: { name: string; slug: string; description?: string | null } | null = null;
+  
   try {
     await requireRole(['super_admin']);
     
     const body = await request.json();
-    const data = CreateDomainSchema.parse(body);
+    parsedData = CreateDomainSchema.parse(body);
     
-    const domain = await createDomain(data.name, data.slug, data.description);
+    const domain = await createDomain(parsedData.name, parsedData.slug, parsedData.description);
     return NextResponse.json(domain, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Validation Error', details: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    // Handle PostgreSQL unique constraint violations
+    if (error?.code === '23505' || error?.cause?.code === '23505') {
+      const constraint = error?.cause?.constraint_name || error?.constraint_name || 'unique constraint';
+      let message = 'A domain with this name or slug already exists';
+      if (constraint.includes('name') && parsedData) {
+        message = `A domain with the name "${parsedData.name}" already exists`;
+      } else if (constraint.includes('slug') && parsedData) {
+        message = `A domain with the slug "${parsedData.slug}" already exists`;
+      }
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+    return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 });
   }
 }

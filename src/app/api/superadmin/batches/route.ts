@@ -31,13 +31,13 @@ export async function POST(request: Request) {
     
     const batch = await createBatch(data.year, data.name);
     return NextResponse.json(batch, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Validation Error', details: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 });
   }
 }

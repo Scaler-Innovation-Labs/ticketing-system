@@ -34,28 +34,36 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  let parsedData: z.infer<typeof CreateScopeSchema> | null = null;
   try {
     await requireRole(['super_admin']);
     
     const body = await request.json();
-    const data = CreateScopeSchema.parse(body);
+    parsedData = CreateScopeSchema.parse(body);
     
     const scope = await createScope(
-      data.domain_id,
-      data.name,
-      data.slug,
-      data.student_field_key,
-      data.reference_type,
-      data.reference_id
+      parsedData.domain_id,
+      parsedData.name,
+      parsedData.slug,
+      parsedData.student_field_key,
+      parsedData.reference_type,
+      parsedData.reference_id
     );
     return NextResponse.json(scope, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Validation Error', details: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    // Handle PostgreSQL unique constraint violations for domain_id + slug
+    if (error?.code === '23505' || error?.cause?.code === '23505') {
+      const message = parsedData
+        ? `A scope with slug "${parsedData.slug}" already exists in this domain`
+        : 'Scope already exists for this domain';
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+    return NextResponse.json({ error: error?.message || 'Internal Server Error' }, { status: 500 });
   }
 }
