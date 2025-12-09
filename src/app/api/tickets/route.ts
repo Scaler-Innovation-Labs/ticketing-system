@@ -14,8 +14,6 @@ import { listTickets } from '@/lib/ticket/ticket-list-service';
 import { logger } from '@/lib/logger';
 import { getUserRole } from '@/lib/auth/roles';
 import { USER_ROLES } from '@/conf/constants';
-import { db, tickets, ticket_statuses } from '@/db';
-import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,28 +93,14 @@ export async function POST(req: NextRequest) {
     // 3. Create ticket
     const ticket = await createTicket(dbUser.id, validatedData);
 
-    // 4. Get status value for response
-    const [ticketWithStatus] = await db
-      .select({
-        ticket: tickets,
-        status: {
-          value: ticket_statuses.value,
-          label: ticket_statuses.label,
-        },
-      })
-      .from(tickets)
-      .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-      .where(eq(tickets.id, ticket.id))
-      .limit(1);
-
-    // 5. Return created ticket
+    // 4. Return created ticket (status is always 'open' for new tickets)
     return ApiResponse.created({
       ticket: {
         id: ticket.id,
         ticket_number: ticket.ticket_number,
         title: ticket.title,
         description: ticket.description,
-        status: ticketWithStatus?.status?.value || 'open',
+        status: 'open', // New tickets are always 'open'
         priority: ticket.priority,
         category_id: ticket.category_id,
         subcategory_id: ticket.subcategory_id,

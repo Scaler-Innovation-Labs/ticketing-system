@@ -285,15 +285,25 @@ export function NotificationSettingsManager() {
     try {
       setSaving(true);
 
-      // Convert "__none__" to null for API
+      // Convert "__none__" to null for API (to clear values on PATCH)
+      // For POST, undefined means "don't set", but for PATCH we need to explicitly set null to clear
       const scopeId = formData.scope_id && formData.scope_id !== "__none__"
-        ? parseInt(formData.scope_id, 10)
+        ? (() => {
+            const parsed = parseInt(formData.scope_id, 10);
+            return isNaN(parsed) ? null : parsed;
+          })()
         : null;
       const categoryId = formData.category_id && formData.category_id !== "__none__"
-        ? parseInt(formData.category_id, 10)
+        ? (() => {
+            const parsed = parseInt(formData.category_id, 10);
+            return isNaN(parsed) ? null : parsed;
+          })()
         : null;
       const subcategoryId = formData.subcategory_id && formData.subcategory_id !== "__none__"
-        ? parseInt(formData.subcategory_id, 10)
+        ? (() => {
+            const parsed = parseInt(formData.subcategory_id, 10);
+            return isNaN(parsed) ? null : parsed;
+          })()
         : null;
 
       // Convert selected admin IDs to slackUserIds and deduplicate
@@ -305,16 +315,33 @@ export function NotificationSettingsManager() {
         .filter((id): id is string => Boolean(id))
         .filter((id, index, self) => self.indexOf(id) === index); // Deduplicate
 
-      const payload = {
+      // Build payload
+      const payload: Record<string, any> = {
+        enable_slack: formData.enable_slack,
+        enable_email: formData.enable_email,
         scope_id: scopeId,
         category_id: categoryId,
         subcategory_id: subcategoryId,
-        enable_slack: formData.enable_slack,
-        enable_email: formData.enable_email,
-        slack_channel: formData.slack_channel.trim() || null,
-        slack_cc_user_ids: slackCcUserIds.length > 0 ? slackCcUserIds : null,
-        email_recipients: formData.email_recipients.length > 0 ? formData.email_recipients : null,
       };
+
+      // Handle optional string fields
+      if (formData.slack_channel?.trim()) {
+        payload.slack_channel = formData.slack_channel.trim();
+      } else {
+        payload.slack_channel = null;
+      }
+
+      if (slackCcUserIds.length > 0) {
+        payload.slack_cc_user_ids = slackCcUserIds;
+      } else {
+        payload.slack_cc_user_ids = null;
+      }
+
+      if (formData.email_recipients.length > 0) {
+        payload.email_recipients = formData.email_recipients;
+      } else {
+        payload.email_recipients = null;
+      }
 
       const url = editingConfig
         ? `/api/superadmin/notification-config/${editingConfig.id}`
@@ -328,9 +355,32 @@ export function NotificationSettingsManager() {
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Failed to save" }));
-        console.error("Notification Config API Error:", error);
-        throw new Error(error.error || "Failed to save");
+        let errorMessage = "Failed to save";
+        try {
+          const errorData = await response.json();
+          // API returns { error: '...', details: [...] } or { error: { error: '...' } }
+          if (typeof errorData === 'object' && errorData !== null) {
+            if (typeof errorData.error === 'string') {
+              errorMessage = errorData.error;
+              // Include details if available
+              if (errorData.details && Array.isArray(errorData.details)) {
+                const detailsStr = errorData.details.map((d: any) => 
+                  typeof d === 'string' ? d : d.message || JSON.stringify(d)
+                ).join(', ');
+                if (detailsStr) {
+                  errorMessage += `: ${detailsStr}`;
+                }
+              }
+            } else if (errorData.error && typeof errorData.error === 'object' && errorData.error.message) {
+              errorMessage = errorData.error.message;
+            }
+          }
+        } catch (parseError) {
+          // If JSON parsing fails, use status text
+          errorMessage = `Failed to save (${response.status} ${response.statusText})`;
+        }
+        console.error("Notification Config API Error:", { status: response.status, errorMessage });
+        throw new Error(errorMessage);
       }
 
       toast.success(editingConfig ? "Notification settings updated" : "Notification settings created");

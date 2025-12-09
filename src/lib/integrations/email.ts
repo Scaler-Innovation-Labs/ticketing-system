@@ -1,40 +1,31 @@
 /**
  * Email Integration Service
  * 
- * Handles email notifications using Nodemailer
+ * Handles email notifications using Resend
  */
 
-import nodemailer, { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import { logger } from '@/lib/logger';
 
 // ============================================
 // Configuration
 // ============================================
 
-let transporter: Transporter | null = null;
+let resendClient: Resend | null = null;
 
-// Initialize transporter from environment variables
-function getTransporter(): Transporter | null {
-    if (transporter) return transporter;
+// Initialize Resend client from environment variables
+function getResendClient(): Resend | null {
+    if (resendClient) return resendClient;
 
-    const host = process.env.SMTP_HOST;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
+    const apiKey = process.env.RESEND_API_KEY;
 
-    if (!host || !user || !pass) {
-        logger.warn('Email not configured - missing SMTP credentials');
+    if (!apiKey) {
+        logger.warn('Email not configured - missing RESEND_API_KEY');
         return null;
     }
 
-    transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-    });
-
-    return transporter;
+    resendClient = new Resend(apiKey);
+    return resendClient;
 }
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@ticketing.example.com';
@@ -78,38 +69,88 @@ export interface TicketEmailData {
  * Check if email is configured
  */
 export function isEmailConfigured(): boolean {
-    return !!getTransporter();
+    return !!getResendClient();
 }
 
 /**
  * Send an email
  */
 export async function sendEmail(options: EmailOptions): Promise<string | null> {
-    const transport = getTransporter();
+    const client = getResendClient();
 
-    if (!transport) {
+    if (!client) {
         logger.warn('Email not configured, skipping send');
         return null;
     }
 
     try {
-        const result = await transport.sendMail({
-            from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-            to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
-            cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
-            replyTo: options.replyTo,
-            subject: options.subject,
-            text: options.text,
-            html: options.html,
-            attachments: options.attachments,
+        // Convert attachments format for Resend (base64 encoded)
+        const attachments = options.attachments?.map(att => {
+            let content: string;
+            if (typeof att.content === 'string') {
+                // If already a string, assume it's base64 or convert to base64
+                content = att.content;
+            } else {
+                // Convert Buffer to base64
+                content = att.content.toString('base64');
+            }
+            
+            return {
+                filename: att.filename,
+                content,
+            };
         });
 
+        // Handle recipients - Resend expects arrays
+        const to = Array.isArray(options.to) ? options.to : [options.to];
+        
+        // Build email payload - only include defined fields
+        const emailPayload: any = {
+            from: `${FROM_NAME} <${FROM_EMAIL}>`,
+            to,
+            subject: options.subject,
+        };
+
+        // Add cc if provided
+        if (options.cc) {
+            emailPayload.cc = Array.isArray(options.cc) ? options.cc : [options.cc];
+        }
+
+        // Add replyTo if provided
+        if (options.replyTo) {
+            emailPayload.replyTo = options.replyTo;
+        }
+
+        // Resend requires at least one of text or html
+        if (options.html) {
+            emailPayload.html = options.html;
+        }
+        if (options.text) {
+            emailPayload.text = options.text;
+        }
+        
+        // If neither text nor html provided, use text as fallback
+        if (!emailPayload.text && !emailPayload.html) {
+            emailPayload.text = options.subject; // Fallback to subject
+        }
+
+        // Add attachments if provided
+        if (attachments && attachments.length > 0) {
+            emailPayload.attachments = attachments;
+        }
+
+        const result = await client.emails.send(emailPayload);
+
+        if (result.error) {
+            throw new Error(result.error.message || 'Failed to send email');
+        }
+
         logger.info(
-            { messageId: result.messageId, to: options.to },
+            { messageId: result.data?.id, to: options.to },
             'Email sent successfully'
         );
 
-        return result.messageId;
+        return result.data?.id || null;
     } catch (error: any) {
         logger.error(
             { to: options.to, subject: options.subject, error: error.message },

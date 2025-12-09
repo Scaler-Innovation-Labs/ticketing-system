@@ -12,8 +12,8 @@ async function main() {
     console.log('\n1. Checking Configuration:');
     console.log('SLACK_BOT_TOKEN:', process.env.SLACK_BOT_TOKEN ? 'Present' : 'MISSING');
     console.log('SLACK_DEFAULT_CHANNEL:', process.env.SLACK_DEFAULT_CHANNEL || 'Defaulting to #tickets');
-    console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'Present' : 'MISSING');
-    console.log('SMTP_USER:', process.env.SMTP_USER ? 'Present' : 'MISSING');
+    console.log('RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'Present' : 'MISSING');
+    console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'Not set');
 
     // 2. Test Slack
     console.log('\n2. Testing Slack Connection:');
@@ -36,8 +36,8 @@ async function main() {
     console.log('\n3. Testing Email Connection:');
     if (isEmailConfigured()) {
         try {
-            // Send to self/SMTP user for safety
-            const to = process.env.SMTP_USER || 'test@example.com';
+            // Send to EMAIL_FROM or a test email
+            const to = process.env.EMAIL_FROM || 'test@example.com';
             console.log(`Attempting to send test email to ${to}...`);
             await sendEmail({
                 to,

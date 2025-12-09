@@ -7,6 +7,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export function verifyCronAuth(request: NextRequest): NextResponse | null {
+  // Allow bypassing auth in development mode for easier testing
+  if (process.env.NODE_ENV === 'development') {
+    return null; // Auth bypassed in development
+  }
+  
   const authHeader = request.headers.get('authorization');
   const cronSecret = request.headers.get('x-cron-secret');
   
