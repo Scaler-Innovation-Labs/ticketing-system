@@ -30,9 +30,10 @@ import { parseTicketMetadata } from "@/lib/ticket/validation/parseTicketMetadata
 import { isOpenStatus, normalizeStatus } from "@/lib/ticket/utils/normalizeStatus";
 import type { TicketStatusValue } from "@/conf/constants";
 
-// Use ISR (Incremental Static Regeneration) - revalidate every 30 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
+// Force dynamic rendering on Node to avoid edge/SSR data issues
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const revalidate = 0;
 
 /**
  * Admin Dashboard Page

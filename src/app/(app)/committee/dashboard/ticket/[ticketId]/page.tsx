@@ -54,39 +54,13 @@ import { CommitteeActions } from "@/components/features/tickets/actions/Committe
 
 import type { TicketStatusDisplay, TicketComment, TicketTimelineEntry, ResolvedProfileField, TATInfo } from "@/types/ticket";
 
-import { db, tickets } from "@/db";
-import { desc } from "drizzle-orm";
+// Note: DB imports not needed now that we skip static params
 
-// Use ISR (Incremental Static Regeneration) - revalidate every 30 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
-
-// Allow on-demand rendering for tickets not in the static params list
+// Force dynamic rendering and Node runtime to avoid build-time relation issues
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const revalidate = 0;
 export const dynamicParams = true;
-
-/**
- * Generate static params for ticket detail pages
- * Pre-renders the 50 most recent tickets at build time for faster loads
- */
-export async function generateStaticParams() {
-  try {
-    const recentTickets = await db
-      .select({ id: tickets.id })
-      .from(tickets)
-      .orderBy(desc(tickets.created_at))
-      .limit(50);
-
-    return recentTickets.map((ticket) => ({
-      ticketId: ticket.id.toString(),
-    }));
-  } catch (error) {
-    console.error("Error generating static params for tickets:", error);
-    // Return empty array on error to allow build to continue
-    return [];
-  }
-}
-
-
 
 /**
  * Committee Ticket Detail Page
@@ -124,21 +98,16 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
 
   // Fetch ticket data
-
   const [data, ticketStatuses] = await Promise.all([
-
-    getCommitteeTicketData(id),
-
+    getCommitteeTicketData(id).catch((err) => {
+      console.error("Error fetching committee ticket data:", err);
+      return null;
+    }),
     getCachedTicketStatuses(),
-
   ]);
 
-
-
   if (!data) {
-
     notFound();
-
   }
 
 
