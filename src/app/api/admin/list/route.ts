@@ -23,7 +23,8 @@ const CreateAdminSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(['snr_admin', 'super_admin']);
+    // Allow admin, snr_admin, super_admin to fetch admins for escalation UI
+    await requireRole(['admin', 'snr_admin', 'super_admin']);
 
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get('page') || '1', 10);
