@@ -151,20 +151,13 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
         newErrors.email = "Please enter a valid email address";
       }
-      if (!formData.firstName?.trim()) {
-        newErrors.firstName = "First name is required";
-      }
-      if (!formData.lastName?.trim()) {
-        newErrors.lastName = "Last name is required";
+      if (!formData.firstName?.trim() && !formData.lastName?.trim()) {
+        newErrors.firstName = "Full name is required";
       }
     }
 
     if (!formData.domain) {
       newErrors.domain = "Please select a domain";
-    }
-
-    if (!formData.scope || !formData.scope.trim()) {
-      newErrors.scope = "Please select a scope";
     }
 
     if (!formData.role) {
@@ -194,6 +187,7 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
         slackUserId: string | null;
         whatsappNumber: string | null;
         clerkUserId?: string | null;
+        fullName?: string | null;
         newUser?: {
           email: string;
           firstName: string;
@@ -202,18 +196,21 @@ export function StaffManagement({ initialStaff, initialMasterData }: StaffManage
         };
       };
 
+      const fullNameCombined = [formData.firstName.trim(), formData.lastName.trim()].filter(Boolean).join(" ");
+
       const payload: StaffPayload = {
         domain: formData.domain || null,
-        scope: formData.scope || null,
+        scope: formData.scope?.trim() ? formData.scope : null,
         role: formData.role,
         slackUserId: formData.slackUserId || null,
         whatsappNumber: formData.whatsappNumber || null,
+        fullName: fullNameCombined || null,
       };
 
       if (!editingStaff) {
         payload.newUser = {
           email: formData.email.trim(),
-          firstName: formData.firstName.trim(),
+          firstName: formData.firstName.trim() || fullNameCombined,
           lastName: formData.lastName.trim(),
           phone: formData.whatsappNumber || null,
         };

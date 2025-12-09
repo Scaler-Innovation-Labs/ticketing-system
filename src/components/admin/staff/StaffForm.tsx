@@ -121,33 +121,25 @@ export function StaffForm({
           <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">First Name {!editingStaff && "*"}</Label>
+                <Label htmlFor="fullName">Full Name {!editingStaff && "*"}</Label>
                 <Input
-                  id="firstName"
-                  value={formData.firstName}
-                  onChange={(e) => onFormDataChange({ firstName: e.target.value })}
-                  placeholder="John"
-                  className={errors.firstName ? "border-destructive" : ""}
+                  id="fullName"
+                  value={[formData.firstName, formData.lastName].filter(Boolean).join(" ")}
+                  onChange={(e) => {
+                    const parts = e.target.value.split(" ");
+                    const first = parts.shift() || "";
+                    const last = parts.join(" ");
+                    onFormDataChange({ firstName: first, lastName: last });
+                  }}
+                  placeholder="John Doe"
+                  className={errors.firstName || errors.lastName ? "border-destructive" : ""}
                   required={!editingStaff}
                   disabled={!!editingStaff}
                 />
-                {errors.firstName && (
-                  <p className="text-sm text-destructive">{errors.firstName}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name {!editingStaff && "*"}</Label>
-                <Input
-                  id="lastName"
-                  value={formData.lastName}
-                  onChange={(e) => onFormDataChange({ lastName: e.target.value })}
-                  placeholder="Doe"
-                  className={errors.lastName ? "border-destructive" : ""}
-                  required={!editingStaff}
-                  disabled={!!editingStaff}
-                />
-                {errors.lastName && (
-                  <p className="text-sm text-destructive">{errors.lastName}</p>
+                {(errors.firstName || errors.lastName) && (
+                  <p className="text-sm text-destructive">
+                    {errors.firstName || errors.lastName}
+                  </p>
                 )}
               </div>
             </div>
@@ -209,7 +201,7 @@ export function StaffForm({
             </div>
             <div className="space-y-2">
               <Label htmlFor="scope">
-                Scope (Hostel/Location) <span className="text-red-500">*</span>
+                Scope (Location) <span className="text-muted-foreground">(optional)</span>
               </Label>
               <Select
                 value={formData.scope}
@@ -223,7 +215,7 @@ export function StaffForm({
                     !formData.domain
                       ? "Select domain first"
                       : masterData
-                        ? "Select location/hostel"
+                        ? "Select location/hostel (optional)"
                         : "Loading..."
                   } />
                 </SelectTrigger>
@@ -232,16 +224,12 @@ export function StaffForm({
                     <SelectItem value="loading" disabled>Loading locations...</SelectItem>
                   ) : (
                     <>
-                      {/* Filter scopes based on selected domain */}
                       {(() => {
                         const selectedDomainObj = masterData.domains.find(d => d.value === formData.domain);
                         const domainScopes = selectedDomainObj
                           ? masterData.scopes.filter(s => s.domain_id === selectedDomainObj.id)
                           : [];
 
-                        // If domain is "Hostel", show hostels from hostels table
-                        // Note: This assumes "Hostel" is the name of the domain. 
-                        // Better to check by ID if possible, but name is what we have in formData.
                         const isHostelDomain = formData.domain === "Hostel";
 
                         if (domainScopes.length === 0 && !isHostelDomain) {
