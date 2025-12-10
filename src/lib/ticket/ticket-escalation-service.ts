@@ -6,10 +6,9 @@
  */
 
 import { db, tickets, ticket_activity, categories, escalation_rules } from '@/db';
-import { and, isNull, lt, asc } from 'drizzle-orm';
+import { and, isNull, lt, asc, sql, eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { withTransaction } from '@/lib/db-transaction';
-import { eq } from 'drizzle-orm';
 
 /**
  * Escalate tickets that are past their acknowledgement deadline
@@ -76,6 +75,7 @@ export async function escalateUnacknowledgedTickets() {
         .orderBy(asc(escalation_rules.level))
         .limit(1);
 
+      const prevAssignee = ticket.assigned_to;
       const updateData: any = {
         escalation_level: nextLevel,
         escalated_at: now,
@@ -86,6 +86,7 @@ export async function escalateUnacknowledgedTickets() {
         const rule = applicableRules[0];
         if (rule.escalate_to_user_id) {
           updateData.assigned_to = rule.escalate_to_user_id;
+          updateData.metadata = sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${prevAssignee}))`;
         }
 
         // Log escalation activity
@@ -219,6 +220,7 @@ export async function escalateUnresolvedTickets() {
         .orderBy(asc(escalation_rules.level))
         .limit(1);
 
+      const prevAssignee = ticket.assigned_to;
       const updateData: any = {
         escalation_level: nextLevel,
         escalated_at: now,
@@ -229,6 +231,7 @@ export async function escalateUnresolvedTickets() {
         const rule = applicableRules[0];
         if (rule.escalate_to_user_id) {
           updateData.assigned_to = rule.escalate_to_user_id;
+          updateData.metadata = sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${prevAssignee}))`;
         }
 
         // Log escalation activity

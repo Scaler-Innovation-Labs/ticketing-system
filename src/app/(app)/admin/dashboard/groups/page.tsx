@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
 import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
-import { TicketGroupManager } from "@/components/admin/tickets";
+import { TicketGroupManager, AdminTicketFilters } from "@/components/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -265,6 +265,16 @@ export default async function AdminGroupsPage({
             </CardContent>
           </Card>
         </div>
+
+        {/* Filters */}
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AdminTicketFilters />
+          </CardContent>
+        </Card>
 
         {/* Ticket Group Manager (single experience) */}
         <Card className="shadow-sm">

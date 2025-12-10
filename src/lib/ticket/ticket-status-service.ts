@@ -5,7 +5,7 @@
  */
 
 import { db, tickets, ticket_activity, ticket_statuses, outbox } from '@/db';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -326,6 +326,7 @@ export async function forwardTicket(
         assigned_to: forwardToUserId,
         forward_count: ticket.forward_count + 1,
         updated_at: new Date(),
+        metadata: sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${previousAssignee}))`,
       })
       .where(eq(tickets.id, ticketId))
       .returning();

@@ -2,10 +2,12 @@ import { auth } from "@clerk/nextjs/server";
 import { db, tickets, categories, users, roles, ticket_statuses, domains } from "@/db";
 import { eq, inArray } from "drizzle-orm";
 import { TicketCard } from "@/components/layout/TicketCard";
+import { TicketListTable } from "@/components/admin/tickets/TicketListTable";
 import { Card, CardContent } from "@/components/ui/card";
 import { AdminTicketFilters } from "@/components/admin/tickets";
 import { StatsCards } from "@/components/dashboard/StatsCards";
 import { FileText } from "lucide-react";
+import Link from "next/link";
 import { getCachedAdminUser, getCachedAdminAssignment, getCachedAdminTickets, getCachedTicketStatuses } from "@/lib/cache/cached-queries";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
 import type { Ticket } from "@/db/types-only";
@@ -61,7 +63,25 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   const createdTo = (typeof params["to"] === "string" ? params["to"] : params["to"]?.[0]) || "";
   const user = (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "";
   const sort = (typeof params["sort"] === "string" ? params["sort"] : params["sort"]?.[0]) || "newest";
+  const view = (typeof params["view"] === "string" ? params["view"] : params["view"]?.[0]) || "cards";
   const escalated = (typeof params["escalated"] === "string" ? params["escalated"] : params["escalated"]?.[0]) || "";
+
+  const buildViewHref = (mode: string) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (key === "view" || val === undefined) return;
+      if (Array.isArray(val)) {
+        val.forEach((v) => v && sp.append(key, v));
+      } else if (typeof val === "string") {
+        sp.set(key, val);
+      }
+    });
+    sp.set("view", mode);
+    const qs = sp.toString();
+    return qs ? `/admin/dashboard?${qs}` : `/admin/dashboard`;
+  };
+
+  const isListView = view === "list";
 
   // Get admin's domain/scope assignment (cached)
   const adminAssignment = await getCachedAdminAssignment(userId);
@@ -135,6 +155,9 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
         return true; // Always show tickets assigned to this admin (if no scope restriction)
       }
 
+      const metadata = parseTicketMetadata(t.metadata);
+      const prevAssignee = (metadata as any)?.previous_assigned_to as string | null;
+
       // Priority 2: Tickets in domains from categories admin is assigned to
       const ticketCategoryInfo = t.category_id ? categoryMap.get(t.category_id) : null;
       if (ticketCategoryInfo?.domain && assignedCategoryDomains.includes(ticketCategoryInfo.domain)) {
@@ -143,11 +166,15 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
         // This ensures escalated tickets don't disappear from the original admin's dashboard
         const isEscalated = (t.escalation_level || 0) > 0;
         if (isEscalated) {
-          // Show escalated tickets in admin's domain regardless of current assignment
+          // Show escalated tickets in admin's domain regardless of current assignment, and also if previously assigned
           if (adminAssignment.scope && t.location) {
             const ticketLocation = (t.location || "").toLowerCase();
             const assignmentScope = (adminAssignment.scope || "").toLowerCase();
             return ticketLocation === assignmentScope;
+          }
+          // Also allow visibility if admin was previous assignee
+          if (prevAssignee && prevAssignee === adminUserId) {
+            return true;
           }
           return true; // Show escalated tickets in admin's domain
         }
@@ -220,6 +247,14 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
       tatDate.getTime() <= endOfToday.getTime();
   }).length;
 
+  const listTickets = allTickets.map((ticket) => ({
+    ...ticket,
+    category_name: ticket.category_name || null,
+    creator_full_name: ticket.creator_full_name || null,
+    creator_email: ticket.creator_email || null,
+    metadata: ticket.metadata || {},
+  })) as unknown as Ticket[];
+
   return (
     <div className="space-y-8">
       <div>
@@ -238,7 +273,31 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
           {/* Stats Cards */}
           <StatsCards stats={stats} />
 
-          <AdminTicketFilters />
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <AdminTicketFilters />
+            <div className="flex items-center gap-2">
+              <Link
+                href={buildViewHref("cards")}
+                className={`px-3 py-1.5 rounded-md border text-sm ${
+                  !isListView
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-muted-foreground/40 text-foreground"
+                }`}
+              >
+                Cards
+              </Link>
+              <Link
+                href={buildViewHref("list")}
+                className={`px-3 py-1.5 rounded-md border text-sm ${
+                  isListView
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-muted-foreground/40 text-foreground"
+                }`}
+              >
+                List
+              </Link>
+            </div>
+          </div>
 
           <div className="flex justify-between items-center pt-4">
             <h2 className="text-2xl font-semibold flex items-center gap-2">
@@ -262,6 +321,8 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
                 </p>
               </CardContent>
             </Card>
+          ) : isListView ? (
+            <TicketListTable tickets={listTickets} basePath="/admin/dashboard" />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {allTickets.map((ticket) => {

@@ -1,5 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { AdminTicketFilters } from "@/components/admin/tickets";
+import { TicketListTable } from "@/components/admin/tickets/TicketListTable";
+import Link from "next/link";
+import { PaginationControls } from "@/components/dashboard/PaginationControls";
 import { SuperAdminDashboardHeader } from "@/app/(app)/superadmin/dashboard/components/SuperAdminDashboardHeader";
 import { SuperAdminDashboardStats } from "@/app/(app)/superadmin/dashboard/components/SuperAdminDashboardStats";
 import { SuperAdminTicketsList } from "@/app/(app)/superadmin/dashboard/components/SuperAdminTicketsList";
@@ -9,6 +12,7 @@ import {
   calculateStats,
   type DashboardFilters,
 } from "@/app/(app)/superadmin/dashboard/lib/dashboard-data";
+import type { Ticket } from "@/db/types-only";
 
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 export const revalidate = 30;
@@ -39,6 +43,23 @@ export default async function SnrAdminDashboardPage({
     user: (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "",
     sort: (typeof params["sort"] === "string" ? params["sort"] : params["sort"]?.[0]) || "newest",
     page: (typeof params["page"] === "string" ? params["page"] : params["page"]?.[0]) || "1",
+  };
+  const view = (typeof params["view"] === "string" ? params["view"] : params["view"]?.[0]) || "cards";
+  const isListView = view === "list";
+
+  const buildViewHref = (mode: string) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (key === "view" || val === undefined) return;
+      if (Array.isArray(val)) {
+        val.forEach((v) => v && sp.append(key, v));
+      } else if (typeof val === "string") {
+        sp.set(key, val);
+      }
+    });
+    sp.set("view", mode);
+    const qs = sp.toString();
+    return qs ? `/snr-admin/dashboard?${qs}` : `/snr-admin/dashboard`;
   };
 
   const page = parseInt(filters.page || "1", 10);
@@ -72,6 +93,14 @@ export default async function SnrAdminDashboardPage({
   // Count unassigned tickets
   const unassignedCount = ticketRows.filter((t) => !t.assigned_to).length;
 
+  const listTickets = allTickets.map((t) => ({
+    ...t,
+    category_name: (t as any).category_name || null,
+    creator_full_name: (t as any).creator_full_name || (t as any).creator_name || null,
+    creator_email: (t as any).creator_email || null,
+    metadata: (t as any).metadata || {},
+  })) as unknown as Ticket[];
+
   return (
     <div className="space-y-8">
       <SuperAdminDashboardHeader
@@ -83,13 +112,53 @@ export default async function SnrAdminDashboardPage({
       />
       <div className="space-y-6">
         <SuperAdminDashboardStats stats={stats} />
-        <AdminTicketFilters />
-        <SuperAdminTicketsList
-          tickets={allTickets}
-          unassignedCount={unassignedCount}
-          pagination={pagination}
-          basePath="/snr-admin/dashboard"
-        />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <AdminTicketFilters />
+          <div className="flex items-center gap-2">
+            <Link
+              href={buildViewHref("cards")}
+              className={`px-3 py-1.5 rounded-md border text-sm ${
+                !isListView
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-muted-foreground/40 text-foreground"
+              }`}
+            >
+              Cards
+            </Link>
+            <Link
+              href={buildViewHref("list")}
+              className={`px-3 py-1.5 rounded-md border text-sm ${
+                isListView
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-muted-foreground/40 text-foreground"
+              }`}
+            >
+              List
+            </Link>
+          </div>
+        </div>
+        {isListView ? (
+          <>
+            <TicketListTable tickets={listTickets} basePath="/snr-admin/dashboard" />
+            <PaginationControls
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              hasNext={pagination.hasNextPage}
+              hasPrev={pagination.hasPrevPage}
+              totalCount={pagination.totalCount}
+              startIndex={pagination.startIndex}
+              endIndex={pagination.endIndex}
+              baseUrl="/snr-admin/dashboard"
+            />
+          </>
+        ) : (
+          <SuperAdminTicketsList
+            tickets={allTickets}
+            unassignedCount={unassignedCount}
+            pagination={pagination}
+            basePath="/snr-admin/dashboard"
+          />
+        )}
       </div>
     </div>
   );
