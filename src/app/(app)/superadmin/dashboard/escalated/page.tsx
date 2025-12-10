@@ -1,5 +1,5 @@
-import { db, tickets, ticket_statuses } from "@/db";
-import { desc, eq } from "drizzle-orm";
+import { db, tickets, ticket_statuses, categories, users } from "@/db";
+import { desc, eq, aliasedTable } from "drizzle-orm";
 import type { Ticket } from "@/db/types-only";
 import type { TicketMetadata } from "@/db/inferred-types";
 import { TicketCard } from "@/components/layout/TicketCard";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
  * Note: Auth and role checks are handled by superadmin/layout.tsx
  */
 export default async function SuperAdminEscalatedPage() {
+  const creatorUser = aliasedTable(users, "creator_user");
 
   const allTicketRows = await db
     .select({
@@ -34,9 +35,14 @@ export default async function SuperAdminEscalatedPage() {
       metadata: tickets.metadata,
       created_at: tickets.created_at,
       updated_at: tickets.updated_at,
+      category_name: categories.name,
+      creator_name: creatorUser.full_name,
+      creator_email: creatorUser.email,
     })
     .from(tickets)
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+    .leftJoin(categories, eq(tickets.category_id, categories.id))
+    .leftJoin(creatorUser, eq(tickets.created_by, creatorUser.id))
     .orderBy(desc(tickets.created_at));
 
   // Transform to include status field for compatibility and extract metadata fields
@@ -178,8 +184,10 @@ export default async function SuperAdminEscalatedPage() {
                   <TicketCard ticket={{
                     ...t,
                     status: t.status_value || null,
-                    category_name: null, // Will be fetched separately if needed
-                  } as unknown as Ticket & { status?: string | null; category_name?: string | null }} basePath="/superadmin/dashboard" />
+                    category_name: t.category_name || null,
+                    creator_name: t.creator_name || null,
+                    creator_email: t.creator_email || null,
+                  } as unknown as Ticket & { status?: string | null; category_name?: string | null; creator_name?: string | null; creator_email?: string | null }} basePath="/superadmin/dashboard" />
                 </div>
               );
             })}

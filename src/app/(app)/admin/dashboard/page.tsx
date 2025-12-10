@@ -2,13 +2,10 @@ import { auth } from "@clerk/nextjs/server";
 import { db, tickets, categories, users, roles, ticket_statuses, domains } from "@/db";
 import { eq, inArray } from "drizzle-orm";
 import { TicketCard } from "@/components/layout/TicketCard";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import Link from "next/link";
 import { AdminTicketFilters } from "@/components/admin/tickets";
 import { StatsCards } from "@/components/dashboard/StatsCards";
-import { Button } from "@/components/ui/button";
-import { FileText, AlertCircle, TrendingUp, Calendar } from "lucide-react";
+import { FileText } from "lucide-react";
 import { getCachedAdminUser, getCachedAdminAssignment, getCachedAdminTickets, getCachedTicketStatuses } from "@/lib/cache/cached-queries";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
 import type { Ticket } from "@/db/types-only";
@@ -54,7 +51,6 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   // Await searchParams (Next.js 15)
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const params = resolvedSearchParams || {};
-  const activeTab = (typeof params["tab"] === "string" ? params["tab"] : params["tab"]?.[0]) || "tickets";
   const searchQuery = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const category = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
   const subcategory = (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "";
@@ -143,6 +139,19 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
       const ticketCategoryInfo = t.category_id ? categoryMap.get(t.category_id) : null;
       if (ticketCategoryInfo?.domain && assignedCategoryDomains.includes(ticketCategoryInfo.domain)) {
         // Admin is assigned to this category's domain
+        // For escalated tickets, show them even if assigned to someone else
+        // This ensures escalated tickets don't disappear from the original admin's dashboard
+        const isEscalated = (t.escalation_level || 0) > 0;
+        if (isEscalated) {
+          // Show escalated tickets in admin's domain regardless of current assignment
+          if (adminAssignment.scope && t.location) {
+            const ticketLocation = (t.location || "").toLowerCase();
+            const assignmentScope = (adminAssignment.scope || "").toLowerCase();
+            return ticketLocation === assignmentScope;
+          }
+          return true; // Show escalated tickets in admin's domain
+        }
+        
         // If admin has a scope, filter by scope
         if (adminAssignment.scope && t.location) {
           const ticketLocation = (t.location || "").toLowerCase();
@@ -223,113 +232,75 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
               Manage and monitor all assigned tickets
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" asChild>
-              <Link href="/admin/dashboard/today">
-                <Calendar className="w-4 h-4 mr-2" />
-                Today Pending
-                {todayPending > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-amber-500 text-white">
-                    {todayPending}
-                  </span>
-                )}
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/admin/dashboard/escalated">
-                <AlertCircle className="w-4 h-4 mr-2" />
-                Escalated
-                {stats.escalated > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-red-500 text-white">
-                    {stats.escalated}
-                  </span>
-                )}
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/admin/dashboard/analytics">
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Analytics
-              </Link>
-            </Button>
-          </div>
         </div>
 
-        <Tabs defaultValue="tickets" value={activeTab} className="w-full">
-          <TabsList className="mb-6 bg-muted/50">
-            <TabsTrigger value="tickets" asChild>
-              <Link href="/admin/dashboard">Tickets</Link>
-            </TabsTrigger>
-          </TabsList>
+        <div className="space-y-6">
+          {/* Stats Cards */}
+          <StatsCards stats={stats} />
 
-          <TabsContent value="tickets" className="space-y-6">
-            {/* Stats Cards */}
-            <StatsCards stats={stats} />
+          <AdminTicketFilters />
 
-            <AdminTicketFilters />
+          <div className="flex justify-between items-center pt-4">
+            <h2 className="text-2xl font-semibold flex items-center gap-2">
+              <FileText className="w-6 h-6" />
+              My Assigned Tickets
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {allTickets.length} {allTickets.length === 1 ? 'ticket' : 'tickets'}
+            </p>
+          </div>
 
-            <div className="flex justify-between items-center pt-4">
-              <h2 className="text-2xl font-semibold flex items-center gap-2">
-                <FileText className="w-6 h-6" />
-                My Assigned Tickets
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {allTickets.length} {allTickets.length === 1 ? 'ticket' : 'tickets'}
-              </p>
+          {allTickets.length === 0 ? (
+            <Card className="border-2 border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <FileText className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <p className="text-lg font-semibold mb-1">No tickets found</p>
+                <p className="text-sm text-muted-foreground text-center max-w-md">
+                  Tickets assigned to you will appear here. Use the filters above to search for specific tickets.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {allTickets.map((ticket) => {
+                // Transform to TicketCard expected format with proper types
+                const ticketForCard = {
+                  ...ticket,
+                  status: getStatusValue(ticket) || 'open',
+                  category_name: ticket.category_name || undefined,
+                  creator_name: ticket.creator_full_name || undefined,
+                  creator_email: ticket.creator_email || undefined,
+                  // Add missing fields from ticket (AdminTicketRow)
+                  ticket_number: ticket.ticket_number,
+                  priority: ticket.priority,
+                  group_id: ticket.group_id,
+                  escalated_at: ticket.escalated_at,
+                  description: ticket.description,
+                  location: ticket.location,
+                  status_id: ticket.status_id ?? 0,
+                  category_id: ticket.category_id,
+                  escalation_level: ticket.escalation_level ?? 0,
+                  forward_count: ticket.forward_count ?? 0,
+                  reopen_count: ticket.reopen_count ?? 0,
+                  reopened_at: ticket.reopened_at,
+                  tat_extensions: 0, // Stub or parse if needed
+                  resolved_at: ticket.resolved_at,
+                  closed_at: ticket.closed_at,
+                  attachments: [], // Stub
+                };
+                return (
+                  <TicketCard
+                    key={ticket.id}
+                    ticket={ticketForCard}
+                    basePath="/admin/dashboard"
+                  />
+                );
+              })}
             </div>
-
-            {allTickets.length === 0 ? (
-              <Card className="border-2 border-dashed">
-                <CardContent className="flex flex-col items-center justify-center py-16">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                    <FileText className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <p className="text-lg font-semibold mb-1">No tickets found</p>
-                  <p className="text-sm text-muted-foreground text-center max-w-md">
-                    Tickets assigned to you will appear here. Use the filters above to search for specific tickets.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {allTickets.map((ticket) => {
-                  // Transform to TicketCard expected format with proper types
-                  const ticketForCard = {
-                    ...ticket,
-                    status: getStatusValue(ticket) || 'open',
-                    category_name: ticket.category_name || undefined,
-                    creator_name: ticket.creator_full_name || undefined,
-                    creator_email: ticket.creator_email || undefined,
-                    // Add missing fields from ticket (AdminTicketRow)
-                    ticket_number: ticket.ticket_number,
-                    priority: ticket.priority,
-                    group_id: ticket.group_id,
-                    escalated_at: ticket.escalated_at,
-                    description: ticket.description,
-                    location: ticket.location,
-                    status_id: ticket.status_id ?? 0,
-                    category_id: ticket.category_id,
-                    escalation_level: ticket.escalation_level ?? 0,
-                    forward_count: ticket.forward_count ?? 0,
-                    reopen_count: ticket.reopen_count ?? 0,
-                    reopened_at: ticket.reopened_at,
-                    tat_extensions: 0, // Stub or parse if needed
-                    resolved_at: ticket.resolved_at,
-                    closed_at: ticket.closed_at,
-                    attachments: [], // Stub
-                  };
-                  return (
-                    <TicketCard
-                      key={ticket.id}
-                      ticket={ticketForCard}
-                      basePath="/admin/dashboard"
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </div>
     </div>
   );

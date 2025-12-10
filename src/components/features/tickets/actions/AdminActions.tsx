@@ -653,18 +653,18 @@ export function AdminActions({
 
 				{/* Mark as Resolved */}
 				{normalizedStatus !== "resolved" && (
-					<Dialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
-						<DialogTrigger asChild>
-							<Button
-								variant="default"
-								disabled={loading !== null}
-								className="bg-green-600 hover:bg-green-700 text-white"
-							>
-								<CheckCircle className="w-4 h-4 mr-2" />
-								Mark as Resolved
-							</Button>
-						</DialogTrigger>
-						<DialogContent>
+					<>
+						<Button
+							variant="default"
+							onClick={() => setShowResolveDialog(true)}
+							disabled={loading !== null}
+							className="bg-green-600 hover:bg-green-700 text-white"
+						>
+							<CheckCircle className="w-4 h-4 mr-2" />
+							Mark as Resolved
+						</Button>
+						<Dialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
+							<DialogContent>
 							<DialogHeader>
 								<DialogTitle>Mark Ticket as Resolved</DialogTitle>
 								<DialogDescription>
@@ -715,6 +715,7 @@ export function AdminActions({
 							</form>
 						</DialogContent>
 					</Dialog>
+					</>
 				)}
 			</div>
 		</div>

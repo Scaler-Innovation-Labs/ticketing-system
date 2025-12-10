@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
 import { db, tickets, categories, users, roles, students, hostels, ticket_statuses, ticket_attachments, ticket_activity } from "@/db";
-import { eq, aliasedTable, desc, or } from "drizzle-orm";
+import { eq, aliasedTable, desc, asc, or } from "drizzle-orm";
 import { AdminActions } from "@/components/features/tickets/actions/AdminActions";
 import { CommitteeTagging } from "@/components/admin/committees";
 import { AdminCommentComposer } from "@/components/features/tickets/actions/AdminCommentComposer";
@@ -217,7 +217,7 @@ export default async function SnrAdminTicketPage({ params }: { params: Promise<{
         .from(ticket_activity)
         .leftJoin(commentUser, eq(ticket_activity.user_id, commentUser.id))
         .where(eq(ticket_activity.ticket_id, id))
-        .orderBy(desc(ticket_activity.created_at));
+        .orderBy(asc(ticket_activity.created_at));
 
     // Transform comments for display
     const comments: Array<Record<string, unknown>> = commentActivities
