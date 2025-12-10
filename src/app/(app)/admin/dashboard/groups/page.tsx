@@ -1,17 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
 import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
-import { TicketGrouping } from "@/components/admin/tickets";
-import { GroupingPanel } from "@/components/admin/tickets/GroupingPanel";
+import { TicketGroupManager } from "@/components/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
 import { getCachedAdminUser, getCachedAdminAssignment } from "@/lib/cache/cached-queries";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
-import { AdminTicketFilters } from "@/components/admin/tickets";
-import type { Ticket } from "@/db/types-only";
+import type { Ticket, TicketMetadata } from "@/db/types-only";
 import type { AdminTicketRow } from "@/lib/ticket/filters/adminTicketFilters";
 import { applySubcategoryFilter, applyTATFilter } from "@/lib/ticket/filters/adminTicketFilters";
 import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
@@ -269,55 +266,45 @@ export default async function AdminGroupsPage({
           </Card>
         </div>
 
-        {/* Filters */}
+        {/* Ticket Group Manager (single experience) */}
         <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Ticket Groups
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <AdminTicketFilters />
-          </CardContent>
-        </Card>
-
-        {/* Select Tickets to Group & Manage Groups */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <CardTitle>Select Tickets to Group</CardTitle>
-              <Badge variant="secondary" className="text-sm w-fit">
-                {availableTickets.length} {availableTickets.length === 1 ? "ticket" : "tickets"} available
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {availableTickets.length === 0 ? (
-              <div className="py-12 text-center">
-                <Package className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                <p className="text-muted-foreground font-medium">No tickets available for grouping</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Tickets will appear here once they are assigned to you or match your domain/scope
-                </p>
-              </div>
-            ) : (
-              <GroupingPanel
-                availableTickets={availableTickets.map(t => ({
-                  id: t.id,
+            <TicketGroupManager
+              tickets={allTicketRows.map((t) => {
+                let ticketMetadata: TicketMetadata = {};
+                if (t.metadata && typeof t.metadata === "object" && !Array.isArray(t.metadata)) {
+                  ticketMetadata = t.metadata as TicketMetadata;
+                }
+                return {
+                  ...t,
                   status: t.status_value || null,
-                  description: t.description || null,
+                  status_id: t.status_id || null,
+                  scope_id: null,
+                  resolved_at: ticketMetadata.resolved_at ? new Date(ticketMetadata.resolved_at) : null,
+                  reopened_at: ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null,
+                  acknowledged_at: ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null,
+                  rating: (ticketMetadata.rating as number | null) || null,
+                  feedback: (ticketMetadata.feedback as string | null) || null,
                   category_name: t.category_name || null,
-                  location: t.location || null,
-                  created_at: t.created_at,
-                  updated_at: t.updated_at,
-                })) as unknown as Ticket[]}
-                initialGroups={initialGroups as any}
-                initialStats={{
-                  totalGroups: initialGroups.length,
-                  activeGroups: activeGroupsCount,
-                  archivedGroups: archivedGroupsCount,
-                  totalTicketsInGroups,
-                }}
-              />
-            )}
+                  creator_name: t.creator_full_name || null,
+                  creator_email: t.creator_email || null,
+                };
+              }) as unknown as Ticket[]}
+              basePath="/admin/dashboard"
+              initialGroups={initialGroups as any}
+              initialStats={{
+                totalGroups: initialGroups.length,
+                activeGroups: activeGroupsCount,
+                archivedGroups: archivedGroupsCount,
+                totalTicketsInGroups,
+              }}
+            />
           </CardContent>
         </Card>
       </div>
