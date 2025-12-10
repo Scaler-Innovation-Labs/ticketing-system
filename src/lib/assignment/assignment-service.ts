@@ -13,7 +13,7 @@ import { logger } from '@/lib/logger';
 export interface AssignmentRule {
   user_id: string;
   domain_id: number;
-  scope_id: number | null;
+  scope_id: number;
 }
 
 /**
@@ -62,30 +62,34 @@ export async function createAssignmentRule(data: AssignmentRule) {
       throw new Error('User not found');
     }
 
-    // Verify domain exists if specified
-    if (data.domain_id) {
-      const [domain] = await db
-        .select({ id: domains.id })
-        .from(domains)
-        .where(eq(domains.id, data.domain_id))
-        .limit(1);
-
-      if (!domain) {
-        throw new Error('Domain not found');
-      }
+    // Require both domain and scope
+    if (!data.domain_id) {
+      throw new Error('Domain is required for admin assignment');
+    }
+    if (!data.scope_id) {
+      throw new Error('Scope is required for admin assignment');
     }
 
-    // Verify scope exists if specified
-    if (data.scope_id) {
-      const [scope] = await db
-        .select({ id: scopes.id })
-        .from(scopes)
-        .where(eq(scopes.id, data.scope_id))
-        .limit(1);
+    // Verify domain exists
+    const [domain] = await db
+      .select({ id: domains.id })
+      .from(domains)
+      .where(eq(domains.id, data.domain_id))
+      .limit(1);
 
-      if (!scope) {
-        throw new Error('Scope not found');
-      }
+    if (!domain) {
+      throw new Error('Domain not found');
+    }
+
+    // Verify scope exists
+    const [scope] = await db
+      .select({ id: scopes.id })
+      .from(scopes)
+      .where(eq(scopes.id, data.scope_id))
+      .limit(1);
+
+    if (!scope) {
+      throw new Error('Scope not found');
     }
 
     const [rule] = await db
@@ -130,51 +134,24 @@ export async function findBestAssignee(params: {
   scope_id?: number;
 }): Promise<string | null> {
   try {
-    // Priority 1: Exact match (domain + scope)
-    if (params.domain_id && params.scope_id) {
-      const [exactMatch] = await db
-        .select({ user_id: admin_assignments.user_id })
-        .from(admin_assignments)
-        .where(
-          and(
-            eq(admin_assignments.domain_id, params.domain_id),
-            eq(admin_assignments.scope_id, params.scope_id)
-          )
-        )
-        .limit(1);
-
-      if (exactMatch) return exactMatch.user_id;
+    // Both domain and scope must be present to match an assignment
+    if (!params.domain_id || !params.scope_id) {
+      return null;
     }
 
-    // Priority 2: Domain match with null scope (catch-all for domain)
-    if (params.domain_id) {
-      const [domainMatch] = await db
-        .select({ user_id: admin_assignments.user_id })
-        .from(admin_assignments)
-        .where(
-          and(
-            eq(admin_assignments.domain_id, params.domain_id),
-            sql`${admin_assignments.scope_id} IS NULL`
-          )
-        )
-        .limit(1);
-
-      if (domainMatch) return domainMatch.user_id;
-    }
-
-    // Priority 3: Catch-all admin (null domain and scope)
-    const [catchAll] = await db
+    // Only return assignments that match both domain and scope (no fallbacks)
+    const [exactMatch] = await db
       .select({ user_id: admin_assignments.user_id })
       .from(admin_assignments)
       .where(
         and(
-          sql`${admin_assignments.domain_id} IS NULL`,
-          sql`${admin_assignments.scope_id} IS NULL`
+          eq(admin_assignments.domain_id, params.domain_id),
+          eq(admin_assignments.scope_id, params.scope_id)
         )
       )
       .limit(1);
 
-    return catchAll?.user_id || null;
+    return exactMatch?.user_id || null;
   } catch (error) {
     logger.error({ error, params }, 'Error finding best assignee');
     return null;

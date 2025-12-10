@@ -124,11 +124,6 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
    */
   if (adminUserId) {
     allTickets = allTickets.filter(t => {
-      // Always show escalated tickets (should remain visible even after reassignment)
-      if ((t.escalation_level || 0) > 0) {
-        return true;
-      }
-
       // Priority 1: Explicitly assigned tickets
       if (t.assigned_to === adminUserId) {
         // If admin has a scope, filter by scope for assigned tickets too
