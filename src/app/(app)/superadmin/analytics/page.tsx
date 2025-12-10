@@ -1,5 +1,5 @@
 import { db, tickets, categories, users, roles, domains, scopes, admin_profiles, ticket_statuses } from "@/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, aliasedTable } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
     FileText, Clock, ArrowLeft, Zap, Target, Activity, Award, AlertTriangle, Shield,
@@ -24,7 +24,12 @@ export default async function SuperAdminAnalyticsPage() {
 
         // === SYSTEM-WIDE DATA COLLECTION ===
 
-        // Fetch ALL tickets with comprehensive data
+        // Aliases for joins
+        const assignedProfile = aliasedTable(admin_profiles, "assigned_profile");
+        const assignedDomain = aliasedTable(domains, "assigned_domain");
+        const assignedScope = aliasedTable(scopes, "assigned_scope");
+
+        // Fetch ALL tickets with comprehensive data (including assignee domain/scope)
         const allTicketsRaw = await db
             .select({
                 id: tickets.id,
@@ -40,13 +45,16 @@ export default async function SuperAdminAnalyticsPage() {
                 assigned_to: tickets.assigned_to,
                 created_by: tickets.created_by,
                 admin_full_name: users.full_name,
-                admin_domain: sql<string>`NULL`,
-                admin_scope: sql<string>`NULL`
+                admin_domain: assignedDomain.name,
+                admin_scope: assignedScope.name
             })
             .from(tickets)
             .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
             .leftJoin(categories, eq(tickets.category_id, categories.id))
-            .leftJoin(users, eq(tickets.assigned_to, users.id));
+            .leftJoin(users, eq(tickets.assigned_to, users.id))
+            .leftJoin(assignedProfile, eq(tickets.assigned_to, assignedProfile.user_id))
+            .leftJoin(assignedDomain, eq(assignedProfile.primary_domain_id, assignedDomain.id))
+            .leftJoin(assignedScope, eq(assignedProfile.primary_scope_id, assignedScope.id));
 
         // Extract metadata fields and transform
         const allTickets = allTicketsRaw.map(t => {
@@ -87,18 +95,21 @@ export default async function SuperAdminAnalyticsPage() {
             };
         });
 
-        // Fetch all staff members (admins, super_admins, committee)
+        // Fetch all staff members (admins, snr_admins, super_admins)
         const allStaffRaw = await db
             .select({
                 id: users.id,
                 full_name: users.full_name,
-                domain: sql<string>`NULL`,
-                scope: sql<string>`NULL`,
+                domain: domains.name,
+                scope: scopes.name,
                 role: roles.name
             })
             .from(users)
             .leftJoin(roles, eq(users.role_id, roles.id))
-            .where(sql`${roles.name} IN ('admin', 'super_admin', 'committee')`);
+            .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
+            .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
+            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
+            .where(sql`${roles.name} IN ('admin', 'super_admin', 'snr_admin')`);
 
         // Transform to split full_name into first_name and last_name
         const allStaff = allStaffRaw.map(s => {
@@ -201,8 +212,8 @@ export default async function SuperAdminAnalyticsPage() {
             return {
                 id: staffMember.id,
                 full_name: [staffMember.first_name, staffMember.last_name].filter(Boolean).join(" ") || "Unknown",
-                domain: staffMember.domain,
-                scope: staffMember.scope,
+                domain: staffMember.domain || "Global",
+                scope: staffMember.scope || null,
                 assignedCount: assignedTickets.length,
                 resolvedCount: staffResolved.length,
                 resolutionRate: assignedTickets.length > 0 ? (staffResolved.length / assignedTickets.length) * 100 : 0,
