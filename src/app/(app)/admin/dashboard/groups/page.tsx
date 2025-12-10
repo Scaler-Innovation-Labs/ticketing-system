@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, tickets, categories, ticket_statuses, ticket_groups } from "@/db";
+import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
 import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
-import { TicketGrouping, SelectableTicketList } from "@/components/admin/tickets";
+import { TicketGrouping } from "@/components/admin/tickets";
+import { GroupingPanel } from "@/components/admin/tickets/GroupingPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,10 +117,13 @@ export default async function AdminGroupsPage({
         created_at: tickets.created_at,
         updated_at: tickets.updated_at,
         category_name: categories.name,
+        creator_full_name: users.full_name,
+        creator_email: users.email,
       })
       .from(tickets)
       .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
       .leftJoin(categories, eq(tickets.category_id, categories.id))
+      .leftJoin(users, eq(tickets.created_by, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(tickets.created_at))
       .limit(1000); // Reasonable limit for grouping operations
@@ -265,30 +269,6 @@ export default async function AdminGroupsPage({
           </Card>
         </div>
 
-        {/* Existing Groups */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Existing Groups
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <TicketGrouping
-              selectedTicketIds={[]}
-              initialGroups={initialGroups as any}
-              initialStats={{
-                totalGroups: initialGroups.length,
-                activeGroups: activeGroupsCount,
-                archivedGroups: archivedGroupsCount,
-                totalTicketsInGroups,
-              }}
-            />
-          </CardContent>
-        </Card>
-
         {/* Filters */}
         <Card className="shadow-sm">
           <CardHeader>
@@ -299,7 +279,7 @@ export default async function AdminGroupsPage({
           </CardContent>
         </Card>
 
-        {/* Select Tickets to Group */}
+        {/* Select Tickets to Group & Manage Groups */}
         <Card className="shadow-sm">
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -319,8 +299,8 @@ export default async function AdminGroupsPage({
                 </p>
               </div>
             ) : (
-              <SelectableTicketList
-                tickets={availableTickets.map(t => ({
+              <GroupingPanel
+                availableTickets={availableTickets.map(t => ({
                   id: t.id,
                   status: t.status_value || null,
                   description: t.description || null,
@@ -329,7 +309,13 @@ export default async function AdminGroupsPage({
                   created_at: t.created_at,
                   updated_at: t.updated_at,
                 })) as unknown as Ticket[]}
-                basePath="/admin/dashboard"
+                initialGroups={initialGroups as any}
+                initialStats={{
+                  totalGroups: initialGroups.length,
+                  activeGroups: activeGroupsCount,
+                  archivedGroups: archivedGroupsCount,
+                  totalTicketsInGroups,
+                }}
               />
             )}
           </CardContent>
