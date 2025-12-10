@@ -47,34 +47,15 @@ const TicketStudentInfo = nextDynamic(() =>
   )
 );
 
-// Use ISR (Incremental Static Regeneration) - revalidate every 30 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
+// Mark as dynamic since we use auth() and user-specific data
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // Allow on-demand rendering for tickets not in the static params list
 export const dynamicParams = true;
 
-/**
- * Generate static params for ticket detail pages
- * Pre-renders the 50 most recent tickets at build time for faster loads
- */
-export async function generateStaticParams() {
-  try {
-    const recentTickets = await db
-      .select({ id: tickets.id })
-      .from(tickets)
-      .orderBy(desc(tickets.created_at))
-      .limit(50);
-
-    return recentTickets.map((ticket) => ({
-      ticketId: ticket.id.toString(),
-    }));
-  } catch (error) {
-    console.error("Error generating static params for tickets:", error);
-    // Return empty array on error to allow build to continue
-    return [];
-  }
-}
+// Note: generateStaticParams removed since we're using force-dynamic
+// This page requires authentication and user-specific data, so it must be rendered dynamically
 
 /**
  * Student Ticket Detail Page
