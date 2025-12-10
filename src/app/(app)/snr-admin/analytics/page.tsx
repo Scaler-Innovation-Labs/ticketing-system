@@ -114,21 +114,29 @@ export default async function SnrAdminAnalyticsPage() {
             };
         });
 
-        // Fetch all staff members (admins, snr_admins, super_admins, committee)
-        const allStaffRaw = await db
-            .select({
-                id: users.id,
-                full_name: users.full_name,
-                domain: domains.name,
-                scope: scopes.name,
-                role: roles.name
-            })
-            .from(users)
-            .leftJoin(roles, eq(users.role_id, roles.id))
-            .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
-            .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
-            .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
-            .where(sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin', 'committee')`);
+        // Fetch staff members: only admins in the same primary domain (exclude super_admin/committee/other domains)
+        let allStaffRaw = [];
+        if (primaryDomainId) {
+            allStaffRaw = await db
+                .select({
+                    id: users.id,
+                    full_name: users.full_name,
+                    domain: domains.name,
+                    scope: scopes.name,
+                    role: roles.name
+                })
+                .from(users)
+                .leftJoin(roles, eq(users.role_id, roles.id))
+                .leftJoin(admin_profiles, eq(admin_profiles.user_id, users.id))
+                .leftJoin(domains, eq(admin_profiles.primary_domain_id, domains.id))
+                .leftJoin(scopes, eq(admin_profiles.primary_scope_id, scopes.id))
+                .where(
+                    and(
+                        eq(roles.name, "admin"),
+                        eq(admin_profiles.primary_domain_id, primaryDomainId)
+                    )
+                );
+        }
 
         // Transform to split full_name into first_name and last_name
         const allStaff = allStaffRaw.map(s => {
