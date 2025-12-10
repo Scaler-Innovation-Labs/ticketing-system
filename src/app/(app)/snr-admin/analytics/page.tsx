@@ -614,9 +614,9 @@ export default async function SnrAdminAnalyticsPage() {
                                                         <p className="text-xs text-muted-foreground">{percentage.toFixed(1)}%</p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-xs text-muted-foreground">Progress</p>
-                                                    <p className="text-sm font-bold">{status.progress_percent}%</p>
+                                                <div className="flex flex-col items-end gap-1 w-24">
+                                                    <Progress value={percentage} className="h-2 w-full" />
+                                                    <p className="text-xs text-muted-foreground">of tickets</p>
                                                 </div>
                                             </div>
                                         );

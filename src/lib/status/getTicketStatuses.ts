@@ -9,7 +9,18 @@ export async function getAllTicketStatuses() {
 export const getTicketStatuses = getAllTicketStatuses;
 
 export function buildProgressMap(statuses: any) {
-    return {} as Record<string, number>;
+    if (!Array.isArray(statuses)) return {};
+
+    return statuses.reduce((acc: Record<string, number>, status: any) => {
+        const key = typeof status.value === 'string' ? status.value.toLowerCase() : null;
+        if (key) {
+            const progress = typeof status.progress_percent === 'number'
+                ? status.progress_percent
+                : 0;
+            acc[key] = progress;
+        }
+        return acc;
+    }, {});
 }
 
 export async function getTicketStatusByValue(value: string) {

@@ -13,6 +13,7 @@ import { withTransaction } from '@/lib/db-transaction';
 import { validateTicketMetadata } from './category-fields-service';
 import { resolveTicketScope } from './scope-service';
 import type { CreateTicketInput } from '@/schemas/ticket';
+import { findBestAssignee } from '@/lib/assignment/assignment-service';
 
 // Cache for status IDs
 const statusIdCache = new Map<string, number>();
@@ -226,8 +227,17 @@ export async function createTicket(
     // 4. Get status ID for 'open'
     const openStatusId = await getStatusId(TICKET_STATUS.OPEN);
 
-    // 4.5. Find best assignee from category assignments or default admin
-    const assignedTo = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
+    // 4.5. Find best assignee (priority):
+    // 1) Subcategory assigned admin (inline assignment)
+    // 2) Admin assignment rules by domain/scope
+    // 3) Category assignments (primary -> any -> default admin)
+    const inlineAssignee = subcategory?.assigned_admin_id || null;
+    const ruleBasedAssignee = await findBestAssignee({
+      domain_id: category.domain_id || undefined,
+      scope_id: resolvedScopeId || category.scope_id || undefined,
+    });
+    const categoryAssignee = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
+    const assignedTo = inlineAssignee || ruleBasedAssignee || categoryAssignee || null;
 
     // 5. Create ticket
     const [ticket] = await txn

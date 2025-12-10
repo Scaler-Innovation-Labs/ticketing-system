@@ -66,6 +66,24 @@ async function getCommitteeMembers(committeeId: number): Promise<CommitteeMember
       .then((rows) => rows[0]);
   }
 
+  // If still no member, create a fallback member using contact_email so the head is visible
+  if (!member && committee.contact_email) {
+    const email = committee.contact_email;
+    const emailLocal = email.split("@")[0] || "";
+    const [firstNameFromEmail, ...restFromEmail] = emailLocal.split(".").filter(Boolean);
+    return [{
+      id: 0,
+      committee_id: committee.id,
+      clerk_user_id: email, // use email as identifier for fallback
+      role: "head",
+      user: {
+        firstName: firstNameFromEmail || null,
+        lastName: restFromEmail.length > 0 ? restFromEmail.join(" ") : null,
+        emailAddresses: [{ emailAddress: email }],
+      },
+    }];
+  }
+
   if (!member) return [];
 
   const [firstName, ...restNameParts] = (member.full_name || "").split(" ").filter(Boolean);
@@ -74,17 +92,16 @@ async function getCommitteeMembers(committeeId: number): Promise<CommitteeMember
   return [{
     id: 0,
     committee_id: committee.id,
-
-    clerk_user_id: member.external_id || "",
+    clerk_user_id: member.external_id || member.email || committee.contact_email || "",
     role: "head",
-
-
     user: {
       firstName: firstName || null,
       lastName,
       emailAddresses: member.email
         ? [{ emailAddress: member.email }]
-        : [],
+        : committee.contact_email
+          ? [{ emailAddress: committee.contact_email }]
+          : [],
     },
   }];
 }
