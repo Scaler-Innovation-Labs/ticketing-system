@@ -121,11 +121,57 @@ export async function updateTicketStatus(
       throw Errors.invalidRequest(`Invalid status ID for status: ${newStatusValue}`);
     }
 
-    // 5. Update ticket
+    // 5. Handle TAT pause/resume for awaiting_student_response
+    const { calculateRemainingBusinessHours, addBusinessHours } = require('./utils/tat-calculator');
+    const metadata = (ticket.metadata as Record<string, any>) || {};
+    const now = new Date();
+    let metadataUpdated = false;
+    
+    // Initialize updates object
     const updates: Record<string, any> = {
       status_id: Number(newStatusId),
       updated_at: new Date(),
     };
+    
+    // If transitioning TO awaiting_student_response, pause TAT
+    if (normalizedNewStatus === TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase() && 
+        normalizedCurrentStatus !== TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase()) {
+      // Calculate remaining TAT hours
+      if (ticket.resolution_due_at) {
+        const remainingHours = calculateRemainingBusinessHours(now, new Date(ticket.resolution_due_at));
+        metadata.tatPausedAt = now.toISOString();
+        metadata.tatRemainingHours = remainingHours;
+        metadata.tatPausedStatus = normalizedCurrentStatus;
+        metadataUpdated = true;
+      }
+    }
+    
+    // If transitioning FROM awaiting_student_response, resume TAT
+    if (normalizedCurrentStatus === TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase() &&
+        normalizedNewStatus !== TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase()) {
+      if (metadata.tatPausedAt && metadata.tatRemainingHours) {
+        // Resume TAT by adding remaining hours from now
+        const remainingHours = typeof metadata.tatRemainingHours === 'number' 
+          ? metadata.tatRemainingHours 
+          : parseFloat(metadata.tatRemainingHours);
+        
+        if (remainingHours > 0) {
+          const newDeadline = addBusinessHours(now, remainingHours);
+          updates.resolution_due_at = newDeadline;
+          
+          // Clear pause metadata
+          delete metadata.tatPausedAt;
+          delete metadata.tatRemainingHours;
+          delete metadata.tatPausedStatus;
+          metadataUpdated = true;
+        }
+      }
+    }
+
+    // Update metadata if it was modified
+    if (metadataUpdated) {
+      updates.metadata = sql`COALESCE(${tickets.metadata}, '{}'::jsonb) || ${JSON.stringify(metadata)}::jsonb`;
+    }
 
     // Track specific status changes (use normalized value for comparison)
     if (normalizedNewStatus === TICKET_STATUS.RESOLVED.toLowerCase()) {

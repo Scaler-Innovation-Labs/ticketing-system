@@ -1,4 +1,5 @@
 import { FileText } from "lucide-react";
+import { ViewToggle } from "./ViewToggle";
 
 interface SuperAdminDashboardHeaderProps {
   unassignedCount: number;
@@ -9,6 +10,8 @@ interface SuperAdminDashboardHeaderProps {
   };
   title?: string;
   description?: string;
+  showViewToggle?: boolean;
+  viewToggleBasePath?: string;
 }
 
 export function SuperAdminDashboardHeader({ 
@@ -16,7 +19,9 @@ export function SuperAdminDashboardHeader({
   actualCount, 
   pagination,
   title = "Super Admin Dashboard",
-  description = "Manage unassigned tickets, escalations, and system-wide operations"
+  description = "Manage unassigned tickets, escalations, and system-wide operations",
+  showViewToggle = false,
+  viewToggleBasePath = "/superadmin/dashboard"
 }: SuperAdminDashboardHeaderProps) {
   return (
     <>
@@ -29,7 +34,7 @@ export function SuperAdminDashboardHeader({
         </p>
       </div>
 
-      <div className="flex justify-between items-center pt-4">
+      <div className="flex justify-between items-center pt-4 flex-wrap gap-3">
         <h2 className="text-2xl font-semibold flex items-center gap-2">
           <FileText className="w-6 h-6" />
           Unassigned Tickets & Escalations
@@ -39,14 +44,17 @@ export function SuperAdminDashboardHeader({
             </span>
           )}
         </h2>
-        <p className="text-sm text-muted-foreground">
-          {actualCount} {actualCount === 1 ? 'ticket' : 'tickets'} on this page
-          {pagination.totalPages > 1 && (
-            <span className="ml-2">
-              (Page {pagination.page} of {pagination.totalPages})
-            </span>
-          )}
-        </p>
+        <div className="flex items-center gap-4">
+          {showViewToggle && <ViewToggle basePath={viewToggleBasePath} />}
+          <p className="text-sm text-muted-foreground">
+            {actualCount} {actualCount === 1 ? 'ticket' : 'tickets'} on this page
+            {pagination.totalPages > 1 && (
+              <span className="ml-2">
+                (Page {pagination.page} of {pagination.totalPages})
+              </span>
+            )}
+          </p>
+        </div>
       </div>
     </>
   );

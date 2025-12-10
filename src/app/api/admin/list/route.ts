@@ -32,8 +32,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || undefined;
 
     const includeCommittee = searchParams.get('include_committee') === 'true';
+    const activeOnly = searchParams.get('activeOnly') !== 'false'; // Default to true
 
-    const result = await listAdmins({ page, limit, search, includeCommittee });
+    const result = await listAdmins({ page, limit, search, includeCommittee, activeOnly });
 
     return NextResponse.json(result);
   } catch (error: any) {

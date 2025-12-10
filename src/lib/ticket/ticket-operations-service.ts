@@ -281,9 +281,10 @@ export async function extendTAT(
       );
     }
 
-    // Extend resolution deadline
+    // Extend resolution deadline (excluding weekends)
+    const { addBusinessHours } = require('./utils/tat-calculator');
     const currentDeadline = new Date(ticket.resolution_due_at);
-    const newDeadline = new Date(currentDeadline.getTime() + hours * 60 * 60 * 1000);
+    const newDeadline = addBusinessHours(currentDeadline, hours);
 
     // Update ticket
     const [updated] = await txn
@@ -490,9 +491,10 @@ export async function setTAT(
       throw Errors.notFound('Ticket', String(ticketId));
     }
 
-    // Calculate deadline
+    // Calculate deadline (excluding weekends)
+    const { addBusinessHours } = require('./utils/tat-calculator');
     const now = new Date();
-    const deadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
+    const deadline = addBusinessHours(now, hours);
 
     // Skip user lookup to avoid blocking TAT set on user fetch issues
     const userName = 'Admin';

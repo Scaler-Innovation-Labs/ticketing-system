@@ -39,9 +39,12 @@ const configSchema = z.object({
     signingSecret: z.string().optional(),
   }).optional(),
 
-  // Optional: Email (Resend)
+  // Optional: Email (SMTP via Nodemailer)
   email: z.object({
-    resendApiKey: z.string().optional(),
+    smtpHost: z.string().optional(),
+    smtpPort: z.string().optional(),
+    smtpUser: z.string().optional(),
+    smtpPassword: z.string().optional(),
     from: z.string().email().optional(),
     fromName: z.string().optional(),
   }).optional(),
@@ -65,7 +68,10 @@ function loadConfig() {
         signingSecret: process.env.SLACK_SIGNING_SECRET,
       },
       email: {
-        resendApiKey: process.env.RESEND_API_KEY,
+        smtpHost: process.env.SMTP_HOST,
+        smtpPort: process.env.SMTP_PORT,
+        smtpUser: process.env.SMTP_USER,
+        smtpPassword: process.env.SMTP_PASSWORD ? '***' : undefined, // Don't expose password
         from: process.env.EMAIL_FROM,
         fromName: process.env.EMAIL_FROM_NAME,
       },

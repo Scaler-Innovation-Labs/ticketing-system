@@ -273,40 +273,44 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
           {/* Stats Cards */}
           <StatsCards stats={stats} />
 
-          <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* Filters - Full width for more space */}
+          <div className="w-full">
             <AdminTicketFilters />
-            <div className="flex items-center gap-2">
-              <Link
-                href={buildViewHref("cards")}
-                className={`px-3 py-1.5 rounded-md border text-sm ${
-                  !isListView
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-muted-foreground/40 text-foreground"
-                }`}
-              >
-                Cards
-              </Link>
-              <Link
-                href={buildViewHref("list")}
-                className={`px-3 py-1.5 rounded-md border text-sm ${
-                  isListView
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-muted-foreground/40 text-foreground"
-                }`}
-              >
-                List
-              </Link>
-            </div>
           </div>
 
-          <div className="flex justify-between items-center pt-4">
+          <div className="flex justify-between items-center pt-4 flex-wrap gap-3">
             <h2 className="text-2xl font-semibold flex items-center gap-2">
               <FileText className="w-6 h-6" />
               My Assigned Tickets
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {allTickets.length} {allTickets.length === 1 ? 'ticket' : 'tickets'}
-            </p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">View:</span>
+                <Link
+                  href={buildViewHref("cards")}
+                  className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${
+                    !isListView
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-muted-foreground/40 text-foreground hover:bg-muted"
+                  }`}
+                >
+                  Cards
+                </Link>
+                <Link
+                  href={buildViewHref("list")}
+                  className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${
+                    isListView
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-muted-foreground/40 text-foreground hover:bg-muted"
+                  }`}
+                >
+                  List
+                </Link>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {allTickets.length} {allTickets.length === 1 ? 'ticket' : 'tickets'}
+              </p>
+            </div>
           </div>
 
           {allTickets.length === 0 ? (

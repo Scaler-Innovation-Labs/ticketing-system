@@ -14,27 +14,41 @@ import { Errors } from '@/lib/errors';
 
 /**
  * Resolve scope for a ticket based on category and user
+ * @param categoryId - Category ID (if categoryData not provided)
+ * @param userId - User ID
+ * @param categoryData - Optional pre-fetched category data to avoid duplicate query
  */
 export async function resolveTicketScope(
   categoryId: number,
-  userId: string
+  userId: string,
+  categoryData?: { scope_id: number | null; scope_mode: string | null }
 ): Promise<number | null> {
-  // Get category with scope configuration
-  const [category] = await db
-    .select({
-      id: categories.id,
-      scope_id: categories.scope_id,
-      scope_mode: categories.scope_mode,
-    })
-    .from(categories)
-    .where(eq(categories.id, categoryId))
-    .limit(1);
+  let scope_mode: string | null;
+  let scope_id: number | null;
 
-  if (!category) {
-    throw Errors.notFound('Category', String(categoryId));
+  // Use provided category data if available, otherwise fetch it
+  if (categoryData) {
+    scope_mode = categoryData.scope_mode;
+    scope_id = categoryData.scope_id;
+  } else {
+    // Get category with scope configuration
+    const [category] = await db
+      .select({
+        id: categories.id,
+        scope_id: categories.scope_id,
+        scope_mode: categories.scope_mode,
+      })
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .limit(1);
+
+    if (!category) {
+      throw Errors.notFound('Category', String(categoryId));
+    }
+
+    scope_mode = category.scope_mode;
+    scope_id = category.scope_id;
   }
-
-  const { scope_mode, scope_id } = category;
 
   // No scoping
   if (scope_mode === 'none') {

@@ -114,33 +114,15 @@ export default async function SuperAdminDashboardPage({
           unassignedCount={unassignedCount}
           actualCount={pagination.actualCount}
           pagination={pagination}
+          showViewToggle={true}
+          viewToggleBasePath="/superadmin/dashboard"
         />
         <div className="space-y-6">
           <SuperAdminDashboardStats stats={stats} />
-          <div className="flex items-center justify-between flex-wrap gap-3">
+          
+          {/* Filters - Full width for more space */}
+          <div className="w-full">
             <AdminTicketFilters />
-            <div className="flex items-center gap-2">
-              <Link
-                href={buildViewHref("cards")}
-                className={`px-3 py-1.5 rounded-md border text-sm ${
-                  !isListView
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-muted-foreground/40 text-foreground"
-                }`}
-              >
-                Cards
-              </Link>
-              <Link
-                href={buildViewHref("list")}
-                className={`px-3 py-1.5 rounded-md border text-sm ${
-                  isListView
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-muted-foreground/40 text-foreground"
-                }`}
-              >
-                List
-              </Link>
-            </div>
           </div>
           {isListView ? (
             <>

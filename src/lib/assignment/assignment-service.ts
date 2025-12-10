@@ -157,3 +157,36 @@ export async function findBestAssignee(params: {
     return null;
   }
 }
+
+/**
+ * Check if a specific user has an admin assignment matching the given domain and scope
+ */
+export async function hasMatchingAssignment(params: {
+  user_id: string;
+  domain_id?: number;
+  scope_id?: number;
+}): Promise<boolean> {
+  try {
+    // Both domain and scope must be present to match an assignment
+    if (!params.domain_id || !params.scope_id) {
+      return false;
+    }
+
+    const [match] = await db
+      .select({ id: admin_assignments.id })
+      .from(admin_assignments)
+      .where(
+        and(
+          eq(admin_assignments.user_id, params.user_id),
+          eq(admin_assignments.domain_id, params.domain_id),
+          eq(admin_assignments.scope_id, params.scope_id)
+        )
+      )
+      .limit(1);
+
+    return !!match;
+  } catch (error) {
+    logger.error({ error, params }, 'Error checking matching assignment');
+    return false;
+  }
+}

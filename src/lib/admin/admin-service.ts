@@ -25,14 +25,21 @@ export async function listAdmins(params: {
   limit?: number;
   search?: string;
   includeCommittee?: boolean;
+  activeOnly?: boolean;
 }) {
   try {
     const page = params.page || 1;
     const limit = params.limit || 50;
     const offset = (page - 1) * limit;
     const includeCommittee = params.includeCommittee || false;
+    const activeOnly = params.activeOnly !== false; // Default to true
 
     const whereConditions: any[] = [];
+
+    // Filter by active status if requested (default: true)
+    if (activeOnly) {
+      whereConditions.push(eq(users.is_active, true));
+    }
 
     if (params.search) {
       whereConditions.push(
@@ -71,7 +78,7 @@ export async function listAdmins(params: {
       })
       .from(users)
       .innerJoin(roles, eq(users.role_id, roles.id))
-      .innerJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
+      .leftJoin(admin_profiles, eq(users.id, admin_profiles.user_id)) // Changed to leftJoin to include users without admin_profiles
       .where(
         and(
           roleFilter,
@@ -86,7 +93,7 @@ export async function listAdmins(params: {
       .select({ count: sql<number>`count(*)::int` })
       .from(users)
       .innerJoin(roles, eq(users.role_id, roles.id))
-      .innerJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
+      .leftJoin(admin_profiles, eq(users.id, admin_profiles.user_id)) // Changed to leftJoin
       .where(
         and(
           roleFilter,

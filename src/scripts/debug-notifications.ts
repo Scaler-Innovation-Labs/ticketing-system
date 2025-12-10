@@ -12,7 +12,10 @@ async function main() {
     console.log('\n1. Checking Configuration:');
     console.log('SLACK_BOT_TOKEN:', process.env.SLACK_BOT_TOKEN ? 'Present' : 'MISSING');
     console.log('SLACK_DEFAULT_CHANNEL:', process.env.SLACK_DEFAULT_CHANNEL || 'Defaulting to #tickets');
-    console.log('RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'Present' : 'MISSING');
+    console.log('SMTP_HOST:', process.env.SMTP_HOST || 'MISSING');
+    console.log('SMTP_USER:', process.env.SMTP_USER || 'MISSING');
+    console.log('SMTP_PASSWORD:', process.env.SMTP_PASSWORD ? 'Present' : 'MISSING');
+    console.log('SMTP_PORT:', process.env.SMTP_PORT || '587 (default)');
     console.log('EMAIL_FROM:', process.env.EMAIL_FROM || 'Not set');
 
     // 2. Test Slack

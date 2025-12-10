@@ -149,7 +149,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
     case 'ticket.created': {
       const ticketId = payload.ticketId as number;
 
-      // Fetch ticket details with status
+      // Fetch ticket details with status and priority
       const [ticket] = await db
         .select({
           id: tickets.id,
@@ -157,6 +157,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           title: tickets.title,
           description: tickets.description,
           status_value: ticket_statuses.value,
+          priority: tickets.priority,
           category_id: tickets.category_id,
           subcategory_id: tickets.subcategory_id,
           scope_id: tickets.scope_id,
@@ -210,11 +211,12 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         subcategoryId: ticket.subcategory_id || undefined,
         scopeId: ticket.scope_id || undefined,
         status: ticket.status_value || 'open',
+        priority: ticket.priority || 'medium',
         createdBy: creator?.full_name || 'Unknown',
         createdByEmail: creator?.email || '',
         assignedTo: assignee?.full_name || undefined,
         assignedToEmail: assignee?.email || undefined,
-        link: `${BASE_URL}/tickets/${ticket.id}`,
+        link: `${BASE_URL}/admin/dashboard/ticket/${ticket.id}`,
       };
 
       await notifyTicketCreated(context);

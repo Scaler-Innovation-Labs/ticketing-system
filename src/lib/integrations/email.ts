@@ -1,36 +1,47 @@
 /**
  * Email Integration Service
  * 
- * Handles email notifications using Resend
+ * Handles email notifications using Nodemailer
  */
 
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { logger } from '@/lib/logger';
 
 // ============================================
 // Configuration
 // ============================================
 
-let resendClient: Resend | null = null;
+let transporter: nodemailer.Transporter | null = null;
 
-// Initialize Resend client from environment variables
-function getResendClient(): Resend | null {
-    if (resendClient) return resendClient;
+// Initialize Nodemailer transporter from environment variables
+function getTransporter(): nodemailer.Transporter | null {
+    if (transporter) return transporter;
 
-    const apiKey = process.env.RESEND_API_KEY;
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPassword = process.env.SMTP_PASSWORD;
+    const smtpSecure = process.env.SMTP_SECURE === 'true' || smtpPort === 465;
 
-    if (!apiKey) {
-        logger.warn('Email not configured - missing RESEND_API_KEY');
+    if (!smtpHost || !smtpUser || !smtpPassword) {
+        logger.warn('Email not configured - missing SMTP settings (SMTP_HOST, SMTP_USER, SMTP_PASSWORD)');
         return null;
     }
 
-    resendClient = new Resend(apiKey);
-    return resendClient;
+    transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure, // true for 465, false for other ports
+        auth: {
+            user: smtpUser,
+            pass: smtpPassword,
+        },
+    });
+
+    return transporter;
 }
 
-// Use Resend's test domain if no EMAIL_FROM is set (for testing)
-// For production, set EMAIL_FROM to your verified domain email
-const FROM_EMAIL = process.env.EMAIL_FROM || 'onboarding@resend.dev';
+const FROM_EMAIL = process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@example.com';
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
 
 // Test email redirect - ONLY for non-production environments
@@ -84,43 +95,35 @@ export interface TicketEmailData {
  * Check if email is configured
  */
 export function isEmailConfigured(): boolean {
-    return !!getResendClient();
+    return !!getTransporter();
 }
 
 /**
  * Send an email
  */
 export async function sendEmail(options: EmailOptions): Promise<string | null> {
-    const client = getResendClient();
+    const mailTransporter = getTransporter();
 
-    if (!client) {
+    if (!mailTransporter) {
         logger.warn('Email not configured, skipping send');
         return null;
     }
 
     try {
-        // Convert attachments format for Resend (base64 encoded)
+        // Convert attachments format for Nodemailer
         const attachments = options.attachments?.map(att => {
-            let content: string;
-            if (typeof att.content === 'string') {
-                // If already a string, assume it's base64 or convert to base64
-                content = att.content;
-            } else {
-                // Convert Buffer to base64
-                content = att.content.toString('base64');
-            }
-
             return {
                 filename: att.filename,
-                content,
+                content: att.content,
+                contentType: att.contentType,
             };
         });
 
-        // Handle recipients - Resend expects arrays
-        const to = Array.isArray(options.to) ? options.to : [options.to];
+        // Handle recipients - Nodemailer accepts strings or arrays
+        const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
 
-        // Build email payload - only include defined fields
-        const emailPayload: any = {
+        // Build email payload
+        const mailOptions: nodemailer.SendMailOptions = {
             from: `${FROM_NAME} <${FROM_EMAIL}>`,
             to,
             subject: options.subject,
@@ -128,44 +131,40 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
 
         // Add cc if provided
         if (options.cc) {
-            emailPayload.cc = Array.isArray(options.cc) ? options.cc : [options.cc];
+            mailOptions.cc = Array.isArray(options.cc) ? options.cc.join(', ') : options.cc;
         }
 
         // Add replyTo if provided
         if (options.replyTo) {
-            emailPayload.replyTo = options.replyTo;
+            mailOptions.replyTo = options.replyTo;
         }
 
-        // Resend requires at least one of text or html
+        // Nodemailer requires at least one of text or html
         if (options.html) {
-            emailPayload.html = options.html;
+            mailOptions.html = options.html;
         }
         if (options.text) {
-            emailPayload.text = options.text;
+            mailOptions.text = options.text;
         }
 
         // If neither text nor html provided, use text as fallback
-        if (!emailPayload.text && !emailPayload.html) {
-            emailPayload.text = options.subject; // Fallback to subject
+        if (!mailOptions.text && !mailOptions.html) {
+            mailOptions.text = options.subject; // Fallback to subject
         }
 
         // Add attachments if provided
         if (attachments && attachments.length > 0) {
-            emailPayload.attachments = attachments;
+            mailOptions.attachments = attachments;
         }
 
-        const result = await client.emails.send(emailPayload);
-
-        if (result.error) {
-            throw new Error(result.error.message || 'Failed to send email');
-        }
+        const result = await mailTransporter.sendMail(mailOptions);
 
         logger.info(
-            { messageId: result.data?.id, to: options.to },
+            { messageId: result.messageId, to: options.to },
             'Email sent successfully'
         );
 
-        return result.data?.id || null;
+        return result.messageId || null;
     } catch (error: any) {
         logger.error(
             { to: options.to, subject: options.subject, error: error.message },

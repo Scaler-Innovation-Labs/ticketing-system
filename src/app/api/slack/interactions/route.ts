@@ -9,6 +9,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import { db, tickets, ticket_statuses, users, admin_profiles } from '@/db';
+import { eq } from 'drizzle-orm';
+import { updateTicketStatus } from '@/lib/ticket/ticket-status-service';
 
 // Force Node.js runtime for Slack integrations
 export const runtime = 'nodejs';
@@ -37,11 +40,92 @@ export async function POST(request: NextRequest) {
 
         logger.info({ actionId: action.action_id }, '[Slack] Block action');
 
-        // TODO: Implement button actions
-        // - ticket_close: Close ticket from Slack
-        // - ticket_tat: Set TAT from Slack
-        // - ticket_comment: Add comment from Slack
-        // - ticket_assign: Assign ticket from Slack
+        // Handle ticket status updates
+        if (action.action_id === 'ticket_in_progress' || action.action_id === 'ticket_resolved') {
+          const value = action.value as string;
+          const [actionType, ticketIdStr] = value.split('_');
+          const ticketId = parseInt(ticketIdStr, 10);
+
+          if (!ticketId || isNaN(ticketId)) {
+            logger.warn({ value }, '[Slack] Invalid ticket ID in action value');
+            return NextResponse.json({ text: 'Invalid ticket ID' });
+          }
+
+          // Get user from Slack user ID
+          const slackUserId = interaction.user?.id;
+          if (!slackUserId) {
+            logger.warn('[Slack] No user ID in interaction');
+            return NextResponse.json({ text: 'User not found' });
+          }
+
+          // Find user by Slack user ID (from admin_profiles)
+          const [dbUser] = await db
+            .select({
+              id: users.id,
+              full_name: users.full_name,
+              email: users.email,
+            })
+            .from(users)
+            .innerJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
+            .where(eq(admin_profiles.slack_user_id, slackUserId))
+            .limit(1);
+
+          if (!dbUser) {
+            logger.warn({ slackUserId }, '[Slack] User not found in database');
+            return NextResponse.json({ 
+              text: 'User not found. Please ensure your Slack account is linked to your user profile.',
+              response_type: 'ephemeral'
+            });
+          }
+
+          try {
+            // Get current ticket status
+            const [ticket] = await db
+              .select({
+                id: tickets.id,
+                status_id: tickets.status_id,
+                status_value: ticket_statuses.value,
+              })
+              .from(tickets)
+              .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+              .where(eq(tickets.id, ticketId))
+              .limit(1);
+
+            if (!ticket) {
+              return NextResponse.json({ text: 'Ticket not found' });
+            }
+
+            // Determine new status
+            const newStatus = action.action_id === 'ticket_resolved' ? 'resolved' : 'in_progress';
+
+            // Update ticket status
+            await updateTicketStatus(ticketId, dbUser.id, newStatus);
+
+            logger.info(
+              { ticketId, userId: dbUser.id, newStatus },
+              '[Slack] Ticket status updated'
+            );
+
+            return NextResponse.json({
+              text: `Ticket ${ticketId} marked as ${newStatus}`,
+              response_type: 'ephemeral',
+            });
+          } catch (error: any) {
+            logger.error(
+              { error: error.message, ticketId },
+              '[Slack] Failed to update ticket status'
+            );
+            return NextResponse.json({
+              text: `Failed to update ticket: ${error.message}`,
+              response_type: 'ephemeral',
+            });
+          }
+        }
+
+        // Handle view ticket action (just acknowledge)
+        if (action.action_id === 'view_ticket') {
+          return NextResponse.json({ text: 'OK' });
+        }
 
         return NextResponse.json({ text: 'OK' });
       }

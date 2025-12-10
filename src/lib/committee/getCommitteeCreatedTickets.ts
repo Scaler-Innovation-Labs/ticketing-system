@@ -5,13 +5,22 @@ import { eq, desc, getTableColumns, inArray } from 'drizzle-orm';
  * Get tickets created by members of a specific committee
  */
 export async function getCommitteeCreatedTickets(committeeId: number) {
-    // First, get all user IDs who are members of this committee
-    const committeeMemberIds = await db
-        .select({ user_id: committee_members.user_id })
-        .from(committee_members)
-        .where(eq(committee_members.committee_id, committeeId));
+    let userIds: string[] = [];
 
-    let userIds = committeeMemberIds.map(m => m.user_id);
+    // First, try to get all user IDs who are members of this committee
+    // If committee_members table doesn't exist, this will fail and we'll use fallback
+    try {
+        const committeeMemberIds = await db
+            .select({ user_id: committee_members.user_id })
+            .from(committee_members)
+            .where(eq(committee_members.committee_id, committeeId));
+
+        userIds = committeeMemberIds.map(m => m.user_id);
+    } catch (error: any) {
+        // If table doesn't exist or query fails, fall through to fallback logic
+        // This handles cases where committee_members table hasn't been migrated yet
+        console.warn('committee_members table not available, using fallback:', error?.message);
+    }
 
     // Fallback: if no explicit members, use committee head/contact email as creator
     if (userIds.length === 0) {

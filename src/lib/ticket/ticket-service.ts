@@ -13,7 +13,7 @@ import { withTransaction } from '@/lib/db-transaction';
 import { validateTicketMetadata } from './category-fields-service';
 import { resolveTicketScope } from './scope-service';
 import type { CreateTicketInput } from '@/schemas/ticket';
-import { findBestAssignee } from '@/lib/assignment/assignment-service';
+import { findBestAssignee, hasMatchingAssignment } from '@/lib/assignment/assignment-service';
 
 // Cache for status IDs
 const statusIdCache = new Map<string, number>();
@@ -70,12 +70,13 @@ export async function checkTicketRateLimit(userId: string): Promise<void> {
 
 /**
  * Validate category and subcategory
+ * Returns category with all fields needed for ticket creation (including scope_mode, scope_id)
  */
 export async function validateCategoryAndSubcategory(
   categoryId: number,
   subcategoryId?: number
 ): Promise<{ category: any; subcategory?: any }> {
-  // Check category exists and is active
+  // Check category exists and is active - select all fields including scope fields
   const [category] = await db
     .select()
     .from(categories)
@@ -119,23 +120,11 @@ export async function validateCategoryAndSubcategory(
 }
 
 /**
- * Calculate SLA deadlines
+ * Calculate SLA deadlines (excluding weekends)
  */
 export function calculateDeadlines(slaHours: number) {
-  const now = new Date();
-
-  // Acknowledgement: 10% of SLA time
-  const acknowledgementDue = new Date(now);
-  acknowledgementDue.setHours(acknowledgementDue.getHours() + Math.ceil(slaHours * 0.1));
-
-  // Resolution: full SLA time
-  const resolutionDue = new Date(now);
-  resolutionDue.setHours(resolutionDue.getHours() + slaHours);
-
-  return {
-    acknowledgement_due_at: acknowledgementDue,
-    resolution_due_at: resolutionDue,
-  };
+  const { calculateDeadlinesWithBusinessHours } = require('./utils/tat-calculator');
+  return calculateDeadlinesWithBusinessHours(slaHours);
 }
 
 /**
@@ -193,50 +182,86 @@ export async function createTicket(
   userId: string,
   input: CreateTicketInput
 ) {
+  // 1. Check rate limit (outside transaction for better performance)
+  await checkTicketRateLimit(userId);
+
   return withTransaction(async (txn) => {
-    // 1. Check rate limit
-    await checkTicketRateLimit(userId);
+    // 2. Run independent queries in parallel for better performance
+    const [categoryValidationResult, openStatusId] = await Promise.all([
+      validateCategoryAndSubcategory(input.category_id, input.subcategory_id),
+      getStatusId(TICKET_STATUS.OPEN),
+    ]);
 
-    // 2. Validate category and subcategory
-    const { category, subcategory } = await validateCategoryAndSubcategory(
-      input.category_id,
-      input.subcategory_id
-    );
+    const { category, subcategory } = categoryValidationResult;
 
-    // 2.5. Validate metadata against category fields if subcategory provided
-    if (input.subcategory_id && input.metadata) {
-      const metadataValidation = await validateTicketMetadata(
-        input.subcategory_id,
-        input.metadata
+    // 2.5. Validate metadata and resolve scope in parallel (both depend on category)
+    // Pass category data to resolveTicketScope to avoid duplicate query
+    const [metadataValidation, resolvedScopeId] = await Promise.all([
+      input.subcategory_id && input.metadata
+        ? validateTicketMetadata(input.subcategory_id, input.metadata)
+        : Promise.resolve({ valid: true, errors: [] }),
+      resolveTicketScope(input.category_id, userId, {
+        scope_id: category.scope_id,
+        scope_mode: category.scope_mode,
+      }),
+    ]);
+
+    if (!metadataValidation.valid) {
+      throw Errors.validation(
+        'Invalid ticket metadata',
+        { errors: metadataValidation.errors }
       );
-
-      if (!metadataValidation.valid) {
-        throw Errors.validation(
-          'Invalid ticket metadata',
-          { errors: metadataValidation.errors }
-        );
-      }
     }
 
     // 3. Calculate deadlines based on SLA
     const deadlines = calculateDeadlines(category.sla_hours || 48);
 
-    // 3.5. Resolve scope for ticket
-    const resolvedScopeId = await resolveTicketScope(input.category_id, userId);
+    // 4.5. Find best assignee (priority) - run assignment queries in parallel:
+    // 1) Subcategory assigned admin (inline assignment) - but verify scope if ticket has scope
+    // 2) Admin assignment rules by domain/scope (strict scope matching)
+    // 3) Category assignments (primary -> any -> default admin) - ONLY if ticket has NO scope
+    
+    // Determine the ticket's final scope (resolved scope takes precedence over category scope)
+    const ticketScopeId = resolvedScopeId || category.scope_id || null;
+    
+    // Priority 1: Subcategory assigned admin (inline assignment)
+    // If ticket has a scope, verify the inline assignee has matching admin_assignment
+    let inlineAssignee: string | null = null;
+    if (subcategory?.assigned_admin_id) {
+      if (ticketScopeId && category.domain_id) {
+        // Verify the inline assignee has matching scope assignment
+        const hasMatch = await hasMatchingAssignment({
+          user_id: subcategory.assigned_admin_id,
+          domain_id: category.domain_id,
+          scope_id: ticketScopeId,
+        });
+        // Only use inline assignee if they have matching scope assignment
+        if (hasMatch) {
+          inlineAssignee = subcategory.assigned_admin_id;
+        }
+      } else {
+        // No scope on ticket, use inline assignee directly
+        inlineAssignee = subcategory.assigned_admin_id;
+      }
+    }
+    
+    // Priority 2: Admin assignment rules by domain/scope (strict scope matching)
+    let ruleBasedAssignee: string | null = null;
+    if (category.domain_id && ticketScopeId) {
+      ruleBasedAssignee = await findBestAssignee({
+        domain_id: category.domain_id,
+        scope_id: ticketScopeId,
+      });
+    }
+    
+    // Priority 3: Category assignments - ONLY if ticket has NO scope
+    // If ticket has a scope, we must use admin_assignments (which check scope)
+    let categoryAssignee: string | null = null;
+    if (!ticketScopeId) {
+      // No scope on ticket, safe to use category assignments
+      categoryAssignee = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
+    }
 
-    // 4. Get status ID for 'open'
-    const openStatusId = await getStatusId(TICKET_STATUS.OPEN);
-
-    // 4.5. Find best assignee (priority):
-    // 1) Subcategory assigned admin (inline assignment)
-    // 2) Admin assignment rules by domain/scope
-    // 3) Category assignments (primary -> any -> default admin)
-    const inlineAssignee = subcategory?.assigned_admin_id || null;
-    const ruleBasedAssignee = await findBestAssignee({
-      domain_id: category.domain_id || undefined,
-      scope_id: resolvedScopeId || category.scope_id || undefined,
-    });
-    const categoryAssignee = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
     const assignedTo = inlineAssignee || ruleBasedAssignee || categoryAssignee || null;
 
     // 5. Create ticket

@@ -7,7 +7,7 @@
 
 import { db } from '@/db';
 import { notification_config, notification_channels, ticket_integrations, users, tickets } from '@/db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import {
     isSlackConfigured,
@@ -38,6 +38,7 @@ export interface NotificationContext {
     subcategoryId?: number;
     scopeId?: number;
     status: string;
+    priority?: string;
     createdBy: string;
     createdByEmail: string;
     assignedTo?: string;
@@ -56,51 +57,97 @@ export interface NotificationResult {
 
 /**
  * Get notification configuration for a ticket based on scope/category hierarchy
+ * Priority: Subcategory (20) > Category (10) > Scope (5) > Global Default (0)
  */
 async function getNotificationConfig(
     scopeId?: number,
     categoryId?: number,
     subcategoryId?: number
 ) {
-    const conditions = [];
-
+    // Priority 1: Subcategory config (priority = 20)
     if (subcategoryId) {
-        conditions.push(eq(notification_config.subcategory_id, subcategoryId));
-    }
-    if (categoryId) {
-        conditions.push(eq(notification_config.category_id, categoryId));
-    }
-    if (scopeId) {
-        conditions.push(eq(notification_config.scope_id, scopeId));
+        const [subcategoryConfig] = await db
+            .select()
+            .from(notification_config)
+            .where(
+                and(
+                    eq(notification_config.subcategory_id, subcategoryId),
+                    eq(notification_config.is_active, true)
+                )
+            )
+            .limit(1);
+        
+        if (subcategoryConfig) {
+            return subcategoryConfig;
+        }
     }
 
-    // Get all matching configs, ordered by priority
-    const configs = await db
+    // Priority 2: Category config (priority = 10)
+    if (categoryId) {
+        const [categoryConfig] = await db
+            .select()
+            .from(notification_config)
+            .where(
+                and(
+                    eq(notification_config.category_id, categoryId),
+                    isNull(notification_config.subcategory_id), // Category-level only
+                    eq(notification_config.is_active, true)
+                )
+            )
+            .limit(1);
+        
+        if (categoryConfig) {
+            return categoryConfig;
+        }
+    }
+
+    // Priority 3: Scope config (priority = 5)
+    if (scopeId) {
+        const [scopeConfig] = await db
+            .select()
+            .from(notification_config)
+            .where(
+                and(
+                    eq(notification_config.scope_id, scopeId),
+                    isNull(notification_config.category_id), // Scope-level only (no category)
+                    isNull(notification_config.subcategory_id),
+                    eq(notification_config.is_active, true)
+                )
+            )
+            .limit(1);
+        
+        if (scopeConfig) {
+            return scopeConfig;
+        }
+    }
+
+    // Priority 4: Global default (priority = 0)
+    const [globalConfig] = await db
         .select()
         .from(notification_config)
-        .where(eq(notification_config.is_active, true))
-        .orderBy(desc(notification_config.priority));
+        .where(
+            and(
+                isNull(notification_config.scope_id),
+                isNull(notification_config.category_id),
+                isNull(notification_config.subcategory_id),
+                eq(notification_config.is_active, true)
+            )
+        )
+        .limit(1);
 
-    // Find the most specific matching config
-    for (const config of configs) {
-        if (subcategoryId && config.subcategory_id === subcategoryId) return config;
-        if (categoryId && config.category_id === categoryId) return config;
-        if (scopeId && config.scope_id === scopeId) return config;
-    }
-
-    // Return default (first active config or null)
-    return configs[0] || null;
+    return globalConfig || null;
 }
 
 /**
- * Get Slack channel for a ticket
+ * Get Slack channel for a ticket using notification_config priority hierarchy
  */
 async function getSlackChannel(
     ticketId: number,
     categoryId?: number,
-    scopeId?: number
+    scopeId?: number,
+    subcategoryId?: number
 ): Promise<string | null> {
-    // Check if ticket has a specific channel
+    // Check if ticket has a specific channel (from ticket_integrations)
     const [integration] = await db
         .select()
         .from(ticket_integrations)
@@ -111,44 +158,11 @@ async function getSlackChannel(
         return integration.slack_channel_id;
     }
 
-    // Check notification channels by owner
-    if (categoryId) {
-        const [channel] = await db
-            .select()
-            .from(notification_channels)
-            .where(
-                and(
-                    eq(notification_channels.owner_type, 'category'),
-                    eq(notification_channels.owner_id, String(categoryId)),
-                    eq(notification_channels.is_active, true)
-                )
-            )
-            .orderBy(desc(notification_channels.priority))
-            .limit(1);
-
-        if (channel?.slack_channel_id) {
-            return channel.slack_channel_id;
-        }
-    }
-
-    // Check scope-level channel
-    if (scopeId) {
-        const [channel] = await db
-            .select()
-            .from(notification_channels)
-            .where(
-                and(
-                    eq(notification_channels.owner_type, 'scope'),
-                    eq(notification_channels.owner_id, String(scopeId)),
-                    eq(notification_channels.is_active, true)
-                )
-            )
-            .orderBy(desc(notification_channels.priority))
-            .limit(1);
-
-        if (channel?.slack_channel_id) {
-            return channel.slack_channel_id;
-        }
+    // Use notification_config with priority hierarchy
+    const config = await getNotificationConfig(scopeId, categoryId, subcategoryId);
+    
+    if (config?.slack_channel) {
+        return config.slack_channel;
     }
 
     return null; // Use default channel
@@ -206,7 +220,8 @@ export async function notifyTicketCreated(
             const channel = await getSlackChannel(
                 context.ticketId,
                 context.categoryId,
-                context.scopeId
+                context.scopeId,
+                context.subcategoryId
             );
 
             const slackData: TicketSlackNotification = {
@@ -216,6 +231,7 @@ export async function notifyTicketCreated(
                 description: context.description,
                 category: context.category,
                 status: context.status,
+                priority: context.priority,
                 createdBy: context.createdBy,
                 assignedTo: context.assignedTo,
                 link: context.link,

@@ -128,12 +128,37 @@ export async function updateSlackMessage(
  * Build Slack blocks for a new ticket notification
  */
 export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
+    // Priority emoji and color
+    const priorityEmoji: Record<string, string> = {
+        low: '🟢',
+        medium: '🟡',
+        high: '🟠',
+        urgent: '🔴',
+    };
+    
+    const priorityColor: Record<string, string> = {
+        low: '#36a64f',
+        medium: '#ffa500',
+        high: '#ff6b6b',
+        urgent: '#dc3545',
+    };
+
+    const priority = (ticket.priority || 'medium').toLowerCase();
+    const priorityIcon = priorityEmoji[priority] || '🟡';
+    const statusEmoji = ticket.status === 'open' ? '🔵' : '📋';
+    
+    // Format description (truncate if too long)
+    const maxDescLength = 300;
+    const description = ticket.description.length > maxDescLength
+        ? `${ticket.description.substring(0, maxDescLength)}...`
+        : ticket.description;
+
     return [
         {
             type: 'header',
             text: {
                 type: 'plain_text',
-                text: `🎫 New Ticket: ${ticket.ticketNumber}`,
+                text: `${priorityIcon} New Ticket: ${ticket.ticketNumber}`,
                 emoji: true,
             },
         },
@@ -141,27 +166,37 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
             type: 'section',
             text: {
                 type: 'mrkdwn',
-                text: `*${ticket.title}*\n${ticket.description.substring(0, 200)}${ticket.description.length > 200 ? '...' : ''}`,
+                text: `*${ticket.title}*`,
             },
+        },
+        {
+            type: 'section',
+            text: {
+                type: 'mrkdwn',
+                text: `_${description}_`,
+            },
+        },
+        {
+            type: 'divider',
         },
         {
             type: 'section',
             fields: [
                 {
                     type: 'mrkdwn',
-                    text: `*Category:*\n${ticket.category}`,
+                    text: `*📁 Category:*\n${ticket.category}`,
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*Status:*\n${ticket.status}`,
+                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`,
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*Created By:*\n${ticket.createdBy}`,
+                    text: `*👤 Created By:*\n${ticket.createdBy}`,
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*Assigned To:*\n${ticket.assignedTo || 'Unassigned'}`,
+                    text: `*🎯 Assigned To:*\n${ticket.assignedTo || '_Unassigned_'}`,
                 },
             ],
         },
@@ -177,6 +212,7 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                     },
                     url: ticket.link,
                     action_id: 'view_ticket',
+                    style: 'primary',
                 },
                 {
                     type: 'button',
@@ -189,6 +225,17 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                     action_id: 'ticket_in_progress',
                     value: `in_progress_${ticket.ticketId}`,
                 },
+                {
+                    type: 'button',
+                    text: {
+                        type: 'plain_text',
+                        text: '✔️ Mark Resolved',
+                        emoji: true,
+                    },
+                    style: 'primary',
+                    action_id: 'ticket_resolved',
+                    value: `resolved_${ticket.ticketId}`,
+                },
             ],
         },
         {
@@ -196,7 +243,13 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
             elements: [
                 {
                     type: 'mrkdwn',
-                    text: `Ticket ID: ${ticket.ticketId} | Created at ${new Date().toLocaleString()}`,
+                    text: `🆔 Ticket #${ticket.ticketId} • ${priorityIcon} Priority: ${priority.toUpperCase()} • ⏰ ${new Date().toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })}`,
                 },
             ],
         },

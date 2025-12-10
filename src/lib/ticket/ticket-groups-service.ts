@@ -366,9 +366,10 @@ export async function updateTicketGroup(
 
     // Handle groupTAT - set TAT for all tickets in group
     if (updates.groupTAT !== undefined && ticketIds.length > 0) {
+      const { addBusinessHours } = require('./utils/tat-calculator');
       const hours = parseTAT(updates.groupTAT);
       const now = new Date();
-      const deadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
+      const deadline = addBusinessHours(now, hours);
       const userName = 'Admin';
 
       const metadataUpdates = {

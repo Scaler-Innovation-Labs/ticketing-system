@@ -18,7 +18,8 @@ export function useAdmins(mode: "list" = "list") {
     const fetchAdmins = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/admin/list?limit=100');
+            // Fetch only active admins by default
+            const response = await fetch('/api/admin/list?limit=100&activeOnly=true');
             if (!response.ok) throw new Error('Failed to fetch admins');
             const data = await response.json();
 
