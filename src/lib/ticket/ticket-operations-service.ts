@@ -8,8 +8,8 @@
  * - Feedback submission
  */
 
-import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses, users } from '@/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses, users, categories, escalation_rules } from '@/db';
+import { eq, and, isNull, asc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -266,31 +266,133 @@ export async function extendTAT(
     }
 
     const newTatExtensions = (ticket.tat_extensions ?? 0) + 1;
-    const WARNING_THRESHOLD = 3;
+    const ESCALATION_THRESHOLD = 3;
 
-    if (newTatExtensions > WARNING_THRESHOLD) {
+    // Extend resolution deadline
+    const currentDeadline = new Date(ticket.resolution_due_at);
+    const newDeadline = new Date(currentDeadline.getTime() + hours * 60 * 60 * 1000);
+
+    // Prepare update object
+    const updateData: any = {
+      resolution_due_at: newDeadline,
+      tat_extensions: newTatExtensions,
+      updated_at: new Date(),
+    };
+
+    // Auto-escalate if TAT extended 3 times
+    if (newTatExtensions >= ESCALATION_THRESHOLD) {
       logger.warn(
         {
           ticketId,
           ticketNumber: ticket.ticket_number,
           tatExtensions: newTatExtensions,
         },
-        'Ticket TAT extended multiple times - may trigger escalation'
+        'Ticket TAT extended 3+ times - triggering auto-escalation'
       );
-    }
 
-    // Extend resolution deadline
-    const currentDeadline = new Date(ticket.resolution_due_at);
-    const newDeadline = new Date(currentDeadline.getTime() + hours * 60 * 60 * 1000);
+      // Get category to find domain_id
+      const [category] = await txn
+        .select({
+          domain_id: categories.domain_id,
+        })
+        .from(categories)
+        .where(eq(categories.id, ticket.category_id))
+        .limit(1);
+
+      if (category?.domain_id) {
+        // Find next escalation rule based on current escalation level
+        const currentEscalationLevel = ticket.escalation_level ?? 0;
+        const nextLevel = currentEscalationLevel + 1;
+
+        // Find escalation rule matching domain, scope (if any), and next level
+        const applicableRules = await txn
+          .select()
+          .from(escalation_rules)
+          .where(
+            and(
+              eq(escalation_rules.is_active, true),
+              category.domain_id
+                ? eq(escalation_rules.domain_id, category.domain_id)
+                : isNull(escalation_rules.domain_id),
+              ticket.scope_id
+                ? eq(escalation_rules.scope_id, ticket.scope_id)
+                : isNull(escalation_rules.scope_id),
+              eq(escalation_rules.level, nextLevel)
+            )
+          )
+          .orderBy(asc(escalation_rules.level))
+          .limit(1);
+
+        if (applicableRules.length > 0) {
+          const rule = applicableRules[0];
+          
+          // Apply escalation rule
+          updateData.escalation_level = nextLevel;
+          if (rule.escalate_to_user_id) {
+            updateData.assigned_to = rule.escalate_to_user_id;
+          }
+          updateData.escalated_at = new Date();
+
+          // Log escalation activity
+          await txn.insert(ticket_activity).values({
+            ticket_id: ticketId,
+            user_id: null, // System action
+            action: 'escalated',
+            details: {
+              reason: `Auto-escalated after ${newTatExtensions} TAT extensions`,
+              escalation_level: nextLevel,
+              previous_level: currentEscalationLevel,
+              escalated_to_user_id: rule.escalate_to_user_id,
+              rule_id: rule.id,
+            },
+            visibility: 'admin_only',
+          });
+
+          logger.info(
+            {
+              ticketId,
+              ticketNumber: ticket.ticket_number,
+              escalationLevel: nextLevel,
+              escalatedTo: rule.escalate_to_user_id,
+              ruleId: rule.id,
+            },
+            'Ticket auto-escalated based on escalation rules'
+          );
+        } else {
+          // No matching rule found, just increment escalation level
+          updateData.escalation_level = nextLevel;
+          updateData.escalated_at = new Date();
+
+          await txn.insert(ticket_activity).values({
+            ticket_id: ticketId,
+            user_id: null,
+            action: 'escalated',
+            details: {
+              reason: `Auto-escalated after ${newTatExtensions} TAT extensions (no matching escalation rule found)`,
+              escalation_level: nextLevel,
+              previous_level: currentEscalationLevel,
+            },
+            visibility: 'admin_only',
+          });
+
+          logger.warn(
+            {
+              ticketId,
+              ticketNumber: ticket.ticket_number,
+              escalationLevel: nextLevel,
+              domainId: category.domain_id,
+              scopeId: ticket.scope_id,
+            },
+            'Ticket escalated but no matching escalation rule found'
+          );
+        }
+      }
+    }
 
     // Update ticket
     const [updated] = await txn
       .update(tickets)
-      .set({
-        resolution_due_at: newDeadline,
-        tat_extensions: newTatExtensions,
-        updated_at: new Date(),
-      })
+      .set(updateData)
       .where(eq(tickets.id, ticketId))
       .returning();
 
@@ -325,7 +427,7 @@ export async function extendTAT(
       ticket: updated,
       tatExtensions: newTatExtensions,
       warning:
-        newTatExtensions >= WARNING_THRESHOLD
+        newTatExtensions >= ESCALATION_THRESHOLD
           ? `This is TAT extension #${newTatExtensions}. After 3 extensions, tickets are flagged for review.`
           : undefined,
     };

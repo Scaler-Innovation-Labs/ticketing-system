@@ -14,7 +14,7 @@ import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, Aler
 
 import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains, ticket_attachments, ticket_activity } from "@/db";
 
-import { eq, desc, aliasedTable } from "drizzle-orm";
+import { eq, desc, asc, aliasedTable } from "drizzle-orm";
 
 import type { TicketMetadata } from "@/db/inferred-types";
 
@@ -498,7 +498,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
     .from(ticket_activity)
     .leftJoin(commentUser, eq(ticket_activity.user_id, commentUser.id))
     .where(eq(ticket_activity.ticket_id, id))
-    .orderBy(desc(ticket_activity.created_at));
+    .orderBy(asc(ticket_activity.created_at));
 
   // Transform comments for display
   const comments: Array<Record<string, unknown>> = commentActivities

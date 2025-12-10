@@ -47,6 +47,8 @@ export function AdminActions({
 	// Delete dialog state removed
 	const [showReassignDialog, setShowReassignDialog] = useState(false);
 	const [showForwardDialog, setShowForwardDialog] = useState(false);
+	const [showResolveDialog, setShowResolveDialog] = useState(false);
+	const [resolveComment, setResolveComment] = useState("");
 	const [tat, setTat] = useState("");
 	const [comment, setComment] = useState("");
 	const [forwardReason, setForwardReason] = useState("");
@@ -273,7 +275,11 @@ export function AdminActions({
 		}
 	};
 
-	const handleMarkResolved = async () => {
+	const handleMarkResolved = async (e?: React.FormEvent) => {
+		if (e) {
+			e.preventDefault();
+		}
+
 		// Optimistic update - update UI immediately
 		setOptimisticStatus("RESOLVED");
 		if (onStatusChanged) {
@@ -282,6 +288,23 @@ export function AdminActions({
 		setLoading("resolved");
 
 		try {
+			// First, add comment if provided
+			if (resolveComment.trim()) {
+				try {
+					await fetch(`/api/tickets/${ticketId}/comments`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							comment: resolveComment.trim(),
+							is_internal: false,
+						}),
+					});
+				} catch (commentError) {
+					logger.warn({ commentError, ticketId }, "Failed to add resolve comment, continuing with status update");
+				}
+			}
+
+			// Then update status to resolved
 			const response = await fetch(`/api/tickets/${ticketId}/status`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -289,6 +312,8 @@ export function AdminActions({
 			});
 
 			if (response.ok) {
+				setResolveComment("");
+				setShowResolveDialog(false);
 				toast.success("Ticket marked as resolved");
 				router.refresh();
 				// Clear optimistic status after refresh
@@ -628,15 +653,68 @@ export function AdminActions({
 
 				{/* Mark as Resolved */}
 				{normalizedStatus !== "resolved" && (
-					<Button
-						variant="default"
-						onClick={handleMarkResolved}
-						disabled={loading !== null}
-						className="bg-green-600 hover:bg-green-700 text-white"
-					>
-						<CheckCircle className="w-4 h-4 mr-2" />
-						{loading === "resolved" ? "Marking..." : "Mark as Resolved"}
-					</Button>
+					<Dialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
+						<DialogTrigger asChild>
+							<Button
+								variant="default"
+								disabled={loading !== null}
+								className="bg-green-600 hover:bg-green-700 text-white"
+							>
+								<CheckCircle className="w-4 h-4 mr-2" />
+								Mark as Resolved
+							</Button>
+						</DialogTrigger>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Mark Ticket as Resolved</DialogTitle>
+								<DialogDescription>
+									Are you sure you want to mark this ticket as resolved? You can optionally add a comment.
+								</DialogDescription>
+							</DialogHeader>
+							<form onSubmit={handleMarkResolved} className="space-y-4">
+								<div>
+									<Label htmlFor="resolveComment">Comment (Optional)</Label>
+									<Textarea
+										id="resolveComment"
+										value={resolveComment}
+										onChange={(e) => setResolveComment(e.target.value)}
+										placeholder="Add a comment explaining the resolution..."
+										rows={4}
+									/>
+								</div>
+								<DialogFooter>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => {
+											setShowResolveDialog(false);
+											setResolveComment("");
+										}}
+										disabled={loading === "resolved"}
+									>
+										Cancel
+									</Button>
+									<Button 
+										type="submit" 
+										disabled={loading === "resolved"}
+										className="bg-green-600 hover:bg-green-700 text-white"
+									>
+										{loading === "resolved" ? (
+											<>
+												<Loader2 className="w-4 h-4 animate-spin mr-2" />
+												Marking...
+											</>
+										) : (
+											<>
+												<CheckCircle className="w-4 h-4 mr-2" />
+												Mark as Resolved
+											</>
+										)}
+									</Button>
+								</DialogFooter>
+							</form>
+						</DialogContent>
+					</Dialog>
 				)}
 			</div>
 		</div>
