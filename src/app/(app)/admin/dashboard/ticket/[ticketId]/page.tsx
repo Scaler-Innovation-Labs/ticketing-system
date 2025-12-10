@@ -12,9 +12,9 @@ import { Badge } from "@/components/ui/badge";
 
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
 
-import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains, ticket_attachments } from "@/db";
+import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains, ticket_attachments, ticket_activity } from "@/db";
 
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, aliasedTable } from "drizzle-orm";
 
 import type { TicketMetadata } from "@/db/inferred-types";
 
@@ -476,23 +476,50 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   let metadata: TicketMetadataWithExtras = {};
 
-  let comments: Array<Record<string, unknown>> = [];
-
-
-
   try {
-
     metadata = (ticket.metadata as TicketMetadataWithExtras) || {};
-
-    comments = Array.isArray(metadata?.comments) ? metadata.comments : [];
-
   } catch (error) {
-
     console.error('[Admin Ticket] Error parsing metadata:', error);
-
     // Continue with empty defaults
-
   }
+
+  // Fetch comments from ticket_activity (not from metadata)
+  const commentUser = aliasedTable(users, "comment_user");
+  const commentActivities = await db
+    .select({
+      id: ticket_activity.id,
+      action: ticket_activity.action,
+      details: ticket_activity.details,
+      visibility: ticket_activity.visibility,
+      created_at: ticket_activity.created_at,
+      user_id: ticket_activity.user_id,
+      user_name: commentUser.full_name,
+    })
+    .from(ticket_activity)
+    .leftJoin(commentUser, eq(ticket_activity.user_id, commentUser.id))
+    .where(eq(ticket_activity.ticket_id, id))
+    .orderBy(desc(ticket_activity.created_at));
+
+  // Transform comments for display
+  const comments: Array<Record<string, unknown>> = commentActivities
+    .filter(a => a.action === 'comment' || a.action === 'internal_note')
+    .map(a => {
+      const details = a.details as { comment?: string; attachments?: any[] } | null;
+      const isInternal = a.action === 'internal_note' || a.visibility === 'admin_only';
+      const isFromStudent = a.user_id === ticket.created_by;
+      return {
+        id: a.id,
+        text: details?.comment || '',
+        message: details?.comment || '',
+        source: isFromStudent ? 'website' : 'admin',
+        isInternal,
+        type: isInternal ? 'internal_note' : 'comment',
+        author: a.user_name || 'Unknown',
+        created_by: a.user_name || 'Unknown',
+        createdAt: a.created_at,
+        created_at: a.created_at,
+      };
+    });
 
 
 
