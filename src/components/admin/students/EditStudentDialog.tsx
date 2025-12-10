@@ -54,7 +54,7 @@ interface StudentData {
 
 interface MasterData {
     hostels: Array<{ id: number; name: string }>;
-    batches: Array<{ id: number; batch_year: number; display_name: string }>;
+    batches: Array<{ id: number; year: number; name: string }>;
     sections: Array<{ id: number; name: string }>;
 }
 
@@ -82,19 +82,26 @@ export function EditStudentDialog({
         class_section_id: null as number | null,
     });
 
-    // Fetch master data and student data when dialog opens
+    // Fetch student data when dialog opens
     useEffect(() => {
         if (open && studentId) {
-            fetchMasterData();
             fetchStudentData();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, studentId]);
 
-    // Update formData when both student and masterData are available
-    // This ensures Select components can display the correct selected values
+    // Fetch master data after student loads (so we can include student's batch/section)
     useEffect(() => {
-        if (student && masterData.hostels.length >= 0 && masterData.batches.length >= 0 && masterData.sections.length >= 0) {
+        if (open && studentId && student) {
+            fetchMasterData();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, studentId, student?.student_id]);
+
+    // Update formData when student data is available
+    // This ensures form fields are populated immediately
+    useEffect(() => {
+        if (student) {
             const fullName = (student.full_name || "").trim();
             setFormData({
                 full_name: fullName,
@@ -104,9 +111,35 @@ export function EditStudentDialog({
                 batch_id: student.batch_id,
                 class_section_id: student.class_section_id,
             });
+            // Debug logging
+            console.log('Student data loaded:', {
+                student_id: student.student_id,
+                batch_id: student.batch_id,
+                class_section_id: student.class_section_id,
+                section_name: student.section_name,
+            });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [student?.student_id, masterData.hostels.length, masterData.batches.length, masterData.sections.length]);
+    }, [student?.student_id, student?.batch_id, student?.class_section_id]);
+
+    // Update formData again when masterData loads to ensure Select components can match values
+    useEffect(() => {
+        if (student && masterData.sections.length > 0 && masterData.batches.length > 0) {
+            // Re-set formData to ensure Select components can find matching values
+            setFormData(prev => ({
+                ...prev,
+                batch_id: student.batch_id,
+                class_section_id: student.class_section_id,
+            }));
+            console.log('Master data loaded, updating formData:', {
+                batch_id: student.batch_id,
+                class_section_id: student.class_section_id,
+                availableSections: masterData.sections.map(s => ({ id: s.id, name: s.name })),
+                availableBatches: masterData.batches.map(b => ({ id: b.id, name: b.name, year: b.year })),
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [masterData.sections.length, masterData.batches.length, student?.student_id]);
 
     const fetchStudentData = async () => {
         setFetching(true);
@@ -155,11 +188,18 @@ export function EditStudentDialog({
 
     const fetchMasterData = async () => {
         try {
+            // Determine if we need to include student's batch/section
+            const batchIncludeParam = student?.batch_id ? `?include=${student.batch_id}` : '';
+            const batchesUrl = `/api/master/batches${batchIncludeParam}`;
+            
+            const sectionIncludeParam = student?.class_section_id ? `?include=${student.class_section_id}` : '';
+            const sectionsUrl = `/api/master/class-sections${sectionIncludeParam}`;
+            
             // Fetch all master data in parallel
             const [hostelsRes, batchesRes, sectionsRes] = await Promise.all([
                 fetch("/api/master/hostels"),
-                fetch("/api/master/batches"),
-                fetch("/api/master/class-sections"),
+                fetch(batchesUrl),
+                fetch(sectionsUrl),
             ]);
 
             // Process hostels
@@ -193,12 +233,22 @@ export function EditStudentDialog({
                 const contentType = sectionsRes.headers.get("content-type");
                 if (contentType?.includes("application/json")) {
                     const sectionsData = await sectionsRes.json();
-                    setMasterData((prev) => ({ ...prev, sections: sectionsData.sections || [] }));
+                    const sectionsList = sectionsData.sections || [];
+                    console.log('Fetched sections:', {
+                        count: sectionsList.length,
+                        sections: sectionsList,
+                        studentClassSectionId: student?.class_section_id,
+                        url: sectionsUrl,
+                    });
+                    setMasterData((prev) => ({ ...prev, sections: sectionsList }));
                 } else {
                     console.warn("Class sections API returned non-JSON response");
                 }
             } else {
-                console.warn(`Failed to fetch class sections: ${sectionsRes.status}`);
+                console.warn(`Failed to fetch class sections: ${sectionsRes.status}`, {
+                    url: sectionsUrl,
+                    studentClassSectionId: student?.class_section_id,
+                });
             }
         } catch (error) {
             console.error("Error fetching master data:", error);
@@ -345,7 +395,7 @@ export function EditStudentDialog({
                                     <Select
                                         value={formData.batch_id ? formData.batch_id.toString() : "none"}
                                         onValueChange={(value) =>
-                                            setFormData({ ...formData, batch_id: value === "none" ? null : parseInt(value) })
+                                            setFormData({ ...formData, batch_id: value === "none" ? null : parseInt(value, 10) })
                                         }
                                     >
                                         <SelectTrigger>
@@ -355,7 +405,7 @@ export function EditStudentDialog({
                                             <SelectItem value="none">None</SelectItem>
                                             {masterData.batches.map((batch) => (
                                                 <SelectItem key={batch.id} value={batch.id.toString()}>
-                                                    {batch.display_name || (batch.batch_year ? batch.batch_year.toString() : 'Unknown')}
+                                                    {batch.name || (batch.year ? batch.year.toString() : 'Unknown')}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -367,7 +417,7 @@ export function EditStudentDialog({
                                     <Select
                                         value={formData.class_section_id ? formData.class_section_id.toString() : "none"}
                                         onValueChange={(value) =>
-                                            setFormData({ ...formData, class_section_id: value === "none" ? null : parseInt(value) })
+                                            setFormData({ ...formData, class_section_id: value === "none" ? null : parseInt(value, 10) })
                                         }
                                     >
                                         <SelectTrigger>

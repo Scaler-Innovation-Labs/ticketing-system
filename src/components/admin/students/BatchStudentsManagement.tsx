@@ -45,8 +45,8 @@ interface Student {
   class_section: string | null;
   batch_year: number | null;
   blood_group?: string | null;
-  created_at: Date;
-  updated_at: Date;
+  created_at?: Date;
+  updated_at?: Date;
 }
 
 interface Hostel {

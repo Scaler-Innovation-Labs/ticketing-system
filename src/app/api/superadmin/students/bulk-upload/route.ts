@@ -242,7 +242,18 @@ function createStudentValidationSchema(
     }
   }).transform((data) => {
     // Transform phone to digits only (unless marked INA)
-    const phone = data.phone === 'INA' ? 'INA' : data.phone.replace(/\D/g, '');
+    // Handle scientific notation from Excel (e.g., 2.63E+11 -> 26300000000)
+    let phoneValue = data.phone === 'INA' ? 'INA' : data.phone;
+    if (phoneValue !== 'INA' && phoneValue) {
+      // Check if it's in scientific notation
+      if (/^[\d.]+[eE][+-]?\d+$/.test(phoneValue)) {
+        // Convert scientific notation to regular number
+        phoneValue = String(Number(phoneValue));
+      }
+      // Remove all non-digits
+      phoneValue = phoneValue.replace(/\D/g, '');
+    }
+    let phone = phoneValue;
 
     // Resolve hostel ID
     let hostelId: number | null = null;
@@ -286,8 +297,23 @@ function createStudentValidationSchema(
       bloodGroup = data.blood_group.replace(/\s+/g, '').toUpperCase();
     }
 
+    // Ensure full_name doesn't contain phone numbers or scientific notation
+    let fullName = data.full_name.trim();
+    // Check if full_name looks like a phone number or scientific notation
+    if (/^[\d.eE+-]+$/.test(fullName) || /^\d{10,}$/.test(fullName)) {
+      // If full_name is actually a phone number, swap it with phone if phone is empty or looks like a name
+      if (!phone || phone === 'INA' || /^[a-zA-Z\s]+$/.test(phone)) {
+        const temp = fullName;
+        fullName = phone && phone !== 'INA' ? phone : 'Unknown';
+        phone = temp.replace(/\D/g, '');
+      } else {
+        // If both are numbers, keep phone as is and set name to Unknown
+        fullName = 'Unknown';
+      }
+    }
+
     return {
-      full_name: data.full_name.trim(),
+      full_name: fullName,
       email: data.email.trim().toLowerCase(),
       phone,
       roll_no: data.roll_no?.trim() || null,

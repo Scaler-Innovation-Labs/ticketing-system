@@ -54,14 +54,13 @@ export default async function SuperAdminBatchStudentsPage({
       user_id: users.id,
       email: users.email,
       full_name: sql<string>`COALESCE(${users.full_name}, '')`,
-      phone: users.phone,
+      phone: sql<string>`COALESCE(${users.phone}, '')`,
       room_no: students.room_no,
       hostel: hostels.name,
       class_section: class_sections.name,
       batch_year: batches.year,
       blood_group: students.blood_group,
-      created_at: students.created_at,
-      updated_at: students.updated_at,
+      // Note: created_at and updated_at removed as they don't exist in the database schema
     })
     .from(students)
     .innerJoin(users, eq(students.user_id, users.id))
