@@ -81,6 +81,12 @@ export async function PATCH(
 
     const { options, ...fieldData } = parsed.data;
 
+    // Generate slug if name is updated but slug is not provided
+    if (fieldData.name && !fieldData.slug) {
+      const { generateSlug } = await import('@/lib/utils/slug');
+      fieldData.slug = generateSlug(fieldData.name);
+    }
+
     // Update field
     const field = await updateField(id, fieldData);
 

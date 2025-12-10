@@ -434,11 +434,22 @@ export function FieldDialog({
         }
       }
 
-      const optionsToSend = options.map((opt, index) => ({
-        label: opt.label,
-        value: opt.value || generateSlug(opt.label),
-        display_order: index,
-      }));
+      const optionsToSend = options.map((opt, index) => {
+        // Ensure value is always generated from label if missing or invalid
+        let finalValue = opt.value;
+        if (!finalValue || finalValue.trim().length === 0) {
+          finalValue = opt.label ? generateSlug(opt.label) : `option-${index}`;
+        }
+        // If value is too short (single char), regenerate from label
+        if (finalValue.length === 1 && opt.label && opt.label.length > 1) {
+          finalValue = generateSlug(opt.label);
+        }
+        return {
+          label: opt.label,
+          value: finalValue,
+          display_order: index,
+        };
+      });
 
       const url = field
         ? `${endpoints.admin.fields}/${field.id}`

@@ -139,8 +139,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided slug or generate from name
-    const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/\s+/g, '-');
+    // Use provided slug or generate from name using the utility function
+    const { generateSlug } = await import('@/lib/utils/slug');
+    const slug = parsed.data.slug || generateSlug(parsed.data.name);
     
     // Check for duplicate slug within the same subcategory
     const existing = await db
