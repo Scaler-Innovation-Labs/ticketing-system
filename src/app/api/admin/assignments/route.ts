@@ -14,7 +14,7 @@ import { z } from 'zod';
 const CreateAssignmentRuleSchema = z.object({
   user_id: z.string().uuid(),
   domain_id: z.number().int().positive(),
-  scope_id: z.number().int().positive().nullable(),
+  scope_id: z.number().int().positive(), // scope is mandatory
 });
 
 export async function GET(request: NextRequest) {
