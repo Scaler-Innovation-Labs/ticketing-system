@@ -117,10 +117,15 @@ export function FieldDialog({
 
   useEffect(() => {
     if (field) {
+      // Ensure validation_rules is properly parsed
+      const rawValidationRules = field.validation_rules || {};
       const initialRules: LogicValidationRules = {
-        ...((field.validation_rules || {}) as LogicValidationRules),
+        ...(typeof rawValidationRules === 'object' && !Array.isArray(rawValidationRules) 
+          ? rawValidationRules 
+          : {}),
         ...(field.field_type === "multi_select" ? { multiSelect: true } : {}),
       };
+      
       // If there is an explicit admin on the field, do NOT inherit.
       // If there isn't, still default to NOT inheriting; user must opt in.
       setInheritFromSubcategory(false);
@@ -135,9 +140,22 @@ export function FieldDialog({
         validation_rules: initialRules,
         assigned_admin_id: field.assigned_admin_id || null,
       });
-      setOptions(field.options || []);
+      
+      // Ensure options are properly formatted
+      const formattedOptions = (field.options || []).map((opt: any) => ({
+        id: opt.id,
+        label: opt.label || '',
+        value: opt.value || '',
+        display_order: opt.display_order ?? 0,
+      }));
+      
+      setOptions(formattedOptions);
       setManualEdit(true); // Editing existing field means slug is pre-set
-      setLogicSectionOpen(Boolean(initialRules.dependsOn));
+      
+      // Open logic section if dependsOn exists
+      const hasDependsOn = Boolean(initialRules.dependsOn);
+      setLogicSectionOpen(hasDependsOn);
+      
       const initialValues = toArray(
         (initialRules.showWhenValue as string | string[] | undefined) ??
         (initialRules.hideWhenValue as string | string[] | undefined)
@@ -280,6 +298,8 @@ export function FieldDialog({
         : [];
 
   useEffect(() => {
+    // Auto-open logic section if dependsOnSlug exists
+    // This ensures the section opens when validation_rules are loaded
     if (dependsOnSlug) {
       setLogicSectionOpen(true);
     }

@@ -103,7 +103,13 @@ export default async function StudentTicketPage({
   }
 
   // Load view model (handles all business logic)
-  const vm = await getStudentTicketViewModel(id, dbUser.id);
+  let vm;
+  try {
+    vm = await getStudentTicketViewModel(id, dbUser.id);
+  } catch (error) {
+    console.error("Error loading student ticket view model:", error);
+    throw error;
+  }
 
   if (!vm) {
     notFound();

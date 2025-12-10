@@ -24,6 +24,7 @@ export interface FieldData {
 export interface FieldOptionData {
   label: string;
   value: string;
+  display_order?: number;
 }
 
 /**
@@ -31,6 +32,8 @@ export interface FieldOptionData {
  */
 export async function getFieldById(id: number) {
   try {
+    const { subcategories } = await import('@/db');
+    
     const [field] = await db
       .select({
         id: category_fields.id,
@@ -44,8 +47,10 @@ export async function getFieldById(id: number) {
         display_order: category_fields.display_order,
         is_active: category_fields.is_active,
         created_at: category_fields.created_at,
+        assigned_admin_id: subcategories.assigned_admin_id, // Get from subcategory
       })
       .from(category_fields)
+      .leftJoin(subcategories, eq(category_fields.subcategory_id, subcategories.id))
       .where(eq(category_fields.id, id))
       .limit(1);
 
@@ -55,7 +60,12 @@ export async function getFieldById(id: number) {
 
     // Fetch options if select/multiselect
     const options = await db
-      .select()
+      .select({
+        id: field_options.id,
+        label: field_options.label,
+        value: field_options.value,
+        display_order: field_options.display_order,
+      })
       .from(field_options)
       .where(eq(field_options.field_id, id))
       .orderBy(field_options.display_order);
@@ -131,7 +141,7 @@ export async function updateFieldOptions(
             field_id: fieldId,
             label: opt.label,
             value: opt.value,
-            display_order: idx,
+            display_order: opt.display_order ?? idx,
           }))
         );
       }
