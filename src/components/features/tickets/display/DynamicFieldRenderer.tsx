@@ -98,6 +98,7 @@ export function DynamicFieldRenderer({
           />
         );
 
+      case "dropdown":
       case "multi_select":
       case "select_multiple":
       case "multiselect":
