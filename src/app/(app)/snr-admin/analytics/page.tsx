@@ -115,7 +115,14 @@ export default async function SnrAdminAnalyticsPage() {
         });
 
         // Fetch staff members: only admins in the same primary domain (exclude super_admin/committee/other domains)
-        let allStaffRaw = [];
+        type StaffRow = {
+            id: string | null;
+            full_name: string | null;
+            domain: string | null;
+            scope: string | null;
+            role: string | null;
+        };
+        let allStaffRaw: StaffRow[] = [];
         if (primaryDomainId) {
             allStaffRaw = await db
                 .select({
