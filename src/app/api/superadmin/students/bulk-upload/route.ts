@@ -124,8 +124,18 @@ const headerMap: Record<string, string> = {
 // Zod schema for raw CSV row data (all strings)
 const RawCSVRowSchema = z.object({
   full_name: z.string().min(1, 'Full name is required').max(255, 'Full name must be 255 characters or less'),
-  email: z.string().email('Invalid email format'),
-  phone: z.string().min(1, 'Phone number is required'),
+  email: z.union([z.string().email('Invalid email format'), z.literal('INA')]),
+  phone: z.string().min(1, 'Phone number is required').superRefine((val, ctx) => {
+    if (val === 'INA') return;
+    const phoneDigits = val.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Phone must be 10-15 digits',
+        path: ['phone'],
+      });
+    }
+  }),
   roll_no: z.string().optional(),
   room_no: z.string().optional(),
   hostel: z.string().optional(),
@@ -135,42 +145,22 @@ const RawCSVRowSchema = z.object({
   batch: z.string().optional(),
   batch_id: z.string().optional(),
   department: z.string().max(100, 'Department must be 100 characters or less').optional(),
-  blood_group: z.string().optional(),
+  blood_group: z.union([z.string().optional(), z.literal('INA')]).superRefine((val, ctx) => {
+    if (!val || val === 'INA') return;
+    // Normalize blood group by removing spaces and converting to uppercase
+    const normalized = val.replace(/\s+/g, '').toUpperCase();
+    const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+    if (!validBloodGroups.includes(normalized)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Blood group must be one of: A+, A-, B+, B-, O+, O-, AB+, AB-',
+        path: ['blood_group'],
+      });
+    }
+  }),
   parent_name: z.string().max(255, 'Parent name must be 255 characters or less').optional(),
   parent_phone: z.string().optional(),
-}).refine(
-  (data) => {
-    // Phone validation: must be 10-15 digits after removing non-digits
-    const phoneDigits = data.phone.replace(/\D/g, '');
-    return phoneDigits.length >= 10 && phoneDigits.length <= 15;
-  },
-  {
-    message: 'Phone must be 10-15 digits',
-    path: ['phone'],
-  }
-).refine(
-  (data) => {
-    // Blood group validation if provided
-    if (!data.blood_group) return true;
-    const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-    return validBloodGroups.includes(data.blood_group.toUpperCase());
-  },
-  {
-    message: 'Blood group must be one of: A+, A-, B+, B-, O+, O-, AB+, AB-',
-    path: ['blood_group'],
-  }
-).refine(
-  (data) => {
-    // Parent phone validation if provided
-    if (!data.parent_phone) return true;
-    const parentPhoneDigits = data.parent_phone.replace(/\D/g, '');
-    return parentPhoneDigits.length >= 10 && parentPhoneDigits.length <= 15;
-  },
-  {
-    message: 'Parent phone must be 10-15 digits',
-    path: ['parent_phone'],
-  }
-);
+});
 
 // Helper function to create validation schema with ID resolution
 function createStudentValidationSchema(
@@ -180,7 +170,7 @@ function createStudentValidationSchema(
 ) {
   return RawCSVRowSchema.superRefine((data, ctx) => {
     // Validate and resolve hostel ID
-    if (data.hostel) {
+    if (data.hostel && data.hostel !== 'INA') {
       const hostelId = hostelMap.get(data.hostel.toLowerCase());
       if (!hostelId && data.hostel.trim()) {
         ctx.addIssue({
@@ -201,7 +191,7 @@ function createStudentValidationSchema(
     }
 
     // Validate and resolve batch ID
-    if (data.batch) {
+    if (data.batch && data.batch !== 'INA') {
       const batchYear = parseInt(data.batch, 10);
       if (isNaN(batchYear)) {
         ctx.addIssue({
@@ -231,7 +221,7 @@ function createStudentValidationSchema(
     }
 
     // Validate and resolve class section ID
-    if (data.class_section) {
+    if (data.class_section && data.class_section !== 'INA') {
       const classSectionId = sectionMap.get(data.class_section.toLowerCase());
       if (!classSectionId && data.class_section.trim()) {
         ctx.addIssue({
@@ -251,12 +241,12 @@ function createStudentValidationSchema(
       }
     }
   }).transform((data) => {
-    // Transform phone to digits only
-    const phone = data.phone.replace(/\D/g, '');
+    // Transform phone to digits only (unless marked INA)
+    const phone = data.phone === 'INA' ? 'INA' : data.phone.replace(/\D/g, '');
 
     // Resolve hostel ID
     let hostelId: number | null = null;
-    if (data.hostel) {
+    if (data.hostel && data.hostel !== 'INA') {
       hostelId = hostelMap.get(data.hostel.toLowerCase()) || null;
     } else if (data.hostel_id) {
       const parsed = parseInt(data.hostel_id, 10);
@@ -267,7 +257,7 @@ function createStudentValidationSchema(
 
     // Resolve batch ID
     let batchId: number | null = null;
-    if (data.batch) {
+    if (data.batch && data.batch !== 'INA') {
       const batchYear = parseInt(data.batch, 10);
       if (!isNaN(batchYear)) {
         batchId = batchMap.get(batchYear) || null;
@@ -281,13 +271,19 @@ function createStudentValidationSchema(
 
     // Resolve class section ID
     let classSectionId: number | null = null;
-    if (data.class_section) {
+    if (data.class_section && data.class_section !== 'INA') {
       classSectionId = sectionMap.get(data.class_section.toLowerCase()) || null;
     } else if (data.class_section_id) {
       const parsed = parseInt(data.class_section_id, 10);
       if (!isNaN(parsed) && parsed > 0) {
         classSectionId = parsed;
       }
+    }
+
+    // Normalize blood group: remove spaces and convert to uppercase
+    let bloodGroup: string | null = null;
+    if (data.blood_group && data.blood_group !== 'INA') {
+      bloodGroup = data.blood_group.replace(/\s+/g, '').toUpperCase();
     }
 
     return {
@@ -300,9 +296,9 @@ function createStudentValidationSchema(
       class_section_id: classSectionId,
       batch_id: batchId,
       department: data.department?.trim() || null,
-      blood_group: data.blood_group?.toUpperCase().trim() || null,
+      blood_group: bloodGroup,
       parent_name: data.parent_name?.trim() || null,
-      parent_phone: data.parent_phone ? data.parent_phone.replace(/\D/g, '') : null,
+      parent_phone: data.parent_phone ? String(data.parent_phone.replace(/\D/g, '')) : null,
     } as ProcessedStudent;
   });
 }
@@ -380,6 +376,7 @@ export async function POST(request: NextRequest) {
     // Validate and process rows using Zod
     const validationErrors: ValidationError[] = [];
     const processedStudents: ProcessedStudent[] = [];
+    const fallbackFields = new Set(['email', 'phone', 'hostel', 'class_section', 'batch', 'blood_group']);
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -393,11 +390,29 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Validate using Zod
+      // Validate using Zod (with fallback to INA on selected fields)
       const result = StudentSchema.safeParse(rowData);
 
       if (!result.success) {
-        // Convert Zod errors to ValidationError format
+        const fallbackRow = { ...rowData };
+        let modified = false;
+
+        for (const issue of result.error.issues) {
+          const field = issue.path[0] as string | undefined;
+          if (field && fallbackFields.has(field)) {
+            fallbackRow[field] = 'INA';
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          const retry = StudentSchema.safeParse(fallbackRow);
+          if (retry.success) {
+            processedStudents.push(retry.data);
+            continue;
+          }
+        }
+
         const errors = zodErrorToValidationError(result.error, rowNum);
         validationErrors.push(...errors);
         continue;

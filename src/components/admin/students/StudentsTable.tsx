@@ -99,7 +99,7 @@ export function StudentsTable({
 									<h3 className="text-lg font-semibold">{batchDisplayName}</h3>
 									<Badge variant="secondary">{batchStudents.length} students</Badge>
 								</button>
-								<Link href={`/superadmin/students/batch/${batchYear}`}>
+								<Link href={`/superadmin/dashboard/students/batch/${batchYear}`}>
 									<Button variant="outline" size="sm">
 										View batch
 									</Button>

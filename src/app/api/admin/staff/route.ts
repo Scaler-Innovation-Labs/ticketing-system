@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { db } from '@/db';
-import { users, roles, domains, scopes, admin_profiles } from '@/db';
+import { users, roles, domains, scopes, admin_profiles, admin_assignments } from '@/db';
 import { eq, and, or, like, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -95,6 +95,51 @@ export async function GET(request: Request) {
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+const DeleteStaffSchema = z.object({
+  id: z.string().uuid(),
+});
+
+/**
+ * DELETE /api/admin/staff
+ * Delete a staff member (hard delete user + related admin profile/assignments)
+ */
+export async function DELETE(request: Request) {
+  try {
+    await requireRole(['super_admin', 'snr_admin']);
+
+    const body = await request.json();
+    const data = DeleteStaffSchema.parse(body);
+
+    const [existingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, data.id))
+      .limit(1);
+
+    if (!existingUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Clean up related admin data
+    await db.delete(admin_profiles).where(eq(admin_profiles.user_id, data.id));
+    await db.delete(admin_assignments).where(eq(admin_assignments.user_id, data.id));
+
+    // Delete user
+    await db.delete(users).where(eq(users.id, data.id));
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Validation Error', details: error.issues }, { status: 400 });
+    }
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+    console.error('Delete Staff Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
