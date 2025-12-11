@@ -55,9 +55,9 @@ export default async function CommitteeGroupsPage({
     }
 
     if (categoryFilter) {
+      // Filter by category ID (the filter value is the category ID as string)
       allTickets = allTickets.filter(t => {
-        const categoryName = (t.category_name || "").toLowerCase();
-        return categoryName.includes(categoryFilter.toLowerCase());
+        return t.category_id?.toString() === categoryFilter;
       });
     }
 
@@ -199,6 +199,8 @@ export default async function CommitteeGroupsPage({
             created_at: t.created_at,
             updated_at: t.updated_at,
             title: t.title || "",
+            creator_name: t.creator_full_name || null,
+            creator_email: t.creator_email || null,
             // Add other properties as needed to satisfy Ticket type
           })) as unknown as Ticket[]}
           initialGroups={initialGroups}

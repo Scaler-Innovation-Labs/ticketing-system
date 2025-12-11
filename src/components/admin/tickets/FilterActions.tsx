@@ -113,29 +113,6 @@ export function FilterActions({
         })}
       </div>
 
-      {/* Expanded View Actions */}
-      {isExpanded && (
-        <div className="flex items-center justify-end pt-2 border-t">
-          <Button 
-            onClick={onApply} 
-            size="sm" 
-            className="h-7 text-xs min-w-[100px]"
-            disabled={isApplying}
-          >
-            {isApplying ? (
-              <>
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Applying...
-              </>
-            ) : (
-              <>
-                <Search className="w-3 h-3 mr-1" />
-                Apply
-              </>
-            )}
-          </Button>
-        </div>
-      )}
     </>
   );
 }

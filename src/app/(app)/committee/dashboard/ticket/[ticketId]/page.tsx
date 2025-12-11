@@ -375,7 +375,7 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
                 {normalizedComments.length > 0 ? (
 
-                  <ScrollArea className="max-h-[500px] pr-4">
+                  <ScrollArea className="h-[500px] pr-4">
 
                     <div className="space-y-4">
 

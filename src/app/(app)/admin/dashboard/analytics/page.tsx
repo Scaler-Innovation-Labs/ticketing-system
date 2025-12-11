@@ -119,17 +119,23 @@ export default async function AdminAnalyticsPage({
     .where(and(whereClause, sql`${tickets.escalation_level} > 0`));
   const escalatedTickets = Number(escalatedRes?.count || 0);
 
+  // Query with escalation_level to handle escalated tickets
   const catRes = await db
     .select({
       name: sql<string>`COALESCE(${tickets.metadata} ->> 'subcategory', ${categories.name})`,
       status: ticket_statuses.value,
+      escalation_level: sql<number>`COALESCE(${tickets.escalation_level}, 0)`,
       count: sql<number>`count(*)`,
     })
     .from(tickets)
     .leftJoin(categories, eq(tickets.category_id, categories.id))
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .where(whereClause)
-    .groupBy(sql`COALESCE(${tickets.metadata} ->> 'subcategory', ${categories.name})`, ticket_statuses.value);
+    .groupBy(
+      sql`COALESCE(${tickets.metadata} ->> 'subcategory', ${categories.name})`,
+      ticket_statuses.value,
+      sql`COALESCE(${tickets.escalation_level}, 0)`
+    );
 
   const categoryStatsMap: Record<string, { name: string; total: number; resolved: number; open: number; inProgress: number }> =
     {};
@@ -141,11 +147,15 @@ export default async function AdminAnalyticsPage({
     const countValue = Number(row.count || 0);
     categoryStatsMap[name].total += countValue;
     const status = norm(row.status);
+    const isEscalated = Number(row.escalation_level || 0) > 0;
+    
     if (["resolved", "closed"].includes(status)) {
       categoryStatsMap[name].resolved += countValue;
-    } else if (["open", "awaiting_student_response", "awaiting_student"].includes(status)) {
+    } else if (status === "open" && !isEscalated) {
+      // Only count non-escalated "open" tickets as open
       categoryStatsMap[name].open += countValue;
     } else {
+      // All escalated tickets (except resolved/closed) and in_progress/awaiting_student go to inProgress
       categoryStatsMap[name].inProgress += countValue;
     }
   });

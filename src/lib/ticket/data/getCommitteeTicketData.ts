@@ -1,5 +1,5 @@
 import { db, tickets, ticket_statuses, categories, users, ticket_activity, students, hostels } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, ne } from "drizzle-orm";
 
 export async function getCommitteeTicketData(ticketId: number) {
     // Minimal, non-relational fetch to avoid relation resolver issues
@@ -37,6 +37,7 @@ export async function getCommitteeTicketData(ticketId: number) {
     }
 
     // Fetch comments (activity) with explicit join to avoid relation mapping issues
+    // Filter out status_changed actions - only show actual comments
     const comments = await db
       .select({
         id: ticket_activity.id,
@@ -47,8 +48,13 @@ export async function getCommitteeTicketData(ticketId: number) {
       })
       .from(ticket_activity)
       .leftJoin(users, eq(ticket_activity.user_id, users.id))
-      .where(eq(ticket_activity.ticket_id, ticketId))
-      .orderBy(desc(ticket_activity.created_at));
+      .where(
+        and(
+          eq(ticket_activity.ticket_id, ticketId),
+          ne(ticket_activity.action, 'status_changed') // Exclude status_changed actions
+        )
+      )
+      .orderBy(desc(ticket_activity.created_at)); // Fetch newest first, then reverse for display
 
     // Fetch student info if creator is a student
     let studentData = null;
@@ -71,16 +77,22 @@ export async function getCommitteeTicketData(ticketId: number) {
     }
 
     // Transform comments to match expected structure
-    const formattedComments = comments.map(c => {
-      const details = c.details as any;
-      return {
-        text: details?.comment || c.action, // Fallback if no comment
-        author: c.user_full_name || 'Unknown',
-        created_at: c.created_at,
-        type: c.action === 'comment' ? 'comment' : 'system',
-        isInternal: details?.is_internal || false
-      };
-    });
+    // Filter to only include comment and internal_note actions
+    // Reverse order so oldest comments appear first (newest at bottom)
+    const formattedComments = comments
+      .filter(c => c.action === 'comment' || c.action === 'internal_note')
+      .reverse() // Reverse to show oldest first, newest at bottom
+      .map(c => {
+        const details = c.details as any;
+        return {
+          text: details?.comment || '', // Only use comment text, not action
+          author: c.user_full_name || 'Unknown',
+          created_at: c.created_at,
+          type: c.action === 'comment' ? 'comment' : 'internal_note',
+          isInternal: c.action === 'internal_note' || details?.is_internal || false,
+          source: c.action === 'comment' ? 'admin' : 'system'
+        };
+      });
 
     // Fallbacks for status if join is missing
     const statusValue = ticketRow.status_value || "open";

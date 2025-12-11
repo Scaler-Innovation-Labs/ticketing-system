@@ -74,11 +74,11 @@ export function AdminTicketFilters() {
           const categories = Array.isArray(categoryData) ? categoryData : (categoryData.categories || []);
           setCategoryOptions(categories.map((cat: any) => ({
             id: cat.id,
-            value: cat.slug || cat.id.toString(),
+            value: cat.id.toString(), // Always use ID for filtering
             label: cat.name,
             subcategories: (cat.subcategories || []).map((sub: any) => ({
               id: sub.id,
-              value: sub.slug || sub.id.toString(),
+              value: sub.id.toString(), // Always use ID for filtering
               label: sub.name,
             })),
           })));
@@ -132,9 +132,11 @@ export function AdminTicketFilters() {
           const locationData = await locationRes.json();
           setLocationOptions(locationData.locations || []);
         } else {
+          // If API fails, set empty array instead of throwing
           setLocationOptions([]);
         }
       } catch (error) {
+        // Silently handle errors - location filter is optional
         console.error("Error fetching locations:", error);
         setLocationOptions([]);
       }
