@@ -4,7 +4,7 @@
  * Handles ticket status transitions and validation
  */
 
-import { db, tickets, ticket_activity, ticket_statuses, outbox } from '@/db';
+import { db, tickets, ticket_activity, ticket_statuses, outbox, users } from '@/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
