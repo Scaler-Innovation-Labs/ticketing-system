@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { outbox, tickets, users, categories, ticket_statuses, roles } from '@/db';
+import { outbox, tickets, users, categories, ticket_statuses, roles, admin_profiles } from '@/db';
 import { eq, and, lte, lt } from 'drizzle-orm';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { logger } from '@/lib/logger';
@@ -17,7 +17,10 @@ import {
   notifyStatusUpdated,
   notifyTicketAssigned,
   NotificationContext,
+  isEmailConfigured,
 } from '@/lib/integrations';
+import { notifyCommentEmail, notifyReassignmentEmail } from '@/lib/integrations/email';
+import { ticket_integrations } from '@/db';
 
 const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 3;
@@ -183,11 +186,16 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           .limit(1)
         : [null];
 
-      // Get assignee info
+      // Get assignee info (including Slack user ID)
       const [assignee] = ticket.assigned_to
         ? await db
-          .select({ full_name: users.full_name, email: users.email })
+          .select({ 
+            full_name: users.full_name, 
+            email: users.email,
+            slack_user_id: admin_profiles.slack_user_id
+          })
           .from(users)
+          .leftJoin(admin_profiles, eq(users.id, admin_profiles.user_id))
           .where(eq(users.id, ticket.assigned_to))
           .limit(1)
         : [null];
@@ -231,6 +239,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         createdByEmail: creator?.email || '',
         assignedTo: assignee?.full_name || undefined,
         assignedToEmail: assignee?.email || undefined,
+        assignedToSlackUserId: assignee?.slack_user_id || undefined,
         link: ticketLink,
       };
 
@@ -277,13 +286,14 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
     }
 
     case 'ticket.assigned': {
-      const { ticketId, assignedTo, assignedBy } = payload;
+      const { ticketId, assignedTo, assignedBy, isForward } = payload;
 
       // Fetch ticket
       const [ticket] = await db
         .select({
           ticket_number: tickets.ticket_number,
           title: tickets.title,
+          created_by: tickets.created_by,
         })
         .from(tickets)
         .where(eq(tickets.id, ticketId))
@@ -300,6 +310,34 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
 
       if (!assignee) return;
 
+      // Get assigned by info
+      const [assignedByUser] = await db
+        .select({ full_name: users.full_name })
+        .from(users)
+        .where(eq(users.id, assignedBy))
+        .limit(1);
+
+      // Get student email for threaded notification
+      const [student] = ticket.created_by
+        ? await db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, ticket.created_by))
+          .limit(1)
+        : [null];
+
+      // Get email thread ID for threading
+      const [integration] = await db
+        .select({ email_thread_id: ticket_integrations.email_thread_id })
+        .from(ticket_integrations)
+        .where(eq(ticket_integrations.ticket_id, ticketId))
+        .limit(1);
+
+      const inReplyTo = integration?.email_thread_id || undefined;
+      const references = inReplyTo ? inReplyTo : undefined;
+      const ticketLink = `${BASE_URL}/student/dashboard/ticket/${ticketId}`;
+
+      // Send email to admin (assignment notification)
       await notifyTicketAssigned(
         ticketId,
         ticket.ticket_number || `TKT-${ticketId}`,
@@ -307,8 +345,29 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         assignee.full_name || 'Unknown',
         assignee.email,
         assignedBy,
-        `${BASE_URL}/tickets/${ticketId}`
+        `${BASE_URL}/admin/dashboard/ticket/${ticketId}`
       );
+
+      // Send threaded email to student (reassignment/forward notification)
+      if (student?.email && isEmailConfigured()) {
+        try {
+          await notifyReassignmentEmail(
+            ticket.ticket_number || `TKT-${ticketId}`,
+            ticket.title || '',
+            isForward ? 'forwarded' : 'reassigned',
+            assignee.full_name || 'Unknown',
+            assignedByUser?.full_name || 'Unknown',
+            ticketLink,
+            student.email,
+            payload.reason,
+            inReplyTo,
+            references
+          );
+        } catch (error: any) {
+          logger.error({ error: error.message, ticketId }, 'Email reassignment notification failed');
+        }
+      }
+
       break;
     }
 
@@ -319,7 +378,73 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
     }
 
     case 'ticket.comment_added': {
-      logger.info({ payload }, 'Processing ticket.comment_added');
+      const { ticketId, comment, commentedBy, isInternal } = payload;
+
+      // Only send email if comment is visible to student (not internal)
+      if (isInternal) {
+        logger.info({ ticketId }, 'Skipping email for internal comment');
+        break;
+      }
+
+      // Fetch ticket
+      const [ticket] = await db
+        .select({
+          ticket_number: tickets.ticket_number,
+          title: tickets.title,
+          created_by: tickets.created_by,
+        })
+        .from(tickets)
+        .where(eq(tickets.id, ticketId))
+        .limit(1);
+
+      if (!ticket) return;
+
+      // Get student email
+      const [student] = ticket.created_by
+        ? await db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, ticket.created_by))
+          .limit(1)
+        : [null];
+
+      if (!student?.email) return;
+
+      // Get commenter info
+      const [commenter] = await db
+        .select({ full_name: users.full_name })
+        .from(users)
+        .where(eq(users.id, commentedBy))
+        .limit(1);
+
+      // Get email thread ID for threading
+      const [integration] = await db
+        .select({ email_thread_id: ticket_integrations.email_thread_id })
+        .from(ticket_integrations)
+        .where(eq(ticket_integrations.ticket_id, ticketId))
+        .limit(1);
+
+      const inReplyTo = integration?.email_thread_id || undefined;
+      const references = inReplyTo ? inReplyTo : undefined;
+      const ticketLink = `${BASE_URL}/student/dashboard/ticket/${ticketId}`;
+
+      // Send threaded email to student
+      if (isEmailConfigured()) {
+        try {
+          await notifyCommentEmail(
+            ticket.ticket_number || `TKT-${ticketId}`,
+            ticket.title || '',
+            comment,
+            commenter?.full_name || 'Admin',
+            ticketLink,
+            student.email,
+            inReplyTo,
+            references
+          );
+        } catch (error: any) {
+          logger.error({ error: error.message, ticketId }, 'Email comment notification failed');
+        }
+      }
       break;
     }
 

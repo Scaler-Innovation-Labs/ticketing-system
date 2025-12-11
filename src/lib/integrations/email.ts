@@ -68,6 +68,8 @@ export interface EmailOptions {
     html?: string;
     cc?: string | string[];
     replyTo?: string;
+    inReplyTo?: string; // Message ID to reply to (for threading)
+    references?: string; // References header (for threading)
     attachments?: Array<{
         filename: string;
         content: Buffer | string;
@@ -137,6 +139,14 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
         // Add replyTo if provided
         if (options.replyTo) {
             mailOptions.replyTo = options.replyTo;
+        }
+
+        // Add threading headers if provided (for email threading/replies)
+        if (options.inReplyTo) {
+            mailOptions.inReplyTo = options.inReplyTo;
+        }
+        if (options.references) {
+            mailOptions.references = options.references;
         }
 
         // Nodemailer requires at least one of text or html
@@ -344,7 +354,9 @@ export async function notifyStatusUpdateEmail(
     newStatus: string,
     updatedBy: string,
     link: string,
-    recipientEmails: string[]
+    recipientEmails: string[],
+    inReplyTo?: string,
+    references?: string
 ): Promise<string | null> {
     const recipients = getRecipients(recipientEmails);
     let emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
@@ -362,14 +374,104 @@ export async function notifyStatusUpdateEmail(
 
     return sendEmail({
         to: recipients,
-        subject: `[${ticketNumber}] Status Updated: ${newStatus}`,
+        subject: `Re: [${ticketNumber}] ${title}`, // Re: prefix for threaded emails
         html: emailBody,
         text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nView: ${link}`,
+        inReplyTo,
+        references,
     });
 }
 
 /**
- * Send notification for ticket assignment
+ * Generate HTML for ticket comment/question notification
+ */
+export function buildCommentEmail(
+    ticketNumber: string,
+    title: string,
+    comment: string,
+    commentedBy: string,
+    link: string
+): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Update on Ticket: ${ticketNumber}</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+  <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
+    <h2 style="margin-top: 0; color: #212529;">Update on Your Ticket</h2>
+    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    
+    <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #495057; white-space: pre-wrap;">${comment}</p>
+    </div>
+    
+    <p style="color: #6c757d; font-size: 14px;"><strong>From:</strong> ${commentedBy}</p>
+    
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View Ticket & Reply</a>
+    </div>
+  </div>
+  
+  <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
+    <p style="margin: 0;">This is an automated update from the Ticketing System.</p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Generate HTML for ticket reassignment/forward notification
+ */
+export function buildReassignmentEmail(
+    ticketNumber: string,
+    title: string,
+    action: 'reassigned' | 'forwarded',
+    assignedTo: string,
+    assignedBy: string,
+    link: string,
+    reason?: string
+): string {
+    const actionText = action === 'forwarded' ? 'forwarded' : 'reassigned';
+    const actionTitle = action === 'forwarded' ? 'Ticket Forwarded' : 'Ticket Reassigned';
+    
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${actionTitle}: ${ticketNumber}</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+  <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
+    <h2 style="margin-top: 0; color: #212529;">${actionTitle}</h2>
+    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    
+    <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
+      <p style="margin: 0; color: #495057;">Your ticket has been ${actionText} to <strong>${assignedTo}</strong>.</p>
+      ${reason ? `<p style="margin: 10px 0 0 0; color: #6c757d; font-size: 14px;"><strong>Reason:</strong> ${reason}</p>` : ''}
+    </div>
+    
+    <p style="color: #6c757d; font-size: 14px;"><strong>${action === 'forwarded' ? 'Forwarded' : 'Reassigned'} by:</strong> ${assignedBy}</p>
+    
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View Ticket</a>
+    </div>
+  </div>
+  
+  <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
+    <p style="margin: 0;">This is an automated update from the Ticketing System.</p>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Send notification for ticket assignment (to admin, not student)
  */
 export async function notifyAssignmentEmail(
     ticketNumber: string,
@@ -403,5 +505,80 @@ export async function notifyAssignmentEmail(
       </div>
     `,
         text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nView: ${link}`,
+    });
+}
+
+/**
+ * Send notification for ticket comment/question (threaded to student)
+ */
+export async function notifyCommentEmail(
+    ticketNumber: string,
+    title: string,
+    comment: string,
+    commentedBy: string,
+    link: string,
+    recipientEmail: string,
+    inReplyTo?: string,
+    references?: string
+): Promise<string | null> {
+    const recipients = getRecipients([recipientEmail]);
+    let emailBody = buildCommentEmail(ticketNumber, title, comment, commentedBy, link);
+
+    // Add debug note only in non-production
+    if (!IS_PRODUCTION) {
+        emailBody = emailBody.replace(
+            '</div>',
+            `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+                <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
+            </div></div>`
+        );
+    }
+
+    return sendEmail({
+        to: recipients,
+        subject: `Re: [${ticketNumber}] ${title}`,
+        html: emailBody,
+        text: `Update on ticket ${ticketNumber}: ${title}\n\n${comment}\n\nFrom: ${commentedBy}\n\nView: ${link}`,
+        inReplyTo,
+        references,
+    });
+}
+
+/**
+ * Send notification for ticket reassignment/forward (threaded to student)
+ */
+export async function notifyReassignmentEmail(
+    ticketNumber: string,
+    title: string,
+    action: 'reassigned' | 'forwarded',
+    assignedTo: string,
+    assignedBy: string,
+    link: string,
+    recipientEmail: string,
+    reason?: string,
+    inReplyTo?: string,
+    references?: string
+): Promise<string | null> {
+    const recipients = getRecipients([recipientEmail]);
+    let emailBody = buildReassignmentEmail(ticketNumber, title, action, assignedTo, assignedBy, link, reason);
+
+    // Add debug note only in non-production
+    if (!IS_PRODUCTION) {
+        emailBody = emailBody.replace(
+            '</div>',
+            `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
+                <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
+            </div></div>`
+        );
+    }
+
+    const actionText = action === 'forwarded' ? 'forwarded' : 'reassigned';
+    return sendEmail({
+        to: recipients,
+        subject: `Re: [${ticketNumber}] ${title}`,
+        html: emailBody,
+        text: `Your ticket ${ticketNumber} has been ${actionText} to ${assignedTo}${reason ? `\nReason: ${reason}` : ''}\n\n${assignedBy} ${actionText} this ticket.\n\nView: ${link}`,
+        inReplyTo,
+        references,
     });
 }

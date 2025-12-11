@@ -41,6 +41,7 @@ export interface TicketSlackNotification {
     status: string;
     createdBy: string;
     assignedTo?: string;
+    assignedToSlackUserId?: string;
     priority?: string;
     link: string;
 }
@@ -128,37 +129,25 @@ export async function updateSlackMessage(
  * Build Slack blocks for a new ticket notification
  */
 export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
-    // Priority emoji and color
-    const priorityEmoji: Record<string, string> = {
-        low: '🟢',
-        medium: '🟡',
-        high: '🟠',
-        urgent: '🔴',
-    };
-    
-    const priorityColor: Record<string, string> = {
-        low: '#36a64f',
-        medium: '#ffa500',
-        high: '#ff6b6b',
-        urgent: '#dc3545',
-    };
-
-    const priority = (ticket.priority || 'medium').toLowerCase();
-    const priorityIcon = priorityEmoji[priority] || '🟡';
-    const statusEmoji = ticket.status === 'open' ? '🔵' : '📋';
+    const statusEmoji = ticket.status === 'open' ? '🔵' : ticket.status === 'in_progress' ? '🟡' : ticket.status === 'resolved' ? '🟢' : '📋';
     
     // Format description (truncate if too long)
-    const maxDescLength = 300;
+    const maxDescLength = 500;
     const description = ticket.description.length > maxDescLength
         ? `${ticket.description.substring(0, maxDescLength)}...`
         : ticket.description;
+
+    // Build mention text if assigned admin has Slack user ID
+    const mentionText = ticket.assignedToSlackUserId 
+        ? `<@${ticket.assignedToSlackUserId}> ` 
+        : '';
 
     return [
         {
             type: 'header',
             text: {
                 type: 'plain_text',
-                text: `${priorityIcon} New Ticket: ${ticket.ticketNumber}`,
+                text: `🎫 New Ticket: ${ticket.ticketNumber}`,
                 emoji: true,
             },
         },
@@ -166,14 +155,14 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
             type: 'section',
             text: {
                 type: 'mrkdwn',
-                text: `*${ticket.title}*`,
+                text: `${mentionText}*${ticket.title}*`,
             },
         },
         {
             type: 'section',
             text: {
                 type: 'mrkdwn',
-                text: `_${description}_`,
+                text: description,
             },
         },
         {
@@ -188,7 +177,7 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}`,
+                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
                 },
                 {
                     type: 'mrkdwn',
@@ -196,7 +185,11 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*🎯 Assigned To:*\n${ticket.assignedTo || '_Unassigned_'}`,
+                    text: ticket.assignedToSlackUserId 
+                        ? `*🎯 Assigned To:*\n<@${ticket.assignedToSlackUserId}>`
+                        : ticket.assignedTo 
+                        ? `*🎯 Assigned To:*\n${ticket.assignedTo}`
+                        : `*🎯 Assigned To:*\n_Unassigned_`,
                 },
             ],
         },
@@ -243,7 +236,7 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
             elements: [
                 {
                     type: 'mrkdwn',
-                    text: `🆔 Ticket #${ticket.ticketId} • ${priorityIcon} Priority: ${priority.toUpperCase()} • ⏰ ${new Date().toLocaleString('en-US', { 
+                    text: `⏰ Created: ${new Date().toLocaleString('en-US', { 
                         month: 'short', 
                         day: 'numeric', 
                         year: 'numeric',

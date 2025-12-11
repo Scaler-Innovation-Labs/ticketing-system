@@ -326,6 +326,7 @@ export async function assignTicket(
         ticketId,
         assignedTo: assignToUserId,
         assignedBy: assignedByUserId,
+        isForward: false,
       },
     });
 
@@ -399,6 +400,8 @@ export async function forwardTicket(
         ticketId,
         assignedTo: forwardToUserId,
         assignedBy: forwardedByUserId,
+        isForward: true,
+        reason,
       },
     });
 

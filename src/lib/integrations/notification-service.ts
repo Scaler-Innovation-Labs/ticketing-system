@@ -43,6 +43,7 @@ export interface NotificationContext {
     createdByEmail: string;
     assignedTo?: string;
     assignedToEmail?: string;
+    assignedToSlackUserId?: string;
     link: string;
 }
 
@@ -83,7 +84,30 @@ async function getNotificationConfig(
     }
 
     // Priority 2: Category config (priority = 10)
+    // Match category configs that match the category_id
+    // If scopeId is provided, prefer configs that also match the scope (more specific)
     if (categoryId) {
+        // First try to find a category config that also matches the scope (if provided)
+        if (scopeId) {
+            const [categoryScopeConfig] = await db
+                .select()
+                .from(notification_config)
+                .where(
+                    and(
+                        eq(notification_config.category_id, categoryId),
+                        eq(notification_config.scope_id, scopeId),
+                        isNull(notification_config.subcategory_id), // Category-level only
+                        eq(notification_config.is_active, true)
+                    )
+                )
+                .limit(1);
+            
+            if (categoryScopeConfig) {
+                return categoryScopeConfig;
+            }
+        }
+        
+        // Fall back to category config without scope requirement
         const [categoryConfig] = await db
             .select()
             .from(notification_config)
@@ -102,6 +126,8 @@ async function getNotificationConfig(
     }
 
     // Priority 3: Scope config (priority = 5)
+    // Only match scope configs when no category config was found
+    // Scope configs should not have category_id set (scope-level only)
     if (scopeId) {
         const [scopeConfig] = await db
             .select()
@@ -234,6 +260,7 @@ export async function notifyTicketCreated(
                 priority: context.priority,
                 createdBy: context.createdBy,
                 assignedTo: context.assignedTo,
+                assignedToSlackUserId: context.assignedToSlackUserId,
                 link: context.link,
             };
 
@@ -279,6 +306,27 @@ export async function notifyTicketCreated(
 
                 const messageId = await notifyNewTicketEmail(emailData, recipients);
                 result.email = { sent: true, messageId: messageId || undefined };
+                
+                // Store the original email message ID for threading future emails
+                if (messageId && context.createdByEmail) {
+                    try {
+                        await db
+                            .insert(ticket_integrations)
+                            .values({
+                                ticket_id: context.ticketId,
+                                email_thread_id: messageId,
+                            })
+                            .onConflictDoUpdate({
+                                target: ticket_integrations.ticket_id,
+                                set: {
+                                    email_thread_id: messageId,
+                                    updated_at: new Date(),
+                                },
+                            });
+                    } catch (error: any) {
+                        logger.error({ error: error.message, ticketId: context.ticketId }, 'Failed to save email thread ID');
+                    }
+                }
             }
         } catch (error: any) {
             logger.error({ error: error.message, ticketId: context.ticketId }, 'Email notification failed');
@@ -336,9 +384,19 @@ export async function notifyStatusUpdated(
         }
     }
 
-    // Email to student
+    // Email to student (threaded reply)
     if (isEmailConfigured() && studentEmail) {
         try {
+            // Get the original email thread ID for threading
+            const [integration] = await db
+                .select({ email_thread_id: ticket_integrations.email_thread_id })
+                .from(ticket_integrations)
+                .where(eq(ticket_integrations.ticket_id, ticketId))
+                .limit(1);
+
+            const inReplyTo = integration?.email_thread_id || undefined;
+            const references = inReplyTo ? inReplyTo : undefined;
+
             const messageId = await notifyStatusUpdateEmail(
                 ticketNumber,
                 title,
@@ -346,7 +404,9 @@ export async function notifyStatusUpdated(
                 newStatus,
                 updatedBy,
                 link,
-                [studentEmail]
+                [studentEmail],
+                inReplyTo,
+                references
             );
             result.email = { sent: true, messageId: messageId || undefined };
         } catch (error: any) {

@@ -4,7 +4,7 @@
  * Handles adding comments and internal notes to tickets
  */
 
-import { db, ticket_activity, tickets, ticket_statuses } from '@/db';
+import { db, ticket_activity, tickets, ticket_statuses, outbox } from '@/db';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -120,6 +120,33 @@ export async function addTicketComment(
       .update(tickets)
       .set({ updated_at: new Date() })
       .where(eq(tickets.id, ticketId));
+
+    // Queue notification for student-visible comments only
+    if (!input.is_internal) {
+      try {
+        await txn.insert(outbox).values({
+          event_type: 'ticket.comment_added',
+          aggregate_type: 'ticket',
+          aggregate_id: String(ticketId),
+          payload: {
+            ticketId: Number(ticketId),
+            comment: input.comment,
+            commentedBy: String(userId),
+            isInternal: input.is_internal || false,
+          },
+        });
+      } catch (outboxError: any) {
+        logger.error(
+          { 
+            error: outboxError?.message || String(outboxError),
+            ticketId, 
+            userId 
+          },
+          'Failed to queue comment notification'
+        );
+        // Don't throw - notification queueing failure shouldn't block comment
+      }
+    }
 
     logger.info(
       {

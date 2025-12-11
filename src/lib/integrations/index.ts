@@ -25,6 +25,8 @@ export {
     notifyNewTicketEmail,
     notifyStatusUpdateEmail,
     notifyAssignmentEmail,
+    notifyCommentEmail,
+    notifyReassignmentEmail,
     buildNewTicketEmail,
     buildStatusUpdateEmail,
     type EmailOptions,
