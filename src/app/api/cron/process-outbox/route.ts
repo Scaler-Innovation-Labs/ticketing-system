@@ -8,8 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { outbox, tickets, users, categories, ticket_statuses, roles, admin_profiles } from '@/db';
-import { eq, and, lte, lt } from 'drizzle-orm';
+import { outbox, tickets, users, categories, subcategories, ticket_statuses, roles, admin_profiles, ticket_activity } from '@/db';
+import { eq, and, lte, lt, desc } from 'drizzle-orm';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { logger } from '@/lib/logger';
 import {
@@ -166,6 +166,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           scope_id: tickets.scope_id,
           created_by: tickets.created_by,
           assigned_to: tickets.assigned_to,
+          metadata: tickets.metadata,
         })
         .from(tickets)
         .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
@@ -209,6 +210,15 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           .limit(1)
         : [null];
 
+      // Get subcategory
+      const [subcategory] = ticket.subcategory_id
+        ? await db
+          .select({ name: subcategories.name })
+          .from(subcategories)
+          .where(eq(subcategories.id, ticket.subcategory_id))
+          .limit(1)
+        : [null];
+
       // Determine the appropriate link based on who created the ticket
       // Students should see their own ticket page, admins see admin dashboard
       const [creatorRole] = ticket.created_by
@@ -232,6 +242,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         category: category?.name || 'Uncategorized',
         categoryId: ticket.category_id || undefined,
         subcategoryId: ticket.subcategory_id || undefined,
+        subcategory: subcategory?.name || undefined,
         scopeId: ticket.scope_id || undefined,
         status: ticket.status_value || 'open',
         priority: ticket.priority || 'medium',
@@ -240,6 +251,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         assignedTo: assignee?.full_name || undefined,
         assignedToEmail: assignee?.email || undefined,
         assignedToSlackUserId: assignee?.slack_user_id || undefined,
+        metadata: ticket.metadata as Record<string, any> | undefined,
         link: ticketLink,
       };
 
@@ -272,15 +284,47 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           .limit(1)
         : [null];
 
+      // Get updater info (name instead of just ID)
+      const [updater] = updatedBy
+        ? await db
+          .select({ full_name: users.full_name })
+          .from(users)
+          .where(eq(users.id, updatedBy))
+          .limit(1)
+        : [null];
+
+      // Get the most recent status change activity to check for comment
+      const [recentActivity] = await db
+        .select({
+          details: ticket_activity.details,
+        })
+        .from(ticket_activity)
+        .where(
+          and(
+            eq(ticket_activity.ticket_id, ticketId),
+            eq(ticket_activity.action, 'status_changed')
+          )
+        )
+        .orderBy(desc(ticket_activity.created_at))
+        .limit(1);
+
+      const comment = recentActivity?.details && typeof recentActivity.details === 'object' && 'comment' in recentActivity.details
+        ? String((recentActivity.details as any).comment)
+        : undefined;
+
+      // Determine the appropriate link (student dashboard)
+      const ticketLink = `${BASE_URL}/student/dashboard/ticket/${ticketId}`;
+
       await notifyStatusUpdated(
         ticketId,
         ticket.ticket_number || `TKT-${ticketId}`,
         ticket.title || '',
         oldStatus,
         newStatus,
-        updatedBy,
-        `${BASE_URL}/tickets/${ticketId}`,
-        student?.email
+        updater?.full_name || 'Admin',
+        ticketLink,
+        student?.email,
+        comment
       );
       break;
     }

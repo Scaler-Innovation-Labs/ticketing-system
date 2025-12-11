@@ -124,15 +124,6 @@ export default async function CommitteeGroupsPage({
           </Button>
         </div>
 
-        {/* Filters */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle>Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AdminTicketFilters />
-          </CardContent>
-        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -149,6 +140,7 @@ export default async function CommitteeGroupsPage({
               </div>
             </CardContent>
           </Card>
+
 
           <Card className="border-2 hover:shadow-md transition-shadow">
             <CardContent className="pt-6">
@@ -216,6 +208,16 @@ export default async function CommitteeGroupsPage({
             archivedGroups: archivedGroupsCount,
             totalTicketsInGroups,
           }}
+          filters={
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>Filters & Search</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdminTicketFilters />
+              </CardContent>
+            </Card>
+          }
         />
       </div>
     );
@@ -232,3 +234,4 @@ export default async function CommitteeGroupsPage({
     );
   }
 }
+

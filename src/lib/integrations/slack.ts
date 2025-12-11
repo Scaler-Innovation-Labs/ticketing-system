@@ -38,12 +38,14 @@ export interface TicketSlackNotification {
     title: string;
     description: string;
     category: string;
+    subcategory?: string;
     status: string;
     createdBy: string;
     assignedTo?: string;
     assignedToSlackUserId?: string;
     priority?: string;
     link: string;
+    metadata?: Record<string, any>; // Form field values
 }
 
 // ============================================
@@ -131,6 +133,11 @@ export async function updateSlackMessage(
 export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
     const statusEmoji = ticket.status === 'open' ? '🔵' : ticket.status === 'in_progress' ? '🟡' : ticket.status === 'resolved' ? '🟢' : '📋';
     
+    // Format ticket number - use shorter format (just the ID part if it's a long string)
+    const ticketNumberDisplay = ticket.ticketNumber.length > 20 
+        ? `#${ticket.ticketId}` 
+        : ticket.ticketNumber;
+    
     // Format description (truncate if too long)
     const maxDescLength = 500;
     const description = ticket.description.length > maxDescLength
@@ -142,12 +149,59 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
         ? `<@${ticket.assignedToSlackUserId}> ` 
         : '';
 
+    // Build form fields section from metadata
+    const formFields: any[] = [];
+    if (ticket.metadata && typeof ticket.metadata === 'object') {
+        const metadataEntries = Object.entries(ticket.metadata)
+            .filter(([key, value]) => {
+                // Skip internal fields and empty values
+                return key !== 'location' && value !== null && value !== undefined && value !== '';
+            })
+            .slice(0, 6); // Limit to 6 fields to avoid too many fields
+        
+        if (metadataEntries.length > 0) {
+            formFields.push({
+                type: 'divider',
+            });
+            formFields.push({
+                type: 'section',
+                text: {
+                    type: 'mrkdwn',
+                    text: '*📋 Form Details:*',
+                },
+            });
+            
+            // Add fields in pairs (2 per row)
+            for (let i = 0; i < metadataEntries.length; i += 2) {
+                const field1 = metadataEntries[i];
+                const field2 = metadataEntries[i + 1];
+                
+                const fieldText1 = `*${field1[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:*\n${String(field1[1]).substring(0, 100)}`;
+                const fieldText2 = field2 
+                    ? `*${field2[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:*\n${String(field2[1]).substring(0, 100)}`
+                    : '';
+                
+                formFields.push({
+                    type: 'section',
+                    fields: fieldText2 
+                        ? [
+                            { type: 'mrkdwn', text: fieldText1 },
+                            { type: 'mrkdwn', text: fieldText2 },
+                        ]
+                        : [
+                            { type: 'mrkdwn', text: fieldText1 },
+                        ],
+                });
+            }
+        }
+    }
+
     return [
         {
             type: 'header',
             text: {
                 type: 'plain_text',
-                text: `🎫 New Ticket: ${ticket.ticketNumber}`,
+                text: `🎫 New Ticket: ${ticketNumberDisplay}`,
                 emoji: true,
             },
         },
@@ -177,7 +231,9 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                 },
                 {
                     type: 'mrkdwn',
-                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
+                    text: ticket.subcategory 
+                        ? `*📂 Subcategory:*\n${ticket.subcategory}`
+                        : `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
                 },
                 {
                     type: 'mrkdwn',
@@ -185,14 +241,11 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                 },
                 {
                     type: 'mrkdwn',
-                    text: ticket.assignedToSlackUserId 
-                        ? `*🎯 Assigned To:*\n<@${ticket.assignedToSlackUserId}>`
-                        : ticket.assignedTo 
-                        ? `*🎯 Assigned To:*\n${ticket.assignedTo}`
-                        : `*🎯 Assigned To:*\n_Unassigned_`,
+                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
                 },
             ],
         },
+        ...formFields,
         {
             type: 'actions',
             elements: [

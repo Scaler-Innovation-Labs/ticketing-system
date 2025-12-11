@@ -36,6 +36,7 @@ export interface NotificationContext {
     category: string;
     categoryId?: number;
     subcategoryId?: number;
+    subcategory?: string;
     scopeId?: number;
     status: string;
     priority?: string;
@@ -44,6 +45,7 @@ export interface NotificationContext {
     assignedTo?: string;
     assignedToEmail?: string;
     assignedToSlackUserId?: string;
+    metadata?: Record<string, any>;
     link: string;
 }
 
@@ -256,11 +258,13 @@ export async function notifyTicketCreated(
                 title: context.title,
                 description: context.description,
                 category: context.category,
+                subcategory: context.subcategory,
                 status: context.status,
                 priority: context.priority,
                 createdBy: context.createdBy,
                 assignedTo: context.assignedTo,
                 assignedToSlackUserId: context.assignedToSlackUserId,
+                metadata: context.metadata,
                 link: context.link,
             };
 
@@ -352,7 +356,8 @@ export async function notifyStatusUpdated(
     newStatus: string,
     updatedBy: string,
     link: string,
-    studentEmail?: string
+    studentEmail?: string,
+    comment?: string
 ): Promise<NotificationResult> {
     const result: NotificationResult = {
         slack: { sent: false },
@@ -406,7 +411,8 @@ export async function notifyStatusUpdated(
                 link,
                 [studentEmail],
                 inReplyTo,
-                references
+                references,
+                comment
             );
             result.email = { sent: true, messageId: messageId || undefined };
         } catch (error: any) {

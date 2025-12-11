@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, ReactNode } from "react";
 import { TicketGrouping, SelectableTicketList } from "@/components/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Package } from "lucide-react";
@@ -16,9 +16,10 @@ interface CommitteeTicketManagerProps {
         archivedGroups: number;
         totalTicketsInGroups: number;
     } | null;
+    filters?: ReactNode; // Optional filters component to render between sections
 }
 
-export function CommitteeTicketManager({ tickets, initialGroups, initialStats }: CommitteeTicketManagerProps) {
+export function CommitteeTicketManager({ tickets, initialGroups, initialStats, filters }: CommitteeTicketManagerProps) {
     const [selectedTicketIds, setSelectedTicketIds] = useState<number[]>([]);
 
     return (
@@ -41,6 +42,13 @@ export function CommitteeTicketManager({ tickets, initialGroups, initialStats }:
                     />
                 </CardContent>
             </Card>
+
+            {/* Filters - positioned between Existing Groups and Select Tickets */}
+            {filters && (
+                <div>
+                    {filters}
+                </div>
+            )}
 
             {/* Select Tickets to Group */}
             <Card className="shadow-sm">

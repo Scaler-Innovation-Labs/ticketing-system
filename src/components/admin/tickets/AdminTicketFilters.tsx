@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Filter, Search, X, ChevronDown, ChevronUp, RotateCcw, ArrowUpDown, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { BasicFilters } from "./BasicFilters";
-import { AdvancedFilters } from "./AdvancedFilters";
 import { FilterActions } from "./FilterActions";
 
 interface StatusOption {
@@ -58,14 +57,31 @@ export function AdminTicketFilters() {
         const statusRes = await fetch("/api/filters/statuses");
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          setStatusOptions(statusData.statuses || []);
+          // API returns array directly or wrapped in statuses property
+          const statuses = Array.isArray(statusData) ? statusData : (statusData.statuses || []);
+          setStatusOptions(statuses.map((s: any) => ({
+            value: s.value,
+            label: s.label || s.value,
+            enum: s.value,
+          })));
         }
         
         // Fetch categories
         const categoryRes = await fetch("/api/filters/categories");
         if (categoryRes.ok) {
           const categoryData = await categoryRes.json();
-          setCategoryOptions(categoryData.categories || []);
+          // API returns array directly or wrapped in categories property
+          const categories = Array.isArray(categoryData) ? categoryData : (categoryData.categories || []);
+          setCategoryOptions(categories.map((cat: any) => ({
+            id: cat.id,
+            value: cat.slug || cat.id.toString(),
+            label: cat.name,
+            subcategories: (cat.subcategories || []).map((sub: any) => ({
+              id: sub.id,
+              value: sub.slug || sub.id.toString(),
+              label: sub.name,
+            })),
+          })));
         }
         
         // Fetch domains for quick action buttons
@@ -87,7 +103,6 @@ export function AdminTicketFilters() {
   const [createdTo, setCreatedTo] = useState<string>(searchParams.get("to") || "");
   const [userNumber, setUserNumber] = useState<string>(searchParams.get("user") || "");
   const [sort, setSort] = useState<string>(searchParams.get("sort") || "newest");
-  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   // Get subcategories for selected category from database
@@ -386,8 +401,6 @@ export function AdminTicketFilters() {
           isApplying={isApplying}
           isExpanded={isExpanded}
           onToggleExpand={() => setIsExpanded(!isExpanded)}
-          showAdvanced={showAdvanced}
-          onToggleAdvanced={() => setShowAdvanced(v => !v)}
         />
 
         {/* Expanded View */}
@@ -407,11 +420,15 @@ export function AdminTicketFilters() {
                 location={location}
                 status={status}
                 tat={tat}
+                createdFrom={createdFrom}
+                createdTo={createdTo}
                 onCategoryChange={setCategory}
                 onSubcategoryChange={setSubcategory}
                 onLocationChange={setLocation}
                 onStatusChange={setStatus}
                 onTatChange={setTat}
+                onCreatedFromChange={setCreatedFrom}
+                onCreatedToChange={setCreatedTo}
                 categoryOptions={categoryOptions}
                 subcategoryOptions={subcategoryOptions}
                 locationOptions={locationOptions}
@@ -444,22 +461,6 @@ export function AdminTicketFilters() {
               </div>
             </div>
 
-            {showAdvanced && (
-              <>
-                <Separator className="my-3" />
-                <AdvancedFilters
-                  location={location}
-                  userNumber={userNumber}
-                  createdFrom={createdFrom}
-                  createdTo={createdTo}
-                  onLocationChange={setLocation}
-                  onUserNumberChange={setUserNumber}
-                  onCreatedFromChange={setCreatedFrom}
-                  onCreatedToChange={setCreatedTo}
-                  locationOptions={locationOptions}
-                />
-              </>
-            )}
           </>
         )}
       </CardContent>

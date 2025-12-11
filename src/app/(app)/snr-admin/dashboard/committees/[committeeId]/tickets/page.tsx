@@ -103,6 +103,7 @@ export default async function SnrCommitteeTicketsPage({
         search={search}
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
+        basePath="/snr-admin/dashboard"
       />
     </div>
   );

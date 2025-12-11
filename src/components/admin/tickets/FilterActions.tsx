@@ -26,8 +26,6 @@ interface FilterActionsProps {
   isApplying: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
-  showAdvanced: boolean;
-  onToggleAdvanced: () => void;
 }
 
 export function FilterActions({
@@ -44,8 +42,6 @@ export function FilterActions({
   isApplying,
   isExpanded,
   onToggleExpand,
-  showAdvanced,
-  onToggleAdvanced,
 }: FilterActionsProps) {
   return (
     <>
@@ -119,27 +115,7 @@ export function FilterActions({
 
       {/* Expanded View Actions */}
       {isExpanded && (
-        <div className="flex items-center justify-between pt-2 border-t">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onToggleAdvanced}
-            className="text-xs h-7 text-primary hover:text-primary hover:bg-primary/10"
-            disabled={isApplying}
-          >
-            {showAdvanced ? (
-              <>
-                <ChevronUp className="w-3 h-3 mr-1" />
-                Hide Advanced
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3 mr-1" />
-                Show Advanced Filters
-              </>
-            )}
-          </Button>
+        <div className="flex items-center justify-end pt-2 border-t">
           <Button 
             onClick={onApply} 
             size="sm" 

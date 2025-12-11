@@ -69,7 +69,7 @@ export default async function CommitteeCreatedTicketsPage({
       {allTickets.length > 0 && <StatsCards stats={stats} />}
 
       {/* Search and Filters */}
-      <TicketSearch />
+      <TicketSearch basePath="/committee/dashboard/created" />
 
       {/* Tickets List */}
       {filteredTickets.length === 0 ? (

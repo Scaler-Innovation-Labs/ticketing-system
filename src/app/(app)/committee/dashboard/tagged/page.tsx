@@ -60,7 +60,7 @@ export default async function CommitteeTaggedTicketsPage({
       {allTickets.length > 0 && <StatsCards stats={stats} />}
 
       {/* Search and Filters */}
-      <TicketSearch />
+      <TicketSearch basePath="/committee/dashboard/tagged" />
 
       {/* Tagged Tickets List */}
       {(search || statusFilter || categoryFilter ? filteredTickets.length === 0 : false) ? (

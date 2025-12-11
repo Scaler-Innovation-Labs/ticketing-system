@@ -17,6 +17,7 @@ interface CommitteeTicketsTabsProps {
   search: string;
   statusFilter: string;
   categoryFilter: string;
+  basePath?: string; // Base path for navigation (e.g., "/superadmin/dashboard" or "/snr-admin/dashboard")
 }
 
 export function CommitteeTicketsTabs({
@@ -28,6 +29,7 @@ export function CommitteeTicketsTabs({
   search,
   statusFilter,
   categoryFilter,
+  basePath = "/superadmin/dashboard",
 }: CommitteeTicketsTabsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -36,7 +38,7 @@ export function CommitteeTicketsTabs({
   const handleTabChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", value);
-    router.push(`/superadmin/dashboard/committees/${committeeId}/tickets?${params.toString()}`);
+    router.push(`${basePath}/committees/${committeeId}/tickets?${params.toString()}`);
   };
 
   return (
@@ -58,7 +60,7 @@ export function CommitteeTicketsTabs({
             Tickets that have been tagged/assigned to this committee
           </p>
           {/* Search and Filters */}
-          <TicketSearch />
+          <TicketSearch basePath={`${basePath}/committees/${committeeId}/tickets`} />
           {/* Tickets List */}
           {filteredTaggedTickets.length === 0 ? (
             <Card className="border-2 border-dashed">
@@ -80,7 +82,7 @@ export function CommitteeTicketsTabs({
                 <TicketCard
                   key={ticket.id}
                   ticket={ticket as unknown as Ticket & { status?: string | null; category_name?: string | null; creator_name?: string | null; creator_email?: string | null }}
-                  basePath="/superadmin/dashboard"
+                  basePath={basePath}
                 />
               ))}
             </div>
@@ -94,7 +96,7 @@ export function CommitteeTicketsTabs({
             Tickets created by members of this committee
           </p>
           {/* Search and Filters */}
-          <TicketSearch />
+          <TicketSearch basePath={`${basePath}/committees/${committeeId}/tickets`} />
           {/* Tickets List */}
           {filteredCreatedTickets.length === 0 ? (
             <Card className="border-2 border-dashed">
@@ -116,7 +118,7 @@ export function CommitteeTicketsTabs({
                 <TicketCard
                   key={ticket.id}
                   ticket={ticket as unknown as Ticket & { status?: string | null; category_name?: string | null; creator_name?: string | null; creator_email?: string | null }}
-                  basePath="/superadmin/dashboard"
+                  basePath={basePath}
                 />
               ))}
             </div>

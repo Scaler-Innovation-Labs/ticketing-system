@@ -104,6 +104,7 @@ export default async function CommitteeTicketsPage({
         search={search}
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
+        basePath="/superadmin/dashboard"
       />
     </div>
   );

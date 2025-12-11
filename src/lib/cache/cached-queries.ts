@@ -12,8 +12,8 @@
 
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles, hostels, batches, class_sections, domains, scopes, subcategories, category_fields, field_options } from '@/db';
-import { eq, desc, and, inArray } from 'drizzle-orm';
+import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles, hostels, batches, class_sections, domains, scopes, subcategories, category_fields, field_options, committees, ticket_committee_tags } from '@/db';
+import { eq, desc, and, inArray, or, sql } from 'drizzle-orm';
 import { CACHE_TTL } from '@/conf/constants';
 
 // ============================================
@@ -447,11 +447,35 @@ export const getCachedAdminTickets = unstable_cache(
 
 /**
  * Get tickets for committee dashboard (cached)
+ * Shows tickets that are either:
+ * 1. Created by the committee user
+ * 2. Tagged to committees where the user is the head
  * Short TTL since tickets change frequently
  */
 export const getCachedCommitteeTickets = unstable_cache(
     async (userId: string) => {
-        const rows = await db
+        // Get user email for committee matching
+        const [user] = await db
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+        // Get committees where user is head or contact_email matches
+        const userCommittees = await db
+            .select({ id: committees.id })
+            .from(committees)
+            .where(
+                or(
+                    eq(committees.head_id, userId),
+                    user?.email ? eq(committees.contact_email, user.email) : eq(committees.id, -1) // noop when no email
+                )
+            );
+
+        const committeeIds = userCommittees.map(c => c.id);
+
+        // Build query: tickets created by user OR tagged to user's committees
+        const baseQuery = db
             .select({
                 id: tickets.id,
                 title: tickets.title,
@@ -487,10 +511,41 @@ export const getCachedCommitteeTickets = unstable_cache(
             .from(tickets)
             .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
             .leftJoin(categories, eq(tickets.category_id, categories.id))
-            .leftJoin(users, eq(tickets.created_by, users.id))
-            .orderBy(desc(tickets.created_at));
+            .leftJoin(users, eq(tickets.created_by, users.id));
 
-        return rows;
+        // Filter: created by user OR tagged to user's committees
+        if (committeeIds.length > 0) {
+            // Use LEFT JOIN to check for committee tags, then filter
+            const rows = await baseQuery
+                .leftJoin(
+                    ticket_committee_tags,
+                    and(
+                        eq(ticket_committee_tags.ticket_id, tickets.id),
+                        inArray(ticket_committee_tags.committee_id, committeeIds)
+                    )
+                )
+                .where(
+                    or(
+                        eq(tickets.created_by, userId), // Tickets created by committee
+                        sql`${ticket_committee_tags.committee_id} IS NOT NULL` // Tickets tagged to user's committees
+                    )
+                )
+                .orderBy(desc(tickets.created_at));
+            
+            // Deduplicate results (in case a ticket is tagged to multiple committees)
+            const uniqueRows = Array.from(
+                new Map(rows.map(row => [row.id, row])).values()
+            );
+            
+            return uniqueRows;
+        } else {
+            // If user has no committees, only show tickets created by them
+            const rows = await baseQuery
+                .where(eq(tickets.created_by, userId))
+                .orderBy(desc(tickets.created_at));
+            
+            return rows;
+        }
     },
     ['committee-tickets'],
     { 

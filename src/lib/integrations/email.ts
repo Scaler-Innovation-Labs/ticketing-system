@@ -281,32 +281,61 @@ export function buildStatusUpdateEmail(
     oldStatus: string,
     newStatus: string,
     updatedBy: string,
-    link: string
+    link: string,
+    comment?: string
 ): string {
+    // Status color mapping
+    const statusColors: Record<string, string> = {
+        open: '#007bff',
+        in_progress: '#ffc107',
+        resolved: '#28a745',
+        closed: '#6c757d',
+        awaiting_student_response: '#17a2b8',
+        reopened: '#dc3545',
+    };
+
+    const newStatusColor = statusColors[newStatus.toLowerCase()] || '#667eea';
+    const oldStatusColor = statusColors[oldStatus.toLowerCase()] || '#6c757d';
+
     return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Ticket Status Update: ${ticketNumber}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Status Update: ${ticketNumber}</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #667eea;">
-    <h2 style="margin: 0 0 10px 0;">📋 Ticket Status Updated</h2>
-    <p style="margin: 0; color: #6c757d;">Ticket <strong>${ticketNumber}</strong> - ${title}</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+  <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
+    <h2 style="margin-top: 0; color: #212529;">📋 Ticket Status Updated</h2>
+    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    
+    <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
+      <p style="margin: 0 0 10px 0; color: #495057; font-weight: 600;">Status Changed:</p>
+      <p style="margin: 0; font-size: 16px;">
+        <span style="background: ${oldStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${oldStatus.replace('_', ' ')}</span>
+        <span style="margin: 0 12px; color: #6c757d;">→</span>
+        <span style="background: ${newStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${newStatus.replace('_', ' ')}</span>
+      </p>
+    </div>
+    
+    ${comment ? `
+    <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
+      <p style="margin: 0 0 8px 0; color: #495057; font-weight: 600; font-size: 14px;">Message:</p>
+      <p style="margin: 0; color: #212529; white-space: pre-wrap;">${comment}</p>
+    </div>
+    ` : ''}
+    
+    <p style="color: #6c757d; font-size: 14px; margin: 20px 0 0 0;"><strong>Updated by:</strong> ${updatedBy}</p>
+    
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View Ticket</a>
+    </div>
   </div>
   
-  <div style="padding: 20px 0;">
-    <p>The status has been changed:</p>
-    <p style="font-size: 18px;">
-      <span style="background: #e9ecef; padding: 4px 12px; border-radius: 4px;">${oldStatus}</span>
-      <span style="margin: 0 10px;">→</span>
-      <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 4px;">${newStatus}</span>
-    </p>
-    <p style="color: #6c757d;">Updated by: ${updatedBy}</p>
+  <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
+    <p style="margin: 0;">This is an automated update from the Ticketing System.</p>
   </div>
-  
-  <a href="${link}" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Ticket</a>
 </body>
 </html>`;
 }
@@ -356,10 +385,11 @@ export async function notifyStatusUpdateEmail(
     link: string,
     recipientEmails: string[],
     inReplyTo?: string,
-    references?: string
+    references?: string,
+    comment?: string
 ): Promise<string | null> {
     const recipients = getRecipients(recipientEmails);
-    let emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link);
+    let emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link, comment);
 
     // Add debug note only in non-production
     if (!IS_PRODUCTION) {
@@ -372,11 +402,13 @@ export async function notifyStatusUpdateEmail(
         );
     }
 
+    const textContent = `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}${comment ? `\n\nMessage:\n${comment}` : ''}\n\nUpdated by: ${updatedBy}\n\nView: ${link}`;
+    
     return sendEmail({
         to: recipients,
         subject: `Re: [${ticketNumber}] ${title}`, // Re: prefix for threaded emails
         html: emailBody,
-        text: `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}\nUpdated by: ${updatedBy}\n\nView: ${link}`,
+        text: textContent,
         inReplyTo,
         references,
     });

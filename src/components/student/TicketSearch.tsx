@@ -49,13 +49,15 @@ interface TicketSearchProps {
   currentSort?: string;
   statuses?: TicketStatusOption[];
   onSearch?: (query: string) => void;
+  basePath?: string; // Base path for navigation (defaults to /student/dashboard)
 }
 
 export default function TicketSearch({
   categories = [],
   currentSort = "newest",
   statuses = [],
-  onSearch
+  onSearch,
+  basePath = "/student/dashboard"
 }: TicketSearchProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -122,7 +124,7 @@ export default function TicketSearch({
     });
 
     startTransition(() => {
-      router.push(`/student/dashboard${params.toString() ? `?${params.toString()}` : ""}`);
+      router.push(`${basePath}${params.toString() ? `?${params.toString()}` : ""}`);
     });
     if (onSearch) onSearch(search);
   };
