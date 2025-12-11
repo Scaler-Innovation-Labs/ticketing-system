@@ -8,9 +8,9 @@ import { users, roles } from '@/db';
 import { eq } from 'drizzle-orm';
 
 const USER_DATA = {
-    external_id: 'user_36bOxg5R3BORb5KUvOlVS8VR2hs',
-    email: 'harsh.prakash@scaler.com',
-    full_name: 'Harsh Prakash',
+    external_id: 'user_36bccpPTPiDVPCdorb22iHHiYUY',
+    email: 'n.vedvarshit@gmail.com',
+    full_name: 'Veda Varshit',
 };
 
 async function seedSuperAdmin() {
