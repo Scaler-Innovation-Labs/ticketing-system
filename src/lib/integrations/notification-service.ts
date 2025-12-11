@@ -302,10 +302,12 @@ export async function notifyTicketCreated(
                     title: context.title,
                     description: context.description,
                     category: context.category,
+                subcategory: context.subcategory,
                     status: context.status,
                     createdBy: context.createdBy,
                     assignedTo: context.assignedTo,
                     link: context.link,
+                metadata: context.metadata,
                 };
 
                 const messageId = await notifyNewTicketEmail(emailData, recipients);

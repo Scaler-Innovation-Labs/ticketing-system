@@ -443,8 +443,35 @@ export async function createTicket(
     // 2.5. Validate metadata
     // Only resolve scope from profile if location is not in ticket (optimization)
     const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
-    const metadataValidation = input.subcategory_id && input.metadata
-      ? await validateTicketMetadata(input.subcategory_id, input.metadata)
+
+    // Strip non-field profile keys before validation (they shouldn't be validated against dynamic fields)
+    const PROFILE_KEYS = new Set([
+      'name',
+      'email',
+      'phone',
+      'hostel',
+      'Hostel',
+      'hostel_name',
+      'roomNumber',
+      'room_number',
+      'room',
+      'batchYear',
+      'batch_year',
+      'batch',
+      'classSection',
+      'class_section',
+      'section',
+    ]);
+    const metadataForValidation = input.metadata && typeof input.metadata === 'object'
+      ? Object.fromEntries(
+          Object.entries(input.metadata as Record<string, unknown>).filter(
+            ([key]) => !PROFILE_KEYS.has(key)
+          )
+        )
+      : input.metadata;
+
+    const metadataValidation = input.subcategory_id && metadataForValidation
+      ? await validateTicketMetadata(input.subcategory_id, metadataForValidation)
       : { valid: true, errors: [] };
     
     // Only fetch from student profile if location is not provided in ticket

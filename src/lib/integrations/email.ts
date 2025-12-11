@@ -83,10 +83,12 @@ export interface TicketEmailData {
     title: string;
     description: string;
     category: string;
+    subcategory?: string;
     status: string;
     createdBy: string;
     assignedTo?: string;
     link: string;
+    metadata?: Record<string, any>;
 }
 
 // ============================================
@@ -192,6 +194,29 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
  * Generate HTML for new ticket notification
  */
 export function buildNewTicketEmail(ticket: TicketEmailData): string {
+    // Normalize metadata and form details
+    const rawMeta = ticket.metadata && typeof ticket.metadata === 'object' ? ticket.metadata : {};
+    const metaDetails = (rawMeta as any)?.details || {};
+    const metaProfile = (rawMeta as any)?.profile || {};
+    const mergedMeta: Record<string, any> = { ...rawMeta, ...metaDetails, ...metaProfile };
+
+    // Exclude system keys
+    const systemKeys = [
+        'acknowledged_at',
+        'resolved_at',
+        'reopened_at',
+        'rating',
+        'feedback',
+        'attachments',
+        'images',
+        'details',
+        'profile',
+    ];
+
+    const formEntries = Object.entries(mergedMeta)
+        .filter(([k, v]) => !systemKeys.includes(k) && v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => ({ key: k, value: typeof v === 'string' ? v : String(v) }));
+
     return `
 <!DOCTYPE html>
 <html>
@@ -231,6 +256,11 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
         <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Category:</strong></td>
         <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529;">${ticket.category}</td>
       </tr>
+      ${ticket.subcategory ? `
+      <tr>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Subcategory:</strong></td>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529;">${ticket.subcategory}</td>
+      </tr>` : ''}
       <tr>
         <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Status:</strong></td>
         <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;">
@@ -249,6 +279,20 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
       </tr>
       `}
     </table>
+
+    ${formEntries.length > 0 ? `
+    <div style="margin-top: 10px;">
+      <h3 style="color: #495057; margin: 0 0 8px 0; font-size: 16px;">Form Details</h3>
+      <table style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 6px; overflow: hidden;">
+        ${formEntries.map(entry => `
+          <tr>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; width: 40%; color: #495057; font-weight: 600; text-transform: capitalize;">${entry.key.replace(/_/g, ' ')}</td>
+            <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; color: #212529;">${entry.value}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+    ` : ''}
     
     <div style="text-align: center; margin: 30px 0;">
       <a href="${ticket.link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">View Your Ticket</a>
@@ -369,7 +413,21 @@ export async function notifyNewTicketEmail(
         to: recipients,
         subject: `Ticket Confirmation: ${ticket.ticketNumber} - ${ticket.title}`,
         html: emailBody,
-        text: `Ticket Created Successfully\n\nYour ticket has been submitted and is being processed.\n\nTicket Number: ${ticket.ticketNumber}\nTitle: ${ticket.title}\nDescription: ${ticket.description}\nCategory: ${ticket.category}\nStatus: ${ticket.status}\n${ticket.assignedTo ? `Assigned To: ${ticket.assignedTo}\n` : 'Assigned To: Pending assignment\n'}\nView your ticket: ${ticket.link}\n\nThank you for submitting your ticket! We have received your request and will review it shortly.${ticket.assignedTo ? ` Your ticket has been assigned to ${ticket.assignedTo} who will assist you.` : ' An admin will be assigned to your ticket soon.'}\n\nThis is an automated confirmation email. Please do not reply to this email.`,
+        text: `Ticket Created Successfully
+
+Ticket Number: ${ticket.ticketNumber}
+Title: ${ticket.title}
+Description: ${ticket.description}
+Category: ${ticket.category}
+${ticket.subcategory ? `Subcategory: ${ticket.subcategory}\n` : ''}Status: ${ticket.status}
+${ticket.assignedTo ? `Assigned To: ${ticket.assignedTo}\n` : 'Assigned To: Pending assignment\n'}${ticket.metadata ? Object.entries(ticket.metadata)
+    .filter(([k, v]) => v !== null && v !== undefined && v !== '' && !['acknowledged_at','resolved_at','reopened_at','rating','feedback','attachments','images','details','profile'].includes(k))
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : String(v)}`)
+    .join('\n') : ''}\nView your ticket: ${ticket.link}
+
+Thank you for submitting your ticket! We have received your request and will review it shortly.${ticket.assignedTo ? ` Your ticket has been assigned to ${ticket.assignedTo} who will assist you.` : ' An admin will be assigned to your ticket soon.'}
+
+This is an automated confirmation email. Please do not reply to this email.`,
     });
 }
 
