@@ -558,9 +558,8 @@ export function AdminActions({
 
 				{/* Escalate Ticket removed */}
 
-				{/* Forward to Next Level */}
-				{normalizedStatus !== "resolved" && (
-					<Dialog open={showForwardDialog} onOpenChange={setShowForwardDialog}>
+				{/* Forward to Next Level (always available) */}
+				<Dialog open={showForwardDialog} onOpenChange={setShowForwardDialog}>
 						<DialogTrigger asChild>
 							<Button
 								variant="outline"
@@ -648,7 +647,6 @@ export function AdminActions({
 							</form>
 						</DialogContent>
 					</Dialog>
-				)}
 
 
 				{/* Mark as Resolved */}

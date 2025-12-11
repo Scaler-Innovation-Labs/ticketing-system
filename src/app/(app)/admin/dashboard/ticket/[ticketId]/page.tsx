@@ -14,7 +14,7 @@ import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, Aler
 
 import { db, categories, users, roles, students, hostels, tickets, ticket_statuses, domains, ticket_attachments, ticket_activity } from "@/db";
 
-import { eq, desc, asc, aliasedTable } from "drizzle-orm";
+import { eq, desc, asc, aliasedTable, or } from "drizzle-orm";
 
 import type { TicketMetadata } from "@/db/inferred-types";
 
@@ -171,25 +171,23 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
 
 
-    // Fetch forward targets (super admins) - only needed for AdminActions
-
+    // Fetch forward targets (all admin roles) - only needed for AdminActions
     db
-
       .select({
-
         id: users.id,
-
         full_name: users.full_name,
-
         email: users.email,
-
+        role_name: roles.name,
       })
-
       .from(users)
-
       .leftJoin(roles, eq(users.role_id, roles.id))
-
-      .where(eq(roles.name, "super_admin")),
+      .where(
+        or(
+          eq(roles.name, "super_admin"),
+          eq(roles.name, "snr_admin"),
+          eq(roles.name, "admin")
+        )
+      ),
 
   ]);
 
@@ -787,17 +785,14 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
 
   const forwardTargets = forwardTargetsRaw
-
     .filter((admin) => !!admin.id)
-
     .map((admin) => ({
-
       id: admin.id!,
-
-      name: admin.full_name || admin.email || "Super Admin",
-
+      name:
+        admin.full_name ||
+        admin.email ||
+        (admin.role_name ? admin.role_name.replace('_', ' ') : "Admin"),
       email: admin.email,
-
     }));
 
 

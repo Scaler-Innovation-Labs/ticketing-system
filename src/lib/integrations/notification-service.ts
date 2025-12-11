@@ -314,7 +314,8 @@ export async function notifyTicketCreated(
                 result.email = { sent: true, messageId: messageId || undefined };
                 
                 // Store the original email message ID for threading future emails
-                if (messageId && context.createdByEmail) {
+                // Store thread id whenever we get a messageId (even if creator email is missing)
+                if (messageId) {
                     try {
                         await db
                             .insert(ticket_integrations)

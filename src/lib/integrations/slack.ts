@@ -153,6 +153,38 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
     ].filter(Boolean);
     const contactLine = contactLineParts.join(' | ');
 
+    const actions = [
+        {
+            type: 'button',
+            text: { type: 'plain_text', text: '👀 View Ticket', emoji: true },
+            url: ticket.link,
+            action_id: 'view_ticket',
+            style: 'primary',
+        },
+    ];
+
+    // Add quick-action buttons for admins to change status
+    if (ticket.link) {
+        const markInProgressUrl = `${ticket.link}?action=mark_in_progress`;
+        const markResolvedUrl = `${ticket.link}?action=mark_resolved`;
+        actions.push(
+            {
+                type: 'button',
+                text: { type: 'plain_text', text: '🚀 Mark In Progress', emoji: true },
+                url: markInProgressUrl,
+                action_id: 'mark_in_progress',
+                style: 'primary',
+            },
+            {
+                type: 'button',
+                text: { type: 'plain_text', text: '✅ Mark Resolved', emoji: true },
+                url: markResolvedUrl,
+                action_id: 'mark_resolved',
+                style: 'secondary',
+            }
+        );
+    }
+
     return [
         {
             type: 'header',
@@ -180,15 +212,7 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
         },
         {
             type: 'actions',
-            elements: [
-                {
-                    type: 'button',
-                    text: { type: 'plain_text', text: '👀 View Ticket', emoji: true },
-                    url: ticket.link,
-                    action_id: 'view_ticket',
-                    style: 'primary',
-                },
-            ],
+            elements: actions,
         },
     ];
 }

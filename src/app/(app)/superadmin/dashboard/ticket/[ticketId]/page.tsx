@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
 import { db, tickets, categories, users, roles, students, hostels, ticket_statuses, ticket_activity, ticket_attachments } from "@/db";
-import { eq, aliasedTable, desc } from "drizzle-orm";
+import { eq, aliasedTable, desc, or } from "drizzle-orm";
 import { AdminActions } from "@/components/features/tickets/actions/AdminActions";
 import { CommitteeTagging } from "@/components/admin/committees";
 import { AdminCommentComposer } from "@/components/features/tickets/actions/AdminCommentComposer";
@@ -167,16 +167,26 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
       id: users.id,
       full_name: users.full_name,
       email: users.email,
+      role_name: roles.name,
     })
     .from(users)
     .leftJoin(roles, eq(users.role_id, roles.id))
-    .where(eq(roles.name, "super_admin"));
+    .where(
+      or(
+        eq(roles.name, "super_admin"),
+        eq(roles.name, "snr_admin"),
+        eq(roles.name, "admin")
+      )
+    );
 
   const forwardTargets = forwardTargetsRaw
     .filter((admin) => !!admin.id)
     .map((admin) => ({
       id: admin.id!,
-      name: admin.full_name || admin.email || "Super Admin",
+      name:
+        admin.full_name ||
+        admin.email ||
+        (admin.role_name ? admin.role_name.replace('_', ' ') : "Admin"),
       email: admin.email,
     }));
 
