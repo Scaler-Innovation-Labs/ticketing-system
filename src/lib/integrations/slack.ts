@@ -45,6 +45,7 @@ export interface TicketSlackNotification {
     assignedToSlackUserId?: string;
     priority?: string;
     link: string;
+    location?: string;
     metadata?: Record<string, any>; // Form field values
 }
 
@@ -131,77 +132,33 @@ export async function updateSlackMessage(
  * Build Slack blocks for a new ticket notification
  */
 export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
-    const statusEmoji = ticket.status === 'open' ? '🔵' : ticket.status === 'in_progress' ? '🟡' : ticket.status === 'resolved' ? '🟢' : '📋';
-    
-    // Format ticket number - use shorter format (just the ID part if it's a long string)
-    const ticketNumberDisplay = ticket.ticketNumber.length > 20 
-        ? `#${ticket.ticketId}` 
-        : ticket.ticketNumber;
-    
-    // Format description (truncate if too long)
-    const maxDescLength = 500;
-    const description = ticket.description.length > maxDescLength
-        ? `${ticket.description.substring(0, maxDescLength)}...`
-        : ticket.description;
+    const statusDisplay = ticket.status.replace('_', ' ');
+    const categoryDisplay = ticket.subcategory ? `${ticket.category} → ${ticket.subcategory}` : ticket.category;
+    const ticketNumberDisplay = ticket.ticketNumber.length > 20 ? `#${ticket.ticketId}` : ticket.ticketNumber;
 
-    // Build mention text if assigned admin has Slack user ID
-    const mentionText = ticket.assignedToSlackUserId 
-        ? `<@${ticket.assignedToSlackUserId}> ` 
-        : '';
+    const meta = ticket.metadata && typeof ticket.metadata === 'object' ? ticket.metadata : {};
+    const name = (meta as any).name || (meta as any).fullName || ticket.createdBy || 'Unknown';
+    const phone = (meta as any).phone || '';
+    const email = (meta as any).email || '';
+    const hostel = (meta as any).hostel || (meta as any).hostel_name || '';
+    const location = ticket.metadata?.location || ticket.metadata?.Location || ticket.metadata?.hostel || ticket.metadata?.Hostel || ticket.metadata?.hostel_name || ticket.metadata?.location_name || ticket.metadata?.LocationName || ticket.metadata?.hostelName || ticket.metadata?.hostelname || ticket.metadata?.hostel_name || ticket.metadata?.location || ticket.metadata?.Location || ticket.metadata?.hostel || ticket.metadata?.Hostel || ticket.metadata?.hostel_name || ticket.location || '—';
 
-    // Build form fields section from metadata
-    const formFields: any[] = [];
-    if (ticket.metadata && typeof ticket.metadata === 'object') {
-        const metadataEntries = Object.entries(ticket.metadata)
-            .filter(([key, value]) => {
-                // Skip internal fields and empty values
-                return key !== 'location' && value !== null && value !== undefined && value !== '';
-            })
-            .slice(0, 6); // Limit to 6 fields to avoid too many fields
-        
-        if (metadataEntries.length > 0) {
-            formFields.push({
-                type: 'divider',
-            });
-            formFields.push({
-                type: 'section',
-                text: {
-                    type: 'mrkdwn',
-                    text: '*📋 Form Details:*',
-                },
-            });
-            
-            // Add fields in pairs (2 per row)
-            for (let i = 0; i < metadataEntries.length; i += 2) {
-                const field1 = metadataEntries[i];
-                const field2 = metadataEntries[i + 1];
-                
-                const fieldText1 = `*${field1[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:*\n${String(field1[1]).substring(0, 100)}`;
-                const fieldText2 = field2 
-                    ? `*${field2[0].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:*\n${String(field2[1]).substring(0, 100)}`
-                    : '';
-                
-                formFields.push({
-                    type: 'section',
-                    fields: fieldText2 
-                        ? [
-                            { type: 'mrkdwn', text: fieldText1 },
-                            { type: 'mrkdwn', text: fieldText2 },
-                        ]
-                        : [
-                            { type: 'mrkdwn', text: fieldText1 },
-                        ],
-                });
-            }
-        }
-    }
+    const mention = ticket.assignedToSlackUserId ? `<@${ticket.assignedToSlackUserId}>` : (ticket.assignedTo || '');
+
+    const contactLineParts = [
+        `Name: ${name}`,
+        phone ? `Phone: ${phone}` : null,
+        email ? `Email: ${email}` : null,
+        hostel ? `Hostel: ${hostel}` : null,
+    ].filter(Boolean);
+    const contactLine = contactLineParts.join(' | ');
 
     return [
         {
             type: 'header',
             text: {
                 type: 'plain_text',
-                text: `🎫 New Ticket: ${ticketNumberDisplay}`,
+                text: 'New Ticket Raised',
                 emoji: true,
             },
         },
@@ -209,93 +166,27 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
             type: 'section',
             text: {
                 type: 'mrkdwn',
-                text: `${mentionText}*${ticket.title}*`,
+                text: `*Ticket ID:* ${ticketNumberDisplay}\n*Category:* ${categoryDisplay}\n*Location:* ${location}\n*User:* ${name}\n*Contact:* ${contactLine}\n*Description:* ${ticket.description}\n*Status:* ${statusDisplay}`,
             },
-        },
-        {
-            type: 'section',
-            text: {
-                type: 'mrkdwn',
-                text: description,
-            },
-        },
-        {
-            type: 'divider',
-        },
-        {
-            type: 'section',
-            fields: [
-                {
-                    type: 'mrkdwn',
-                    text: `*📁 Category:*\n${ticket.category}`,
-                },
-                {
-                    type: 'mrkdwn',
-                    text: ticket.subcategory 
-                        ? `*📂 Subcategory:*\n${ticket.subcategory}`
-                        : `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
-                },
-                {
-                    type: 'mrkdwn',
-                    text: `*👤 Created By:*\n${ticket.createdBy}`,
-                },
-                {
-                    type: 'mrkdwn',
-                    text: `*${statusEmoji} Status:*\n${ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1).replace('_', ' ')}`,
-                },
-            ],
-        },
-        ...formFields,
-        {
-            type: 'actions',
-            elements: [
-                {
-                    type: 'button',
-                    text: {
-                        type: 'plain_text',
-                        text: '👀 View Ticket',
-                        emoji: true,
-                    },
-                    url: ticket.link,
-                    action_id: 'view_ticket',
-                    style: 'primary',
-                },
-                {
-                    type: 'button',
-                    text: {
-                        type: 'plain_text',
-                        text: '✅ Mark In Progress',
-                        emoji: true,
-                    },
-                    style: 'primary',
-                    action_id: 'ticket_in_progress',
-                    value: `in_progress_${ticket.ticketId}`,
-                },
-                {
-                    type: 'button',
-                    text: {
-                        type: 'plain_text',
-                        text: '✔️ Mark Resolved',
-                        emoji: true,
-                    },
-                    style: 'primary',
-                    action_id: 'ticket_resolved',
-                    value: `resolved_${ticket.ticketId}`,
-                },
-            ],
         },
         {
             type: 'context',
             elements: [
                 {
                     type: 'mrkdwn',
-                    text: `⏰ Created: ${new Date().toLocaleString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    })}`,
+                    text: mention ? `CC: ${mention}` : '',
+                },
+            ].filter(el => (el as any).text),
+        },
+        {
+            type: 'actions',
+            elements: [
+                {
+                    type: 'button',
+                    text: { type: 'plain_text', text: '👀 View Ticket', emoji: true },
+                    url: ticket.link,
+                    action_id: 'view_ticket',
+                    style: 'primary',
                 },
             ],
         },

@@ -7,6 +7,7 @@ import { desc } from "drizzle-orm";
 
 // Data loading
 import { getCachedUser } from "@/lib/cache/cached-queries";
+import { ensureUser } from "@/lib/auth/api-auth";
 import { getStudentTicketViewModel } from "@/lib/ticket/data/viewModel";
 
 // UI Components
@@ -77,8 +78,17 @@ export default async function StudentTicketPage({
   const id = Number(ticketId);
   if (!Number.isFinite(id)) notFound();
 
-  // Get user
-  const dbUser = await getCachedUser(userId);
+  // Get user (ensure exists; handle Clerk external_id changes)
+  let dbUser = await getCachedUser(userId);
+  if (!dbUser) {
+    // Try to create/link user and retry once
+    try {
+      await ensureUser(userId);
+      dbUser = await getCachedUser(userId);
+    } catch (err) {
+      // ignore, will handle below
+    }
+  }
   if (!dbUser) {
     throw new Error("User not found in database");
   }
