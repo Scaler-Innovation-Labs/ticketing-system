@@ -78,7 +78,7 @@ export default async function SnrAdminAllTicketsPage({ searchParams }: { searchP
     baseConditions.push(sql`false`);
   }
 
-  const baseFilter = or(...baseConditions) || sql`false`;
+  const baseFilter = (or(...baseConditions) ?? sql`false`) as ReturnType<typeof sql>;
 
   type WhereClause = ReturnType<typeof sql>;
   const whereClauses: WhereClause[] = [baseFilter];

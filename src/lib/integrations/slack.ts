@@ -180,7 +180,7 @@ export function buildNewTicketBlocks(ticket: TicketSlackNotification): any[] {
                 text: { type: 'plain_text', text: '✅ Mark Resolved', emoji: true },
                 url: markResolvedUrl,
                 action_id: 'mark_resolved',
-                style: 'secondary',
+                style: 'danger', // Slack only supports 'primary' or 'danger'
             }
         );
     }

@@ -60,7 +60,23 @@ function validateFieldValue(
   field: CategoryField,
   value: unknown
 ): { valid: boolean; error?: string } {
-  const { field_type, required, validation } = field;
+  const { field_type, required, validation, options } = field;
+
+  // If this is a select/multiselect with no configured options, skip validation entirely
+  const isSelectLike = field_type === 'select' || field_type === 'multiselect' || field_type === 'multi_select';
+  if (isSelectLike) {
+    const opts = (options as { value: string }[] | undefined) || [];
+    if (opts.length === 0) {
+      return { valid: true };
+    }
+  }
+
+  // If field type is unknown/not supported, don't block ticket creation
+  const knownTypes = new Set(['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'multi_select']);
+  if (!knownTypes.has(field_type)) {
+    return { valid: true };
+  }
+
 
   // Check required
   if (required && (value === null || value === undefined || value === '')) {
@@ -124,16 +140,22 @@ function validateFieldValue(
       break;
 
     case 'multiselect':
+    case 'multi_select': {
       if (!Array.isArray(value)) {
         return { valid: false, error: `${field.name} must be an array` };
       }
       const multiselectOptions = (field.options as { value: string }[]) || [];
       const allowedMultiValues = multiselectOptions.map(o => o.value);
+      if (allowedMultiValues.length === 0) {
+        // No options configured; skip validation to avoid blocking ticket creation
+        return { valid: true };
+      }
       const invalidValues = (value as string[]).filter(v => !allowedMultiValues.includes(v));
       if (invalidValues.length > 0) {
         return { valid: false, error: `${field.name} contains invalid values: ${invalidValues.join(', ')}` };
       }
       break;
+    }
 
     default:
       logger.warn({ fieldType: field_type }, 'Unknown field type');

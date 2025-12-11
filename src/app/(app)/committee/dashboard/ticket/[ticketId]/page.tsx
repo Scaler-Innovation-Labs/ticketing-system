@@ -577,20 +577,6 @@ export default async function CommitteeTicketPage({ params }: { params: Promise<
 
 
 
-            {(normalizedStatus === "closed" || normalizedStatus === "resolved") && (
-
-              <TicketRating
-
-                ticketId={ticket.id}
-
-                currentRating={ticket.rating ? String(ticket.rating) : undefined}
-
-              />
-
-            )}
-
-
-
             {/* Committee actions for this ticket */}
 
             <CommitteeActions
