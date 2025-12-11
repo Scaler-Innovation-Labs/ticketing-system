@@ -79,6 +79,23 @@ export async function POST(req: NextRequest) {
 
     // 2. Parse and validate request body
     const body = await req.json();
+    
+    // Merge details and profile into metadata if they exist separately
+    // This handles the case where frontend sends details and profile separately
+    if ((body.details || body.profile) && !body.metadata) {
+      body.metadata = {
+        ...(body.details || {}),
+        ...(body.profile || {}),
+      };
+    } else if (body.metadata && (body.details || body.profile)) {
+      // If metadata exists, merge details and profile into it
+      body.metadata = {
+        ...body.metadata,
+        ...(body.details || {}),
+        ...(body.profile || {}),
+      };
+    }
+    
     const validatedData = createTicketSchema.parse(body);
 
     logger.info(

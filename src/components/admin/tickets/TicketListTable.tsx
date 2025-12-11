@@ -10,6 +10,7 @@ type TicketLike = {
   title: string | null;
   status?: string | null;
   category_name?: string | null;
+  subcategory_name?: string | null;
   subcategory_id?: number | null;
   location?: string | null;
   created_at?: Date | string | null;
@@ -35,34 +36,78 @@ const formatDate = (d?: Date | string | null) => {
 export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
   const rows = useMemo(() => {
     return (tickets || []).map((t) => {
-      const meta = t.metadata && typeof t.metadata === "object" ? t.metadata : {};
-      // Pick up to 2 dynamic fields from metadata (excluding system keys)
-      const metaEntries = Object.entries(meta || {}).filter(
-        ([k]) =>
-          ![
-            "acknowledged_at",
-            "resolved_at",
-            "reopened_at",
-            "rating",
-            "feedback",
-            "attachments",
-            "images",
-          ].includes(k)
-      );
-      const formDetails = metaEntries.slice(0, 2).map(([k, v]) => `${k}: ${v as string}`);
+      // Handle metadata structure - it might be nested with 'details' and 'profile' or flat
+      const rawMeta = t.metadata && typeof t.metadata === "object" ? t.metadata : {};
+      const metaDetails = (rawMeta as any)?.details || {};
+      const metaProfile = (rawMeta as any)?.profile || {};
 
-      const studentHostel = meta?.hostel || meta?.Hostel || meta?.hostel_name || "-";
-      const studentRoom = meta?.roomNumber || meta?.room || "-";
-      const studentBatch = meta?.batchYear || meta?.batch || "-";
-      const studentClass = meta?.classSection || meta?.section || "-";
+      // Merge details and profile into a flat structure for easier access
+      const meta = {
+        ...rawMeta,
+        ...metaDetails,
+        ...metaProfile,
+      };
+
+      // System keys to exclude from form details
+      const systemKeys = [
+        "acknowledged_at",
+        "resolved_at",
+        "reopened_at",
+        "rating",
+        "feedback",
+        "attachments",
+        "images",
+        "details", // Exclude nested details object
+        "profile", // Exclude nested profile object
+      ];
+
+      // Build form details: include subcategory name first, then all dynamic fields (excluding system keys)
+      const metaEntries = Object.entries(meta || {}).filter(
+        ([k, v]) => !systemKeys.includes(k) && v != null && v !== ""
+      );
+      const formDetailsFromMeta = metaEntries.map(([k, v]) => {
+        const value = typeof v === "string" ? v : String(v);
+        return `${k}: ${value}`;
+      });
+      const formDetails = [
+        ...(t.subcategory_name ? [`Subcategory: ${t.subcategory_name}`] : []),
+        ...formDetailsFromMeta,
+      ];
+
+      // Extract student fields from multiple possible locations
+      const studentHostel = 
+        meta?.hostel || 
+        meta?.Hostel || 
+        meta?.hostel_name || 
+        metaProfile?.hostel ||
+        "-";
+      const studentRoom = 
+        meta?.roomNumber || 
+        meta?.room || 
+        meta?.room_number ||
+        metaProfile?.roomNumber ||
+        "-";
+      const studentBatch = 
+        meta?.batchYear || 
+        meta?.batch || 
+        meta?.batch_year ||
+        metaProfile?.batchYear ||
+        (metaProfile?.batchYear ? String(metaProfile.batchYear) : null) ||
+        "-";
+      const studentClass = 
+        meta?.classSection || 
+        meta?.section || 
+        meta?.class_section ||
+        metaProfile?.classSection ||
+        "-";
 
       return {
         ...t,
         formDetails,
-        studentHostel,
-        studentRoom,
-        studentBatch,
-        studentClass,
+        studentHostel: studentHostel !== "-" ? studentHostel : "-",
+        studentRoom: studentRoom !== "-" ? studentRoom : "-",
+        studentBatch: studentBatch !== "-" ? studentBatch : "-",
+        studentClass: studentClass !== "-" ? studentClass : "-",
       };
     });
   }, [tickets]);
@@ -119,7 +164,9 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium">{t.category_name || "-"}</div>
+                    <div className="text-sm font-medium">
+                      {t.category_name && t.category_name !== "0" ? t.category_name : "-"}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-xs text-muted-foreground space-y-1">

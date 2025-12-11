@@ -17,6 +17,10 @@ export default async function NewTicketPage() {
 
   // Use cached function for better performance (request-scoped deduplication)
   const dbUser = await getCachedUser(userId);
+  if (!dbUser) {
+    redirect("/student/profile");
+    return;
+  }
 
   // Parallelize all database queries for better performance
   const [

@@ -16,6 +16,7 @@ export async function getCreatedTickets(userId: string) {
         status_value: ticket_statuses.value,
         category_id: tickets.category_id,
         category_name: categories.name,
+        category_slug: categories.slug,
         created_at: tickets.created_at,
         updated_at: tickets.updated_at,
         creator_name: users.full_name,

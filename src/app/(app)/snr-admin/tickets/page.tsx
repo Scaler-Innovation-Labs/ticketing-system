@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, tickets, categories, users, ticket_statuses } from "@/db";
-import { desc, sql, and, count, eq } from "drizzle-orm";
+import { db, tickets, categories, users, ticket_statuses, roles } from "@/db";
+import { desc, sql, and, count, eq, or, isNull, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { TicketCard } from "@/components/layout/TicketCard";
 import { AdminTicketFilters } from "@/components/admin/tickets";
@@ -8,9 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FileText } from "lucide-react";
 import type { TicketMetadata } from "@/db/inferred-types";
 import type { Ticket } from "@/db/types-only";
+import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 
-// Use ISR (Incremental Static Regeneration) - cache for 30 seconds
-export const revalidate = 30;
+// Force dynamic rendering since we use search params for filtering
+export const dynamic = "force-dynamic";
 
 /**
  * Senior Admin All Tickets Page
@@ -21,6 +22,27 @@ export const revalidate = 30;
 export default async function SnrAdminAllTicketsPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Get snr-admin user info and domain
+  const { dbUser } = await getCachedAdminUser(userId);
+  const primaryDomainId = dbUser?.primary_domain_id || null;
+  const snrAdminUserId = dbUser?.id || null;
+
+  // Get all committee user IDs (users with role "committee")
+  const [committeeRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, "committee"))
+    .limit(1);
+
+  const committeeUserIds: string[] = [];
+  if (committeeRole) {
+    const committeeUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role_id, committeeRole.id));
+    committeeUserIds.push(...committeeUsers.map(u => u.id));
+  }
 
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const params = resolvedSearchParams || {};
@@ -33,8 +55,45 @@ export default async function SnrAdminAllTicketsPage({ searchParams }: { searchP
   const limit = Math.min(50, Math.max(5, parseInt((typeof params["limit"] === "string" ? params["limit"] : params["limit"]?.[0]) || "20", 10)));
   const offset = (page - 1) * limit;
 
+  // Build base filter: tickets assigned to snr-admin OR tickets in snr-admin's domain OR tickets created by committees
+  const baseConditions: ReturnType<typeof sql>[] = [];
+  
+  if (snrAdminUserId) {
+    // Tickets assigned to snr-admin
+    baseConditions.push(eq(tickets.assigned_to, snrAdminUserId));
+  }
+
+  if (primaryDomainId) {
+    // Tickets in snr-admin's domain (unassigned tickets in their domain)
+    const domainCondition = and(
+      isNull(tickets.assigned_to),
+      sql`${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`
+    );
+    // and() can return undefined, so check before pushing
+    if (domainCondition) {
+      baseConditions.push(domainCondition);
+    } else {
+      // Fallback: use SQL directly if and() returns undefined
+      baseConditions.push(
+        sql`${tickets.assigned_to} IS NULL AND ${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`
+      );
+    }
+  }
+
+  if (committeeUserIds.length > 0) {
+    // Tickets created by committees
+    baseConditions.push(inArray(tickets.created_by, committeeUserIds));
+  }
+
+  // If no conditions, show nothing (shouldn't happen, but safety check)
+  if (baseConditions.length === 0) {
+    baseConditions.push(sql`false`);
+  }
+
+  const baseFilter = or(...baseConditions) || sql`false`;
+
   type WhereClause = ReturnType<typeof sql>;
-  const whereClauses: WhereClause[] = [];
+  const whereClauses: WhereClause[] = [baseFilter];
 
   if (location) {
     whereClauses.push(sql`LOWER(${tickets.location}) LIKE ${"%" + location.toLowerCase() + "%"}`);
@@ -77,10 +136,12 @@ export default async function SnrAdminAllTicketsPage({ searchParams }: { searchP
   let allTickets: TicketRow[] = [];
   let total = 0;
   try {
-    // total count with same filters
-    const totalQuery = whereClauses.length > 0
-      ? db.select({ total: count() }).from(tickets).where(and(...whereClauses))
-      : db.select({ total: count() }).from(tickets);
+    // total count with same filters (base filter is always applied)
+    const totalQuery = db
+      .select({ total: count() })
+      .from(tickets)
+      .leftJoin(categories, eq(tickets.category_id, categories.id))
+      .where(and(...whereClauses));
 
     const [totalRow] = await totalQuery;
     total = totalRow?.total || 0;
@@ -173,7 +234,7 @@ export default async function SnrAdminAllTicketsPage({ searchParams }: { searchP
     throw new Error('Failed to load tickets');
   }
 
-  // Snr Admin can see ALL tickets (no domain/scope filtering needed)
+  // Snr Admin can see: tickets assigned to them, tickets in their domain, and tickets created by committees
 
   if (tat) {
     const now = new Date();

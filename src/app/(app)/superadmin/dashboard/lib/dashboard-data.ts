@@ -1,4 +1,4 @@
-import { db, tickets, categories, users, ticket_statuses } from "@/db";
+import { db, tickets, categories, users, ticket_statuses, subcategories } from "@/db";
 import { desc, eq, isNull, or, sql, count, inArray, ilike, and } from "drizzle-orm";
 import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 import { normalizeStatusForComparison } from "@/lib/utils";
@@ -36,6 +36,8 @@ export interface DashboardFilters {
   from?: string;
   to?: string;
   user?: string;
+  category?: string;
+  subcategory?: string;
   sort?: string;
   page?: string;
 }
@@ -140,6 +142,28 @@ export async function fetchSuperAdminTickets(
     }
   }
 
+  // Category filter - handle both ID (number) and slug (string)
+  if (filters.category) {
+    const categoryId = parseInt(filters.category, 10);
+    if (!isNaN(categoryId)) {
+      // Numeric category ID
+      conditions.push(eq(tickets.category_id, categoryId));
+    } else {
+      // Category slug - need to join with categories table (already joined in query)
+      conditions.push(eq(categories.slug, filters.category));
+    }
+  }
+
+  // Subcategory filter - handle both ID (number) and slug (string)
+  if (filters.subcategory) {
+    const subcategoryId = parseInt(filters.subcategory, 10);
+    if (!isNaN(subcategoryId)) {
+      // Numeric subcategory ID
+      conditions.push(eq(tickets.subcategory_id, subcategoryId));
+    }
+    // Note: subcategory slug filtering would require joining subcategories table
+  }
+
 
   const whereConditions = and(...conditions);
 
@@ -155,17 +179,23 @@ export async function fetchSuperAdminTickets(
   }
   // Note: "status" sort is complex in DB without a mapping table or case statement, keeping default for now or implementing if critical.
 
+  // Check if we need category join for count query
+  const needsCategoryJoin = filters.category && isNaN(parseInt(filters.category, 10));
+
   let totalCount = 0;
   let ticketRows: TicketRow[] = [];
 
   try {
+    // Build count query with necessary joins - use type assertion to avoid type errors
+    let countQuery: any = db.select({ count: count() }).from(tickets);
+    countQuery = countQuery.leftJoin(ticket_statuses, eq(ticket_statuses.id, tickets.status_id));
+    if (needsCategoryJoin) {
+      countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
+    }
+    countQuery = countQuery.leftJoin(users, eq(tickets.created_by, users.id));
+
     const [totalResultArray, ticketRowsRawResult] = await Promise.all([
-      db
-        .select({ count: count() })
-        .from(tickets)
-        .leftJoin(ticket_statuses, eq(ticket_statuses.id, tickets.status_id))
-        .leftJoin(users, eq(tickets.created_by, users.id))
-        .where(whereConditions),
+      countQuery.where(whereConditions),
       db
         .select({
           id: tickets.id,
@@ -176,6 +206,7 @@ export async function fetchSuperAdminTickets(
           status_id: tickets.status_id,
           category_id: tickets.category_id,
           subcategory_id: tickets.subcategory_id,
+        subcategory_name: subcategories.name,
           created_by: tickets.created_by,
           assigned_to: tickets.assigned_to,
           group_id: tickets.group_id,
@@ -192,6 +223,7 @@ export async function fetchSuperAdminTickets(
         .from(tickets)
         .leftJoin(ticket_statuses, eq(ticket_statuses.id, tickets.status_id))
         .leftJoin(categories, eq(tickets.category_id, categories.id))
+      .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
         .leftJoin(users, eq(tickets.created_by, users.id))
         .where(whereConditions)
         .orderBy(orderByClause)
@@ -303,6 +335,29 @@ export function filterAndSortTickets(
   filters: DashboardFilters
 ): TicketRow[] {
   let filteredTickets = ticketRows;
+
+  // Filter by category (in-memory fallback if not applied in DB query)
+  if (filters.category) {
+    const categoryId = parseInt(filters.category, 10);
+    if (!isNaN(categoryId)) {
+      filteredTickets = filteredTickets.filter((t) => t.category_id === categoryId);
+    } else {
+      // Filter by category name (slug matching would require additional data)
+      const categoryLower = filters.category.toLowerCase();
+      filteredTickets = filteredTickets.filter((t) => {
+        const ticketCategory = (t.category_name || "").toLowerCase();
+        return ticketCategory.includes(categoryLower);
+      });
+    }
+  }
+
+  // Filter by subcategory (in-memory fallback if not applied in DB query)
+  if (filters.subcategory) {
+    const subcategoryId = parseInt(filters.subcategory, 10);
+    if (!isNaN(subcategoryId)) {
+      filteredTickets = filteredTickets.filter((t) => t.subcategory_id === subcategoryId);
+    }
+  }
 
   // Filter by escalated tickets
   if (filters.escalated === "true") {

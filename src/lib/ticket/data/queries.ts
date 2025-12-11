@@ -77,19 +77,27 @@ export async function getStudentTickets(filters: TicketFilters) {
         conditions.push(sql`${tickets.escalation_level} > 0`);
     }
 
-    // Add category filter
+    // Add category filter - handle both ID (number) and slug (string)
     if (category) {
         const catId = parseInt(category, 10);
         if (!isNaN(catId)) {
+            // Numeric category ID
             conditions.push(eq(tickets.category_id, catId));
+        } else {
+            // Category slug - need to join with categories table
+            conditions.push(eq(categories.slug, category));
         }
     }
 
-    // Add subcategory filter
+    // Add subcategory filter - handle both ID (number) and slug (string)
     if (subcategory) {
         const subId = parseInt(subcategory, 10);
         if (!isNaN(subId)) {
+            // Numeric subcategory ID
             conditions.push(eq(tickets.subcategory_id, subId));
+        } else {
+            // Subcategory slug - need to join with subcategories table
+            conditions.push(eq(subcategories.slug, subcategory));
         }
     }
 
@@ -98,17 +106,30 @@ export async function getStudentTickets(filters: TicketFilters) {
         ? asc(tickets.created_at)
         : desc(tickets.created_at);
 
-    // Check if we need to join ticket_statuses for count query
+    // Check if we need joins for count query
     const needsStatusJoin = status && isNaN(parseInt(status, 10));
+    const needsCategoryJoin = category && isNaN(parseInt(category, 10));
+    const needsSubcategoryJoin = subcategory && isNaN(parseInt(subcategory, 10));
+    const needsAnyJoin = needsStatusJoin || needsCategoryJoin || needsSubcategoryJoin;
 
-    // Get total count - need JOIN if filtering by status value
+    // Get total count - need JOINs if filtering by status value, category slug, or subcategory slug
     let totalCount = 0;
-    if (needsStatusJoin) {
-        const countResult = await db
+    if (needsAnyJoin) {
+        let countQuery: any = db
             .select({ count: sql<number>`count(*)` })
-            .from(tickets)
-            .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-            .where(and(...conditions));
+            .from(tickets);
+        
+        if (needsStatusJoin) {
+            countQuery = countQuery.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
+        }
+        if (needsCategoryJoin) {
+            countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
+        }
+        if (needsSubcategoryJoin) {
+            countQuery = countQuery.leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id));
+        }
+        
+        const countResult = await countQuery.where(and(...conditions));
         totalCount = Number(countResult[0]?.count || 0);
     } else {
         const countResult = await db

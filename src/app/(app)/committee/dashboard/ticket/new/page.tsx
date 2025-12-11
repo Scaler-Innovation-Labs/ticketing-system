@@ -58,7 +58,10 @@ export default async function CommitteeNewTicketPage() {
 
     // Fetch full category hierarchy (categories → subcategories → sub-subcategories → fields → options)
     // Already cached with unstable_cache for 5 minutes
-    getCategoriesHierarchy(),
+    getCategoriesHierarchy().catch((error) => {
+      console.error('[Committee New Ticket] Error fetching category hierarchy:', error);
+      return [];
+    }),
   ]);
 
   const [studentData] = studentDataResult;
@@ -79,8 +82,11 @@ export default async function CommitteeNewTicketPage() {
     classSection: studentData?.class_section_name ?? null,
   };
 
+  // Ensure categoryHierarchy is an array
+  const safeCategoryHierarchy = Array.isArray(categoryHierarchy) ? categoryHierarchy : [];
+
   // Filter to only Committee category (accept slug/value containing "committee" or "_committee")
-  const committeeCategory = categoryHierarchy.find((cat) => {
+  const committeeCategory = safeCategoryHierarchy.find((cat) => {
     const label = (cat.label || "").toLowerCase();
     const value = (cat.value || "").toLowerCase();
     return label.includes("committee") || value.includes("committee") || value === "_committee";
@@ -90,7 +96,16 @@ export default async function CommitteeNewTicketPage() {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold mb-2">New Committee Ticket</h1>
-        <p className="text-muted-foreground">No committee category found. Please contact an admin to configure the Committee category.</p>
+        <p className="text-muted-foreground">
+          {safeCategoryHierarchy.length === 0
+            ? "Unable to load categories. Please try refreshing the page or contact support if the issue persists."
+            : "No committee category found. Please contact an admin to configure the Committee category."}
+        </p>
+        {safeCategoryHierarchy.length === 0 && (
+          <p className="text-sm text-muted-foreground mt-2">
+            Debug: Category hierarchy is empty. This may be a caching or database connection issue.
+          </p>
+        )}
       </div>
     );
   }

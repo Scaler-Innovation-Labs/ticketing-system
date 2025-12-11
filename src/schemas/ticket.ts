@@ -37,6 +37,10 @@ export const createTicketSchema = z.object({
   location: z.string().max(500).optional(),
 
   metadata: z.record(z.string(), z.unknown()).optional(),
+  
+  // Support for separate details and profile fields (merged into metadata)
+  details: z.record(z.string(), z.unknown()).optional(),
+  profile: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

@@ -112,6 +112,20 @@ export function AdminTicketFilters() {
     return selectedCategory?.subcategories || [];
   }, [category, categoryOptions]);
 
+  // Clear subcategory if it's not valid for the selected category
+  useEffect(() => {
+    if (category && subcategory) {
+      const selectedCategory = categoryOptions.find(cat => cat.value === category);
+      const isValidSubcategory = selectedCategory?.subcategories.some(sub => sub.value === subcategory);
+      if (!isValidSubcategory) {
+        setSubcategory("");
+      }
+    } else if (!category && subcategory) {
+      // Clear subcategory if no category is selected
+      setSubcategory("");
+    }
+  }, [category, subcategory, categoryOptions]);
+
   // Fetch location options from database when category/subcategory changes
   useEffect(() => {
     const fetchLocations = async () => {
@@ -424,8 +438,43 @@ export function AdminTicketFilters() {
                 tat={tat}
                 createdFrom={createdFrom}
                 createdTo={createdTo}
-                onCategoryChange={setCategory}
-                onSubcategoryChange={setSubcategory}
+                onCategoryChange={(value) => {
+                  setCategory(value);
+                  // Clear subcategory when category changes
+                  const clearedSubcategory = value !== category ? "" : subcategory;
+                  if (value !== category) {
+                    setSubcategory("");
+                  }
+                  // Auto-apply category filter when changed
+                  const params = new URLSearchParams();
+                  if (searchQuery) params.set("search", searchQuery);
+                  if (value) params.set("category", value);
+                  if (clearedSubcategory) params.set("subcategory", clearedSubcategory);
+                  if (location) params.set("location", location);
+                  if (tat) params.set("tat", tat);
+                  if (status) params.set("status", status);
+                  if (createdFrom) params.set("from", createdFrom);
+                  if (createdTo) params.set("to", createdTo);
+                  if (userNumber) params.set("user", userNumber);
+                  if (sort && sort !== "newest") params.set("sort", sort);
+                  router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+                }}
+                onSubcategoryChange={(value) => {
+                  setSubcategory(value);
+                  // Auto-apply subcategory filter when changed
+                  const params = new URLSearchParams();
+                  if (searchQuery) params.set("search", searchQuery);
+                  if (category) params.set("category", category);
+                  if (value) params.set("subcategory", value);
+                  if (location) params.set("location", location);
+                  if (tat) params.set("tat", tat);
+                  if (status) params.set("status", status);
+                  if (createdFrom) params.set("from", createdFrom);
+                  if (createdTo) params.set("to", createdTo);
+                  if (userNumber) params.set("user", userNumber);
+                  if (sort && sort !== "newest") params.set("sort", sort);
+                  router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+                }}
                 onLocationChange={setLocation}
                 onStatusChange={setStatus}
                 onTatChange={setTat}

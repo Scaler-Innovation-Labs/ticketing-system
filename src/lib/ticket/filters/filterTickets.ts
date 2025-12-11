@@ -3,6 +3,7 @@ import type { Ticket } from "@/db/types-only";
 type ExtendedTicket = Ticket & {
     status?: string | null;
     category_name?: string | null;
+    category_slug?: string | null;
     category_id?: number | null;
 };
 
@@ -37,7 +38,7 @@ export function filterTickets(
         });
     }
 
-    // Category filter - match by category_id (if provided) or exact category name
+    // Category filter - match by category_id (if provided), category slug, or exact category name
     if (category) {
         const categoryLower = category.toLowerCase().trim();
         // Try to parse as category ID first
@@ -46,10 +47,11 @@ export function filterTickets(
             // Match by category ID
             filtered = filtered.filter(t => t.category_id === categoryId);
         } else {
-            // Match by exact category name (case-insensitive)
+            // Match by category slug or exact category name (case-insensitive)
             filtered = filtered.filter(t => {
-                const ticketCategory = (t.category_name || "").toLowerCase().trim();
-                return ticketCategory === categoryLower;
+                const ticketCategoryName = (t.category_name || "").toLowerCase().trim();
+                const ticketCategorySlug = (t.category_slug || "").toLowerCase().trim();
+                return ticketCategoryName === categoryLower || ticketCategorySlug === categoryLower;
             });
         }
     }

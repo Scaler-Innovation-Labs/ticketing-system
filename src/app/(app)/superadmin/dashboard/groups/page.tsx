@@ -11,9 +11,8 @@ import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-reac
 import type { Ticket, TicketMetadata } from "@/db/types-only";
 import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
 
-// Use ISR (Incremental Static Regeneration) - cache for 30 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
+// Force dynamic rendering since we use search params for filtering
+export const dynamic = "force-dynamic";
 
 /**
  * Super Admin Groups Page
@@ -25,7 +24,7 @@ export default async function SuperAdminGroupsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
 
-  // Parse search params
+  // Parse search params (Next.js 15 requires awaiting)
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const params = resolvedSearchParams || {};
   const statusFilter = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
@@ -34,7 +33,7 @@ export default async function SuperAdminGroupsPage({
   const locationFilter = (typeof params["location"] === "string" ? params["location"] : params["location"]?.[0]) || "";
 
   // Build where conditions
-  const conditions = [];
+  const conditions: any[] = [];
 
   // Status filter
   if (statusFilter) {
@@ -46,9 +45,16 @@ export default async function SuperAdminGroupsPage({
     }
   }
 
-  // Category filter
+  // Category filter - handle both ID (number) and slug/name (string)
   if (categoryFilter) {
-    conditions.push(ilike(categories.name, `%${categoryFilter}%`));
+    const categoryId = parseInt(categoryFilter, 10);
+    if (!isNaN(categoryId)) {
+      // Numeric category ID - filter by exact match
+      conditions.push(eq(tickets.category_id, categoryId));
+    } else {
+      // Category slug - filter by slug match (requires join)
+      conditions.push(eq(categories.slug, categoryFilter));
+    }
   }
 
   // Location filter

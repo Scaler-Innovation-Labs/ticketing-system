@@ -13,9 +13,8 @@ import {
   type DashboardFilters,
 } from "./lib/dashboard-data";
 
-// Use ISR (Incremental Static Regeneration) - cache for 30 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
+// Force dynamic rendering since we use search params for filtering
+export const dynamic = "force-dynamic";
 
 
 
@@ -41,6 +40,8 @@ export default async function SuperAdminDashboardPage({
     from: (typeof params["from"] === "string" ? params["from"] : params["from"]?.[0]) || "",
     to: (typeof params["to"] === "string" ? params["to"] : params["to"]?.[0]) || "",
     user: (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "",
+    category: (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "",
+    subcategory: (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "",
     sort: (typeof params["sort"] === "string" ? params["sort"] : params["sort"]?.[0]) || "newest",
     page: (typeof params["page"] === "string" ? params["page"] : params["page"]?.[0]) || "1",
   };

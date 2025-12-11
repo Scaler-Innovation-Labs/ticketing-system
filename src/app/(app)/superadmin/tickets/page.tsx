@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, tickets, categories, users, ticket_statuses } from "@/db";
+import { db, tickets, categories, users, ticket_statuses, subcategories } from "@/db";
 import { desc, sql, and, count, eq } from "drizzle-orm";
 import Link from "next/link";
 import { TicketCard } from "@/components/layout/TicketCard";
@@ -25,14 +25,14 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
 
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const params = resolvedSearchParams || {};
-  // const category = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
-  // const subcategory = (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "";
+  const category = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
+  const subcategory = (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "";
   const location = (typeof params["location"] === "string" ? params["location"] : params["location"]?.[0]) || "";
   const tat = (typeof params["tat"] === "string" ? params["tat"] : params["tat"]?.[0]) || "";
-  // const status = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
+  const status = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
   const createdFrom = (typeof params["from"] === "string" ? params["from"] : params["from"]?.[0]) || "";
   const createdTo = (typeof params["to"] === "string" ? params["to"] : params["to"]?.[0]) || "";
-  // const user = (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "";
+  const user = (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "";
   const sort = (typeof params["sort"] === "string" ? params["sort"] : params["sort"]?.[0]) || "newest";
   const page = parseInt((typeof params["page"] === "string" ? params["page"] : params["page"]?.[0]) || "1", 10);
   const limit = Math.min(50, Math.max(5, parseInt((typeof params["limit"] === "string" ? params["limit"] : params["limit"]?.[0]) || "20", 10)));
@@ -40,6 +40,40 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
 
   type WhereClause = ReturnType<typeof sql>;
   const whereClauses: WhereClause[] = [];
+
+  // Category filter - handle both ID (number) and slug (string)
+  if (category) {
+    const categoryId = parseInt(category, 10);
+    if (!isNaN(categoryId)) {
+      // Numeric category ID
+      whereClauses.push(eq(tickets.category_id, categoryId));
+    } else {
+      // Category slug - need to join with categories table (already joined in baseQuery)
+      whereClauses.push(eq(categories.slug, category));
+    }
+  }
+
+  // Subcategory filter - handle both ID (number) and slug (string)
+  if (subcategory) {
+    const subcategoryId = parseInt(subcategory, 10);
+    if (!isNaN(subcategoryId)) {
+      // Numeric subcategory ID
+      whereClauses.push(eq(tickets.subcategory_id, subcategoryId));
+    }
+    // Note: subcategory slug filtering would require joining subcategories table
+  }
+
+  // Status filter
+  if (status) {
+    const statusId = parseInt(status, 10);
+    if (!isNaN(statusId)) {
+      // Numeric status ID
+      whereClauses.push(eq(tickets.status_id, statusId));
+    } else {
+      // Status value string - need to join with ticket_statuses (already joined in baseQuery)
+      whereClauses.push(eq(ticket_statuses.value, status.toLowerCase()));
+    }
+  }
 
   if (location) {
     whereClauses.push(sql`LOWER(${tickets.location}) LIKE ${"%" + location.toLowerCase() + "%"}`);
@@ -82,10 +116,30 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
   let allTickets: TicketRow[] = [];
   let total = 0;
   try {
-    // total count with same filters
-    const totalQuery = whereClauses.length > 0
-      ? db.select({ total: count() }).from(tickets).where(and(...whereClauses))
-      : db.select({ total: count() }).from(tickets);
+    // Check if we need joins for count query
+    const needsCategoryJoin = category && isNaN(parseInt(category, 10));
+    const needsStatusJoin = status && isNaN(parseInt(status, 10));
+    const needsAnyJoin = needsCategoryJoin || needsStatusJoin;
+
+    // total count with same filters - always apply whereClauses which includes subcategory filter
+    let totalQuery: any;
+    if (needsAnyJoin) {
+      let countBase: any = db.select({ total: count() }).from(tickets);
+      if (needsCategoryJoin) {
+        countBase = countBase.leftJoin(categories, eq(tickets.category_id, categories.id));
+      }
+      if (needsStatusJoin) {
+        countBase = countBase.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
+      }
+      totalQuery = whereClauses.length > 0
+        ? countBase.where(and(...whereClauses))
+        : countBase;
+    } else {
+      // Even if no joins needed, still apply whereClauses (includes subcategory filter)
+      totalQuery = whereClauses.length > 0
+        ? db.select({ total: count() }).from(tickets).where(and(...whereClauses))
+        : db.select({ total: count() }).from(tickets);
+    }
 
     const [totalRow] = await totalQuery;
     total = totalRow?.total || 0;
@@ -123,6 +177,7 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
         category_id: tickets.category_id,
         subcategory_id: tickets.subcategory_id,
         category_name: categories.name,
+        subcategory_name: subcategories.name,
         created_by: tickets.created_by,
         creator_full_name: users.full_name,
         creator_email: users.email,
@@ -135,6 +190,7 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
       })
       .from(tickets)
       .leftJoin(categories, eq(tickets.category_id, categories.id))
+      .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
       .leftJoin(users, eq(tickets.created_by, users.id))
       .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
       .orderBy(desc(tickets.created_at))
