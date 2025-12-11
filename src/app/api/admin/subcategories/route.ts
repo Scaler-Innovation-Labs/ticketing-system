@@ -64,10 +64,25 @@ export async function GET(request: NextRequest) {
 
       const subcatIds = subcats.map(s => s.id);
 
-      // Fetch fields (only active ones)
+      // Fetch fields (only active ones) with subcategory assigned_admin_id
       const fields = await db
-        .select()
+        .select({
+          id: category_fields.id,
+          subcategory_id: category_fields.subcategory_id,
+          name: category_fields.name,
+          slug: category_fields.slug,
+          field_type: category_fields.field_type,
+          required: category_fields.required,
+          placeholder: category_fields.placeholder,
+          validation: category_fields.validation,
+          display_order: category_fields.display_order,
+          is_active: category_fields.is_active,
+          created_at: category_fields.created_at,
+          updated_at: category_fields.updated_at,
+          assigned_admin_id: subcategories.assigned_admin_id, // Get from subcategory since fields inherit
+        })
         .from(category_fields)
+        .leftJoin(subcategories, eq(category_fields.subcategory_id, subcategories.id))
         .where(and(
           inArray(category_fields.subcategory_id, subcatIds),
           eq(category_fields.is_active, true)

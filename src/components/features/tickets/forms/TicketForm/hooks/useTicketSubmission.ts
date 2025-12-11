@@ -73,8 +73,13 @@ export function useTicketSubmission(
       delete detailsWithoutImages.images;
       delete detailsWithoutImages.attachments;
 
+      // Extract location dynamically - check multiple possible sources
+      // Priority: 1) details.location (dynamic field), 2) profile.hostel (editable profile field)
+      // The backend will use this location to resolve scope, overriding profile-based scope
       const derivedLocation =
-        typeof form.profile?.hostel === "string" && form.profile.hostel.trim()
+        (typeof form.details?.location === "string" && form.details.location.trim())
+          ? form.details.location.trim()
+          : (typeof form.profile?.hostel === "string" && form.profile.hostel.trim())
           ? form.profile.hostel.trim()
           : undefined;
 

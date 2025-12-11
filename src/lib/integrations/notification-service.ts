@@ -254,6 +254,11 @@ export async function notifyTicketCreated(
         try {
             const recipients: string[] = [];
 
+            // Add ticket creator (student who created the ticket)
+            if (context.createdByEmail) {
+                recipients.push(context.createdByEmail);
+            }
+
             // Add assigned admin
             if (context.assignedToEmail) {
                 recipients.push(context.assignedToEmail);

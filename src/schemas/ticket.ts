@@ -34,6 +34,8 @@ export const createTicketSchema = z.object({
     mime_type: z.string(),
   })).max(LIMITS.MAX_ATTACHMENTS).optional(),
 
+  location: z.string().max(500).optional(),
+
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

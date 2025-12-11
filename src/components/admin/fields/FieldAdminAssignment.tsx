@@ -67,7 +67,7 @@ export function FieldAdminAssignment({
         <div className="space-y-2 pl-6">
           <Label htmlFor="assigned_admin_id_field">Assign Specific Admin</Label>
           <Select
-            value={assignedAdminId || "none"}
+            value={assignedAdminId ? String(assignedAdminId) : "none"}
             onValueChange={(value) => onAssignedAdminChange(value === "none" ? null : value)}
             disabled={loadingStaff}
           >
@@ -77,7 +77,7 @@ export function FieldAdminAssignment({
             <SelectContent>
               <SelectItem value="none">No admin</SelectItem>
               {adminUsers.map((admin) => (
-                <SelectItem key={admin.id} value={admin.id}>
+                <SelectItem key={String(admin.id)} value={String(admin.id)}>
                   {admin.name}
                   {admin.domain && ` (${admin.domain}${admin.scope ? ` - ${admin.scope}` : ""})`}
                 </SelectItem>

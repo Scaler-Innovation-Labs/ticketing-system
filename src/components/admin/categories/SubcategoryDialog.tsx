@@ -252,7 +252,7 @@ export function SubcategoryDialog({
               <div className="space-y-2 pl-6">
                 <Label htmlFor="assigned_admin_id">Assign Specific Admin</Label>
                 <Select
-                  value={formData.assigned_admin_id || "none"}
+                  value={formData.assigned_admin_id ? String(formData.assigned_admin_id) : "none"}
                   onValueChange={(value) =>
                     setFormData((prev) => ({
                       ...prev,
@@ -269,7 +269,7 @@ export function SubcategoryDialog({
                     {staffMembers.map((staff) => {
                       const displayName = staff.name || staff.email || "Unknown";
                       return (
-                        <SelectItem key={staff.id} value={staff.id}>
+                        <SelectItem key={String(staff.id)} value={String(staff.id)}>
                           {displayName}
                           {staff.domain && ` (${staff.domain}${staff.scope ? ` - ${staff.scope}` : ""})`}
                         </SelectItem>

@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { outbox, tickets, users, categories, ticket_statuses } from '@/db';
+import { outbox, tickets, users, categories, ticket_statuses, roles } from '@/db';
 import { eq, and, lte, lt } from 'drizzle-orm';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { logger } from '@/lib/logger';
@@ -201,6 +201,21 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
           .limit(1)
         : [null];
 
+      // Determine the appropriate link based on who created the ticket
+      // Students should see their own ticket page, admins see admin dashboard
+      const [creatorRole] = ticket.created_by
+        ? await db
+          .select({ role_name: roles.name })
+          .from(users)
+          .innerJoin(roles, eq(users.role_id, roles.id))
+          .where(eq(users.id, ticket.created_by))
+          .limit(1)
+        : [null];
+      
+      const ticketLink = creatorRole?.role_name === 'student'
+        ? `${BASE_URL}/student/dashboard/ticket/${ticket.id}`
+        : `${BASE_URL}/admin/dashboard/ticket/${ticket.id}`;
+
       const context: NotificationContext = {
         ticketId: ticket.id,
         ticketNumber: ticket.ticket_number || `TKT-${ticket.id}`,
@@ -216,7 +231,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
         createdByEmail: creator?.email || '',
         assignedTo: assignee?.full_name || undefined,
         assignedToEmail: assignee?.email || undefined,
-        link: `${BASE_URL}/admin/dashboard/ticket/${ticket.id}`,
+        link: ticketLink,
       };
 
       await notifyTicketCreated(context);
