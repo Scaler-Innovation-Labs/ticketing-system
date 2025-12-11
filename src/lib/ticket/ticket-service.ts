@@ -5,7 +5,7 @@
  */
 
 import { db, tickets, ticket_activity, ticket_statuses, categories, subcategories, users, outbox, ticket_attachments, category_fields, domains, scopes, roles, admin_profiles, admin_assignments, students, category_assignments, type DbTransaction } from '@/db';
-import { eq, and, desc, asc, gte, sql, or, isNull } from 'drizzle-orm';
+import { eq, and, desc, asc, gte, sql, or, isNull, inArray } from 'drizzle-orm';
 import { LIMITS, TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
@@ -136,22 +136,18 @@ async function findFieldLevelAssignee(
   metadata: Record<string, any> | null | undefined,
   txn?: DbTransaction
 ): Promise<string | null> {
-  logger.info({ subcategoryId, hasMetadata: !!metadata, metadataKeys: metadata ? Object.keys(metadata) : [] }, '[Assignment] Priority 1: Checking field-level assignment');
-  
   if (!subcategoryId || !metadata || typeof metadata !== 'object') {
-    logger.info({ subcategoryId, hasMetadata: !!metadata }, '[Assignment] Priority 1: Skipped - no subcategory or metadata');
     return null;
   }
 
   try {
     const dbInstance = txn || db;
     
-    // Get all fields for the subcategory
     const fields = await dbInstance
       .select({ 
         id: category_fields.id,
         slug: category_fields.slug,
-        assigned_admin_id: (category_fields as any).assigned_admin_id, // Check if column exists
+        assigned_admin_id: (category_fields as any).assigned_admin_id,
       })
       .from(category_fields)
       .where(
@@ -161,37 +157,21 @@ async function findFieldLevelAssignee(
         )
       );
 
-    logger.info({ subcategoryId, fieldCount: fields.length, fields: fields.map(f => ({ id: f.id, slug: f.slug, hasAssignedAdmin: !!(f as any).assigned_admin_id })) }, '[Assignment] Priority 1: Fetched fields');
-
-    // Check if any field in metadata has an assigned admin
     for (const field of fields) {
       const fieldValue = metadata[field.slug];
       const assignedAdminId = (field as any).assigned_admin_id;
       
-      logger.debug({ 
-        fieldId: field.id, 
-        fieldSlug: field.slug, 
-        hasFieldValue: !!fieldValue, 
-        fieldValue, 
-        hasAssignedAdmin: !!assignedAdminId,
-        assignedAdminId 
-      }, '[Assignment] Priority 1: Checking field');
-      
       if (fieldValue && assignedAdminId) {
-        logger.info({ fieldId: field.id, fieldSlug: field.slug, assignedAdminId }, '[Assignment] Priority 1: ✅ Found field-level assignee');
         return assignedAdminId;
       }
     }
 
-    logger.info({ subcategoryId }, '[Assignment] Priority 1: ❌ No field-level assignment found');
     return null;
   } catch (error: any) {
-    // If column doesn't exist, silently return null
     if (error?.message?.includes('assigned_admin_id') || error?.message?.includes('column')) {
-      logger.debug({ subcategoryId, error: error.message }, '[Assignment] Priority 1: Field-level assignment not available (column may not exist)');
       return null;
     }
-    logger.error({ error, subcategoryId }, '[Assignment] Priority 1: Error finding field-level assignee');
+    logger.error({ error, subcategoryId }, 'Error finding field-level assignee');
     return null;
   }
 }
@@ -211,11 +191,8 @@ async function findDomainScopeAssignee(
   userId: string | null | undefined,
   categoryId: number | null | undefined
 ): Promise<string | null> {
-  logger.info({ categoryDomainId, ticketScopeId, ticketLocation, categoryScopeMode, categoryScopeId }, '[Assignment] Priority 2: Checking domain/scope-based assignment');
-  
   // Must have domain_id to proceed
   if (!categoryDomainId) {
-    logger.info({ categoryDomainId }, '[Assignment] Priority 2: Skipped - no domain_id');
     return null;
   }
 
@@ -227,12 +204,9 @@ async function findDomainScopeAssignee(
     // 3. If scope_mode is dynamic and no location provided, resolve from student profile
     // 4. Otherwise use null (no scope)
     let scopeId: number | null = null;
-    let scopeResolutionMethod: string | null = null;
     
     // PRIORITY 1: Always check student-submitted location first (overrides profile)
-    // This handles cases where student explicitly selects a different location than their profile
     if (ticketLocation && categoryDomainId) {
-      logger.info({ categoryDomainId, ticketLocation, ticketScopeId }, '[Assignment] Priority 2: Checking student-submitted location (overrides profile)');
       const [scope] = await db
         .select({ id: scopes.id })
         .from(scopes)
@@ -246,29 +220,17 @@ async function findDomainScopeAssignee(
       
       if (scope) {
         scopeId = scope.id;
-        scopeResolutionMethod = 'ticket location (student-submitted, overrides profile)';
-        logger.info({ scopeId, ticketLocation, previousScopeId: ticketScopeId, method: scopeResolutionMethod }, '[Assignment] Priority 2: ✅ Using student-submitted location (overrides profile-based scope)');
-      } else {
-        logger.info({ ticketLocation, categoryDomainId }, '[Assignment] Priority 2: No scope found for student-submitted location, will use profile or other method');
       }
     }
     
     // PRIORITY 2: Use pre-resolved ticketScopeId (from profile) if no location was provided
     if (!scopeId && ticketScopeId) {
       scopeId = ticketScopeId;
-      scopeResolutionMethod = 'ticketScopeId (pre-resolved from profile)';
-      logger.info({ scopeId, method: scopeResolutionMethod }, '[Assignment] Priority 2: Using pre-resolved ticketScopeId from profile');
     }
     
-    // PRIORITY 3: If scope wasn't resolved yet and category has dynamic scope mode, try to resolve from profile
-    if (!scopeId && categoryScopeMode === 'dynamic' && userId) {
-      logger.info({ categoryDomainId, categoryScopeId, userId }, '[Assignment] Priority 2: Attempting to resolve dynamic scope from student profile (no location provided)');
-      
-      // If still no scope and category has scope_id, try to resolve from student profile
-      if (!scopeId && categoryScopeId) {
-        logger.info({ categoryDomainId, categoryScopeId, userId }, '[Assignment] Priority 2: Attempting to resolve dynamic scope from student profile');
-        
-        // Get scope configuration to find which student field to use
+    // PRIORITY 3: Only fetch from student profile if location is NOT in ticket and userId is provided
+    if (!scopeId && categoryScopeMode === 'dynamic' && userId && !ticketLocation) {
+      if (categoryScopeId) {
         const [scopeConfig] = await db
           .select({ student_field_key: scopes.student_field_key })
           .from(scopes)
@@ -276,7 +238,6 @@ async function findDomainScopeAssignee(
           .limit(1);
         
         if (scopeConfig?.student_field_key) {
-          // Get student profile
           const [student] = await db
             .select({
               hostel_id: students.hostel_id,
@@ -288,7 +249,6 @@ async function findDomainScopeAssignee(
             .limit(1);
           
           if (student) {
-            // Resolve scope from student field
             const fieldKey = scopeConfig.student_field_key;
             switch (fieldKey) {
               case 'hostel_id':
@@ -300,31 +260,15 @@ async function findDomainScopeAssignee(
               case 'batch_id':
                 scopeId = student.batch_id;
                 break;
-              default:
-                logger.warn({ fieldKey }, '[Assignment] Priority 2: Unknown student field key for scope resolution');
             }
-            
-            if (scopeId) {
-              scopeResolutionMethod = `student profile (${fieldKey})`;
-              logger.info({ scopeId, fieldKey, userId, method: scopeResolutionMethod }, '[Assignment] Priority 2: ✅ Resolved dynamic scope from student profile');
-            } else {
-              logger.info({ fieldKey, userId }, '[Assignment] Priority 2: Student profile has no value for field');
-            }
-          } else {
-            logger.info({ userId }, '[Assignment] Priority 2: Student profile not found');
           }
-        } else {
-          logger.info({ categoryScopeId }, '[Assignment] Priority 2: Scope config missing or no student_field_key');
         }
       }
       
       // If still no scope and category doesn't have scope_id, try to find any scope config in domain
       if (!scopeId && !categoryScopeId) {
-        logger.info({ categoryDomainId, userId }, '[Assignment] Priority 2: Category has no scope_id, trying to find scope config in domain');
-        
-        // Find all scopes in this domain that have student_field_key
         const domainScopes = await db
-          .select({ id: scopes.id, student_field_key: scopes.student_field_key, name: scopes.name })
+          .select({ id: scopes.id, student_field_key: scopes.student_field_key })
           .from(scopes)
           .where(
             and(
@@ -333,9 +277,6 @@ async function findDomainScopeAssignee(
             )
           );
         
-        logger.info({ domainScopesCount: domainScopes.length, domainScopes: domainScopes.map(s => ({ id: s.id, name: s.name, field: s.student_field_key })) }, '[Assignment] Priority 2: Found domain scopes with student_field_key');
-        
-        // Try each scope config to resolve from student profile
         for (const scopeConfig of domainScopes) {
           if (!scopeConfig.student_field_key) continue;
           
@@ -364,76 +305,32 @@ async function findDomainScopeAssignee(
               break;
           }
           
-          // If resolved scope matches this scope config's ID, use it
           if (resolvedScopeId === scopeConfig.id) {
             scopeId = scopeConfig.id;
-            scopeResolutionMethod = `student profile domain match (${scopeConfig.student_field_key} -> scope ${scopeConfig.id})`;
-            logger.info({ scopeId, fieldKey: scopeConfig.student_field_key, userId, method: scopeResolutionMethod }, '[Assignment] Priority 2: ✅ Resolved dynamic scope from student profile (matched scope ID)');
             break;
           }
-        }
-        
-        if (!scopeId) {
-          logger.info({ categoryDomainId, userId }, '[Assignment] Priority 2: Could not resolve scope from student profile or metadata');
         }
       }
     }
 
-    logger.info({ categoryDomainId, scopeId, resolutionMethod: scopeResolutionMethod || 'none (null scope)' }, '[Assignment] Priority 2: Final scope determined');
-
-    // Debug: Check all admin_profiles in this domain to see what exists
-    if (scopeId && categoryDomainId) {
-      const allProfilesInDomain = await db
-        .select({
-          user_id: admin_profiles.user_id,
-          primary_domain_id: admin_profiles.primary_domain_id,
-          primary_scope_id: admin_profiles.primary_scope_id,
-          role_name: roles.name,
-          user_active: users.is_active,
-        })
-        .from(admin_profiles)
-        .innerJoin(users, eq(admin_profiles.user_id, users.id))
-        .innerJoin(roles, eq(users.role_id, roles.id))
-        .where(
-          and(
-            sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
-            eq(admin_profiles.primary_domain_id, categoryDomainId),
-            eq(users.is_active, true)
-          )
-        );
-      
-      logger.info({ 
-        categoryDomainId, 
-        scopeId, 
-        allProfilesInDomain: allProfilesInDomain.map(p => ({
-          user_id: p.user_id,
-          domain_id: p.primary_domain_id,
-          scope_id: p.primary_scope_id,
-          role: p.role_name,
-          active: p.user_active
-        }))
-      }, '[Assignment] Priority 2: Debug - All admin profiles in domain (any scope)');
+    // If no scope, can't assign by domain/scope
+    if (!scopeId) {
+      return null;
     }
 
-    // Collect all matching admins from admin_assignments (secondary assignments)
-    const assignmentAdmins = scopeId
-      ? await db
-          .select({ user_id: admin_assignments.user_id })
-          .from(admin_assignments)
-          .where(
-            and(
-              eq(admin_assignments.domain_id, categoryDomainId),
-              eq(admin_assignments.scope_id, scopeId)
-            )
-          )
-      : [];
-
-    logger.info({ categoryDomainId, scopeId, assignmentAdminCount: assignmentAdmins.length, assignmentAdmins: assignmentAdmins.map(a => a.user_id) }, '[Assignment] Priority 2: Found admins from admin_assignments');
-
-    // Collect all matching admins from admin_profiles (primary assignments)
-    // Include 'admin', 'snr_admin', and 'super_admin' roles
-    const profileAdmins = scopeId
-      ? await db
+    // PRIORITY: Check category_assignments first, then admin_profiles
+    // Step 1: Get admins assigned to this category
+    if (categoryId) {
+      const categoryAssignedAdmins = await db
+        .select({ user_id: category_assignments.user_id })
+        .from(category_assignments)
+        .where(eq(category_assignments.category_id, categoryId));
+      
+      if (categoryAssignedAdmins.length > 0) {
+        const categoryAssignedUserIds = categoryAssignedAdmins.map(a => a.user_id);
+        
+        // Step 2: Check if any category-assigned admins match domain/scope from admin_profiles
+        const matchingCategoryAdmins = await db
           .select({ user_id: admin_profiles.user_id })
           .from(admin_profiles)
           .innerJoin(users, eq(admin_profiles.user_id, users.id))
@@ -443,68 +340,57 @@ async function findDomainScopeAssignee(
               sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
               eq(admin_profiles.primary_domain_id, categoryDomainId),
               eq(admin_profiles.primary_scope_id, scopeId),
-              eq(users.is_active, true)
+              eq(users.is_active, true),
+              inArray(admin_profiles.user_id, categoryAssignedUserIds)
             )
-          )
-      : [];
-
-    logger.info({ categoryDomainId, scopeId, profileAdminCount: profileAdmins.length, profileAdmins: profileAdmins.map(p => p.user_id) }, '[Assignment] Priority 2: Found admins from admin_profiles (includes admin, snr_admin, and super_admin roles)');
-
-    // Combine and deduplicate admin IDs
+          );
+        
+        if (matchingCategoryAdmins.length === 1) {
+          return matchingCategoryAdmins[0].user_id;
+        }
+      }
+    }
+    
+    // Step 3: If no category assignment match, check admin_assignments (secondary)
+    const assignmentAdmins = await db
+      .select({ user_id: admin_assignments.user_id })
+      .from(admin_assignments)
+      .where(
+        and(
+          eq(admin_assignments.domain_id, categoryDomainId),
+          eq(admin_assignments.scope_id, scopeId)
+        )
+      );
+    
+    // Step 4: Check admin_profiles (primary)
+    const profileAdmins = await db
+      .select({ user_id: admin_profiles.user_id })
+      .from(admin_profiles)
+      .innerJoin(users, eq(admin_profiles.user_id, users.id))
+      .innerJoin(roles, eq(users.role_id, roles.id))
+      .where(
+        and(
+          sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
+          eq(admin_profiles.primary_domain_id, categoryDomainId),
+          eq(admin_profiles.primary_scope_id, scopeId),
+          eq(users.is_active, true)
+        )
+      );
+    
+    // Combine and deduplicate
     const allMatchingAdmins = new Set<string>();
     assignmentAdmins.forEach(a => allMatchingAdmins.add(a.user_id));
     profileAdmins.forEach(p => allMatchingAdmins.add(p.user_id));
-
-    logger.info({ categoryDomainId, scopeId, totalMatchingAdmins: allMatchingAdmins.size, adminIds: Array.from(allMatchingAdmins) }, '[Assignment] Priority 2: Combined matching admins');
-
-    // If multiple admins match domain/scope, filter by category_assignments
-    let finalMatchingAdmins = Array.from(allMatchingAdmins);
     
-    if (finalMatchingAdmins.length > 1 && categoryId) {
-      logger.info({ categoryId, matchingAdminsCount: finalMatchingAdmins.length, matchingAdmins: finalMatchingAdmins }, '[Assignment] Priority 2: Multiple admins match domain/scope, checking category_assignments');
-      
-      // Get admins assigned to this category
-      const categoryAssignedAdmins = await db
-        .select({ user_id: category_assignments.user_id })
-        .from(category_assignments)
-        .where(eq(category_assignments.category_id, categoryId));
-      
-      const categoryAssignedUserIds = new Set(categoryAssignedAdmins.map(a => a.user_id));
-      logger.info({ categoryId, categoryAssignedCount: categoryAssignedUserIds.size, categoryAssignedAdmins: Array.from(categoryAssignedUserIds) }, '[Assignment] Priority 2: Found admins assigned to category');
-      
-      // Filter to only admins that are both in domain/scope match AND category_assignments
-      finalMatchingAdmins = finalMatchingAdmins.filter(adminId => categoryAssignedUserIds.has(adminId));
-      
-      logger.info({ 
-        categoryId, 
-        filteredCount: finalMatchingAdmins.length, 
-        filteredAdmins: finalMatchingAdmins 
-      }, '[Assignment] Priority 2: Filtered admins (domain/scope + category assignment)');
-    }
-
     // Only assign if exactly 1 admin matches
-    if (finalMatchingAdmins.length === 1) {
-      const assigneeId = finalMatchingAdmins[0];
-      logger.info({ 
-        categoryDomainId, 
-        scopeId, 
-        categoryId,
-        assigneeId, 
-        resolutionMethod: scopeResolutionMethod || 'unknown',
-        ticketScopeId,
-        ticketLocation,
-        categoryScopeMode,
-        categoryScopeId,
-        usedCategoryAssignment: allMatchingAdmins.size > 1 && categoryId ? true : false
-      }, '[Assignment] Priority 2: ✅ Found domain/scope assignee (exactly 1 match)');
-      return assigneeId;
+    if (allMatchingAdmins.size === 1) {
+      return Array.from(allMatchingAdmins)[0];
     }
-
+    
     // If 0 or 2+ matches, return null to continue to next priority
-    logger.info({ categoryDomainId, scopeId, categoryId, matchCount: finalMatchingAdmins.length }, '[Assignment] Priority 2: ❌ No assignment (0 or 2+ matches)');
     return null;
   } catch (error) {
-    logger.error({ error, categoryDomainId, ticketScopeId, ticketLocation }, '[Assignment] Priority 2: Error finding domain/scope assignee');
+    logger.error({ error, categoryDomainId, ticketScopeId, ticketLocation }, 'Error finding domain/scope assignee');
     return null;
   }
 }
@@ -554,17 +440,20 @@ export async function createTicket(
 
     const { category, subcategory } = categoryValidationResult;
 
-    // 2.5. Validate metadata and resolve scope in parallel (both depend on category)
-    // Pass category data to resolveTicketScope to avoid duplicate query
-    const [metadataValidation, resolvedScopeId] = await Promise.all([
-      input.subcategory_id && input.metadata
-        ? validateTicketMetadata(input.subcategory_id, input.metadata)
-        : Promise.resolve({ valid: true, errors: [] }),
-      resolveTicketScope(input.category_id, userId, {
-        scope_id: category.scope_id,
-        scope_mode: category.scope_mode,
-      }),
-    ]);
+    // 2.5. Validate metadata
+    // Only resolve scope from profile if location is not in ticket (optimization)
+    const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
+    const metadataValidation = input.subcategory_id && input.metadata
+      ? await validateTicketMetadata(input.subcategory_id, input.metadata)
+      : { valid: true, errors: [] };
+    
+    // Only fetch from student profile if location is not provided in ticket
+    const resolvedScopeId = ticketLocation
+      ? null // Skip profile lookup if location is in ticket
+      : await resolveTicketScope(input.category_id, userId, {
+          scope_id: category.scope_id,
+          scope_mode: category.scope_mode,
+        });
 
     if (!metadataValidation.valid) {
       throw Errors.validation(
@@ -585,13 +474,6 @@ export async function createTicket(
     
     // Determine the ticket's final scope (resolved scope takes precedence over category scope)
     const ticketScopeId = resolvedScopeId || category.scope_id || null;
-    logger.info({ 
-      resolvedScopeId, 
-      categoryScopeId: category.scope_id, 
-      ticketScopeId,
-      scopeMode: category.scope_mode,
-      categoryId: input.category_id
-    }, '[Assignment] Ticket scope ID determined (resolvedScopeId || category.scope_id)');
     
     // Priority 1: Field-level assignment
     let assignedTo: string | null = await findFieldLevelAssignee(
@@ -601,8 +483,6 @@ export async function createTicket(
     );
     
     // Priority 2: Domain/scope-based assignment
-    // Check both input.location (top-level) and input.metadata?.location (for backward compatibility)
-    const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
     if (!assignedTo) {
       assignedTo = await findDomainScopeAssignee(
         category.domain_id,
@@ -610,54 +490,25 @@ export async function createTicket(
         ticketLocation,
         category.scope_mode,
         category.scope_id,
-        userId,
+        ticketLocation ? null : userId, // Skip userId if location is in ticket (no need to fetch profile)
         input.category_id
       );
     }
     
     // Priority 3: Subcategory-level assignment
     if (!assignedTo) {
-      logger.info({ subcategoryId: input.subcategory_id, assignedAdminId: subcategory?.assigned_admin_id }, '[Assignment] Priority 3: Checking subcategory-level assignment');
       assignedTo = subcategory?.assigned_admin_id || null;
-      if (assignedTo) {
-        logger.info({ subcategoryId: input.subcategory_id, assigneeId: assignedTo }, '[Assignment] Priority 3: ✅ Found subcategory assignee');
-      } else {
-        logger.info({ subcategoryId: input.subcategory_id }, '[Assignment] Priority 3: ❌ No subcategory assignment');
-      }
     }
     
     // Priority 4: Category default admin
     if (!assignedTo) {
-      logger.info({ categoryId: input.category_id, defaultAdminId: category.default_admin_id }, '[Assignment] Priority 4: Checking category default admin');
       assignedTo = category.default_admin_id;
-      if (assignedTo) {
-        logger.info({ categoryId: input.category_id, assigneeId: assignedTo }, '[Assignment] Priority 4: ✅ Found category default admin');
-      } else {
-        logger.info({ categoryId: input.category_id }, '[Assignment] Priority 4: ❌ No category default admin');
-      }
     }
     
     // Priority 5: Super admin fallback
     if (!assignedTo) {
-      logger.info({}, '[Assignment] Priority 5: Checking super admin fallback');
       assignedTo = await findSuperAdmin(txn);
-      if (assignedTo) {
-        logger.info({ assigneeId: assignedTo }, '[Assignment] Priority 5: ✅ Found super admin');
-      } else {
-        logger.info({}, '[Assignment] Priority 5: ❌ No super admin found');
-      }
     }
-
-    logger.info({ 
-      ticketCategoryId: input.category_id, 
-      ticketSubcategoryId: input.subcategory_id,
-      finalAssignee: assignedTo,
-      assignmentSource: assignedTo 
-        ? (assignedTo === subcategory?.assigned_admin_id ? 'subcategory' 
-          : assignedTo === category.default_admin_id ? 'category_default' 
-          : 'other')
-        : 'none'
-    }, '[Assignment] Final assignment decision');
 
     // 5. Create ticket
     // Use location from top-level input or metadata (for backward compatibility)

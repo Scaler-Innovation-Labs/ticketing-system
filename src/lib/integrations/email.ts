@@ -188,44 +188,75 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Ticket: ${ticket.ticketNumber}</title>
+  <title>Ticket Confirmation: ${ticket.ticketNumber}</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">🎫 New Ticket Created</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">${ticket.ticketNumber}</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">✅ Ticket Created Successfully</h1>
+    <p style="color: rgba(255,255,255,0.95); margin: 15px 0 0 0; font-size: 16px;">Your ticket has been submitted and is being processed</p>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px; font-weight: 500;">Ticket Number: ${ticket.ticketNumber}</p>
   </div>
   
-  <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
-    <h2 style="margin-top: 0; color: #495057;">${ticket.title}</h2>
-    <p style="color: #6c757d;">${ticket.description}</p>
+  <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 10px 10px;">
+    <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin-bottom: 25px; border-radius: 4px;">
+      <p style="margin: 0; color: #495057; font-size: 14px;">
+        <strong>Thank you for submitting your ticket!</strong> We have received your request and will review it shortly. 
+        ${ticket.assignedTo ? `Your ticket has been assigned to ${ticket.assignedTo} who will assist you.` : 'An admin will be assigned to your ticket soon.'}
+      </p>
+    </div>
+
+    <h2 style="margin-top: 0; color: #212529; font-size: 20px; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">Ticket Details</h2>
     
-    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+    <div style="margin: 20px 0;">
+      <h3 style="color: #495057; margin: 0 0 8px 0; font-size: 16px;">${ticket.title}</h3>
+      <p style="color: #6c757d; margin: 0; white-space: pre-wrap;">${ticket.description}</p>
+    </div>
+    
+    <table style="width: 100%; border-collapse: collapse; margin: 25px 0; background: #f8f9fa; border-radius: 6px; overflow: hidden;">
       <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Category:</strong></td>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${ticket.category}</td>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; width: 35%;"><strong style="color: #495057;">Ticket Number:</strong></td>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529; font-family: monospace; font-weight: 600;">${ticket.ticketNumber}</td>
       </tr>
       <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Status:</strong></td>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">
-          <span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${ticket.status}</span>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Category:</strong></td>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529;">${ticket.category}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Status:</strong></td>
+        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;">
+          <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; text-transform: capitalize;">${ticket.status}</span>
         </td>
       </tr>
+      ${ticket.assignedTo ? `
       <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;"><strong>Created By:</strong></td>
-        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">${ticket.createdBy}</td>
+        <td style="padding: 12px 15px;"><strong style="color: #495057;">Assigned To:</strong></td>
+        <td style="padding: 12px 15px; color: #212529;">${ticket.assignedTo}</td>
       </tr>
+      ` : `
       <tr>
-        <td style="padding: 10px;"><strong>Assigned To:</strong></td>
-        <td style="padding: 10px;">${ticket.assignedTo || 'Unassigned'}</td>
+        <td style="padding: 12px 15px;"><strong style="color: #495057;">Assigned To:</strong></td>
+        <td style="padding: 12px 15px; color: #6c757d; font-style: italic;">Pending assignment</td>
       </tr>
+      `}
     </table>
     
-    <a href="${ticket.link}" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">View Ticket</a>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${ticket.link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">View Your Ticket</a>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 25px;">
+      <p style="margin: 0 0 10px 0; color: #495057; font-size: 14px; font-weight: 600;">What happens next?</p>
+      <ul style="margin: 0; padding-left: 20px; color: #6c757d; font-size: 14px; line-height: 1.8;">
+        <li>Your ticket will be reviewed by our support team</li>
+        <li>You'll receive updates via email when there are status changes</li>
+        <li>You can track the progress by clicking the "View Your Ticket" button above</li>
+      </ul>
+    </div>
   </div>
   
   <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
-    <p>This is an automated message from the Ticketing System.</p>
+    <p style="margin: 0;">This is an automated confirmation email from the Ticketing System.</p>
+    <p style="margin: 5px 0 0 0;">Please do not reply to this email. If you need to add more information, please update your ticket using the link above.</p>
   </div>
 </body>
 </html>`;
@@ -297,9 +328,9 @@ export async function notifyNewTicketEmail(
 
     return sendEmail({
         to: recipients,
-        subject: `[${ticket.ticketNumber}] New Ticket: ${ticket.title}`,
+        subject: `Ticket Confirmation: ${ticket.ticketNumber} - ${ticket.title}`,
         html: emailBody,
-        text: `New ticket created: ${ticket.ticketNumber}\n\nTitle: ${ticket.title}\nCategory: ${ticket.category}\nCreated by: ${ticket.createdBy}\n\nView: ${ticket.link}`,
+        text: `Ticket Created Successfully\n\nYour ticket has been submitted and is being processed.\n\nTicket Number: ${ticket.ticketNumber}\nTitle: ${ticket.title}\nDescription: ${ticket.description}\nCategory: ${ticket.category}\nStatus: ${ticket.status}\n${ticket.assignedTo ? `Assigned To: ${ticket.assignedTo}\n` : 'Assigned To: Pending assignment\n'}\nView your ticket: ${ticket.link}\n\nThank you for submitting your ticket! We have received your request and will review it shortly.${ticket.assignedTo ? ` Your ticket has been assigned to ${ticket.assignedTo} who will assist you.` : ' An admin will be assigned to your ticket soon.'}\n\nThis is an automated confirmation email. Please do not reply to this email.`,
     });
 }
 

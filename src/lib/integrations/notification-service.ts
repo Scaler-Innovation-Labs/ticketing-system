@@ -259,11 +259,6 @@ export async function notifyTicketCreated(
                 recipients.push(context.createdByEmail);
             }
 
-            // Add assigned admin
-            if (context.assignedToEmail) {
-                recipients.push(context.assignedToEmail);
-            }
-
             // Add configured email recipients
             if (config?.email_recipients && Array.isArray(config.email_recipients)) {
                 recipients.push(...config.email_recipients);
