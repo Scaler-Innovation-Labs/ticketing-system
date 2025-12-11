@@ -114,6 +114,10 @@ function validateFieldValue(
     case 'select':
       const options = (field.options as { value: string }[]) || [];
       const allowedValues = options.map(o => o.value);
+      if (allowedValues.length === 0) {
+        // No options configured; skip validation to avoid blocking ticket creation
+        return { valid: true };
+      }
       if (!allowedValues.includes(value as string)) {
         return { valid: false, error: `${field.name} must be one of: ${allowedValues.join(', ')}` };
       }

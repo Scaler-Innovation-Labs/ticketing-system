@@ -366,6 +366,16 @@ export async function forwardTicket(
 
     const previousAssignee = ticket.assigned_to;
 
+    // Validate target user exists to avoid FK failure
+    const [targetUser] = await txn
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, forwardToUserId))
+      .limit(1);
+    if (!targetUser) {
+      throw Errors.notFound('User', forwardToUserId);
+    }
+
     // Update ticket
     const [updatedTicket] = await txn
       .update(tickets)

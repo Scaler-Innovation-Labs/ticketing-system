@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { TicketGrouping } from "./TicketGrouping";
 import { SelectableTicketList } from "./SelectableTicketList";
 import type { Ticket } from "@/db/types-only";
@@ -18,9 +18,10 @@ interface TicketGroupManagerProps {
         archivedGroups: number;
         totalTicketsInGroups: number;
     } | null;
+    filters?: ReactNode;
 }
 
-export function TicketGroupManager({ tickets, basePath, initialGroups, initialStats }: TicketGroupManagerProps) {
+export function TicketGroupManager({ tickets, basePath, initialGroups, initialStats, filters }: TicketGroupManagerProps) {
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
     return (
@@ -42,6 +43,9 @@ export function TicketGroupManager({ tickets, basePath, initialGroups, initialSt
                     />
                 </CardContent>
             </Card>
+
+            {/* Filters (in between existing groups and selection) */}
+            {filters}
 
             {/* Select Tickets to Group */}
             <Card className="shadow-sm">

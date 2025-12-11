@@ -18,7 +18,7 @@ import TicketSearch from "@/components/student/TicketSearch";
 import { TicketList } from "@/components/student/dashboard/TicketList";
 import { TicketEmpty } from "@/components/student/dashboard/TicketEmpty";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
-
+import { ensureUser } from "@/lib/auth/api-auth";
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 // Removed force-dynamic to allow revalidation to work
 export const revalidate = 30;
@@ -47,7 +47,15 @@ export default async function StudentDashboardPage({
       );
     }
 
-    const dbUser = await getCachedUser(userId);
+    let dbUser = await getCachedUser(userId);
+    if (!dbUser) {
+      try {
+        await ensureUser(userId);
+        dbUser = await getCachedUser(userId);
+      } catch (err) {
+        // ignore, will handle below
+      }
+    }
     if (!dbUser) {
       throw new Error("User not found in database");
     }

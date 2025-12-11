@@ -9,6 +9,7 @@ import { StatsCards } from "@/components/dashboard/StatsCards";
 import { FileText } from "lucide-react";
 import Link from "next/link";
 import { getCachedAdminUser, getCachedAdminAssignment, getCachedAdminTickets, getCachedTicketStatuses } from "@/lib/cache/cached-queries";
+import { ensureUser } from "@/lib/auth/api-auth";
 import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
 import type { Ticket } from "@/db/types-only";
 import type { AdminTicketRow } from "@/lib/ticket/filters/adminTicketFilters";
@@ -44,9 +45,15 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
   if (!userId) throw new Error("Unauthorized"); // TypeScript type guard - layout ensures this never happens
 
   // Use cached functions for better performance (request-scoped deduplication)
-  // Layout already ensures user exists via getOrCreateUser, so adminDbUser will exist
-  const { dbUser: adminDbUser } = await getCachedAdminUser(userId);
-
+  let { dbUser: adminDbUser } = await getCachedAdminUser(userId);
+  if (!adminDbUser) {
+    try {
+      await ensureUser(userId);
+      ({ dbUser: adminDbUser } = await getCachedAdminUser(userId));
+    } catch (err) {
+      // ignore and handle below
+    }
+  }
   if (!adminDbUser) throw new Error("User not found");
   const adminUserId = adminDbUser.id;
 
@@ -105,6 +112,7 @@ export default async function AdminDashboardPage({ searchParams }: { searchParam
     ...ticket,
     status_id: ticket.status_id ?? null,
     status: ticket.status_value || null,
+    subcategory_name: (ticket as any).subcategory_name || null,
   }));
 
   // Get category names and domains for all tickets (for filtering logic)

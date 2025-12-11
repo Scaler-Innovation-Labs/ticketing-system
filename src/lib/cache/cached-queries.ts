@@ -406,6 +406,7 @@ export const getCachedAdminTickets = unstable_cache(
                 status_id: tickets.status_id,
                 category_id: tickets.category_id,
                 subcategory_id: tickets.subcategory_id,
+                subcategory_name: subcategories.name,
                 created_by: tickets.created_by,
                 assigned_to: tickets.assigned_to,
                 escalation_level: tickets.escalation_level,
@@ -433,6 +434,7 @@ export const getCachedAdminTickets = unstable_cache(
             .from(tickets)
             .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
             .leftJoin(categories, eq(tickets.category_id, categories.id))
+            .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
             .leftJoin(users, eq(tickets.created_by, users.id))
             .orderBy(desc(tickets.created_at));
 

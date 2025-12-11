@@ -266,16 +266,6 @@ export default async function AdminGroupsPage({
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle>Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AdminTicketFilters />
-          </CardContent>
-        </Card>
-
         {/* Ticket Group Manager (single experience) */}
         <Card className="shadow-sm">
           <CardHeader>
@@ -314,6 +304,16 @@ export default async function AdminGroupsPage({
                 archivedGroups: archivedGroupsCount,
                 totalTicketsInGroups,
               }}
+              filters={
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Filters</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <AdminTicketFilters />
+                  </CardContent>
+                </Card>
+              }
             />
           </CardContent>
         </Card>
