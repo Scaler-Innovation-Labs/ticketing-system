@@ -1,4 +1,4 @@
-import { db, tickets, ticket_statuses } from "@/db";
+import { db, tickets, ticket_statuses, categories, users } from "@/db";
 import { desc, eq } from "drizzle-orm";
 import type { Ticket } from "@/db/types-only";
 import type { TicketMetadata } from "@/db/inferred-types";
@@ -29,6 +29,8 @@ export default async function SnrAdminEscalatedPage() {
       category_id: tickets.category_id,
       subcategory_id: tickets.subcategory_id,
       created_by: tickets.created_by,
+      creator_name: users.full_name,
+      creator_email: users.email,
       assigned_to: tickets.assigned_to,
       group_id: tickets.group_id,
       escalation_level: tickets.escalation_level,
@@ -37,8 +39,11 @@ export default async function SnrAdminEscalatedPage() {
       metadata: tickets.metadata,
       created_at: tickets.created_at,
       updated_at: tickets.updated_at,
+      category_name: categories.name,
     })
     .from(tickets)
+    .leftJoin(categories, eq(tickets.category_id, categories.id))
+    .leftJoin(users, eq(tickets.created_by, users.id))
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .orderBy(desc(tickets.created_at));
 
@@ -59,6 +64,9 @@ export default async function SnrAdminEscalatedPage() {
       last_escalation_at: ticketMetadata.last_escalation_at ? new Date(ticketMetadata.last_escalation_at) : null,
       rating: ticketMetadata.rating as number | null || null,
       feedback: ticketMetadata.feedback as string | null || null,
+      category_name: t.category_name || null,
+      creator_name: t.creator_name || null,
+      creator_email: t.creator_email || null,
     };
   });
 
@@ -181,7 +189,9 @@ export default async function SnrAdminEscalatedPage() {
                   <TicketCard ticket={{
                     ...t,
                     status: t.status_value || null,
-                    category_name: null, // Will be fetched separately if needed
+                    category_name: t.category_name || null,
+                    creator_name: t.creator_name || null,
+                    creator_email: t.creator_email || null,
                   } as unknown as Ticket & { status?: string | null; category_name?: string | null }} basePath="/snr-admin/dashboard" />
                 </div>
               );
