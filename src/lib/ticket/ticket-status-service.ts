@@ -376,14 +376,20 @@ export async function forwardTicket(
       throw Errors.notFound('User', forwardToUserId);
     }
 
+    // Merge metadata in JS to avoid SQL jsonb path/cast issues
+    const mergedMetadata = {
+      ...(typeof ticket.metadata === 'object' && ticket.metadata !== null ? ticket.metadata : {}),
+      previous_assigned_to: previousAssignee,
+    };
+
     // Update ticket
     const [updatedTicket] = await txn
       .update(tickets)
       .set({
         assigned_to: forwardToUserId,
-        forward_count: ticket.forward_count + 1,
+        forward_count: Number(ticket.forward_count ?? 0) + 1,
         updated_at: new Date(),
-        metadata: sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${previousAssignee}))`,
+        metadata: mergedMetadata,
       })
       .where(eq(tickets.id, ticketId))
       .returning();

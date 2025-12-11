@@ -104,7 +104,12 @@ export default async function AdminAnalyticsPage({
   const norm = (s: string | null) => (s || "").toLowerCase();
   const openTickets = statusRes
     .filter((row) =>
-      ["open", "in_progress", "reopened", "awaiting_student_response", "awaiting_student"].includes(norm(row.status))
+      ["open", "reopened", "awaiting_student"].includes(norm(row.status))
+    )
+    .reduce((sum, row) => sum + Number(row.count || 0), 0);
+  const inProgressTickets = statusRes
+    .filter((row) =>
+      ["in_progress", "awaiting_student_response", "escalated"].includes(norm(row.status))
     )
     .reduce((sum, row) => sum + Number(row.count || 0), 0);
   const resolvedTickets = statusRes
@@ -228,6 +233,16 @@ export default async function AdminAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">{openTickets}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+              <Activity className="w-4 h-4" /> In Progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-amber-600">{inProgressTickets}</div>
           </CardContent>
         </Card>
         <Card>

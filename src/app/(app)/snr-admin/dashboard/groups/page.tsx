@@ -276,6 +276,16 @@ export default async function SnrAdminGroupsPage({
           archivedGroups: archivedGroupsCount,
           totalTicketsInGroups,
         }}
+        filters={
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle>Filters</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AdminTicketFilters />
+            </CardContent>
+          </Card>
+        }
       />
     </div>
   );
