@@ -216,53 +216,76 @@ export async function createTicket(
     // 3. Calculate deadlines based on SLA
     const deadlines = calculateDeadlines(category.sla_hours || 48);
 
-    // 4.5. Find best assignee (priority) - run assignment queries in parallel:
-    // 1) Subcategory assigned admin (inline assignment) - but verify scope if ticket has scope
-    // 2) Admin assignment rules by domain/scope (strict scope matching)
-    // 3) Category assignments (primary -> any -> default admin) - ONLY if ticket has NO scope
-    
-    // Determine the ticket's final scope (resolved scope takes precedence over category scope)
+    // 4.5. Find best assignee - OPTIMIZED: run all queries in parallel
+    // Priority: 1) Inline subcategory admin, 2) Domain/scope rules, 3) Category assignments
     const ticketScopeId = resolvedScopeId || category.scope_id || null;
-    
-    // Priority 1: Subcategory assigned admin (inline assignment)
-    // If ticket has a scope, verify the inline assignee has matching admin_assignment
-    let inlineAssignee: string | null = null;
-    if (subcategory?.assigned_admin_id) {
-      if (ticketScopeId && category.domain_id) {
-        // Verify the inline assignee has matching scope assignment
-        const hasMatch = await hasMatchingAssignment({
+
+    // Build parallel query promises based on conditions
+    const assignmentPromises: Promise<{ type: string; result: string | null | boolean }>[] = [];
+
+    // Query 1: Check inline assignee scope match (if needed)
+    if (subcategory?.assigned_admin_id && ticketScopeId && category.domain_id) {
+      assignmentPromises.push(
+        hasMatchingAssignment({
           user_id: subcategory.assigned_admin_id,
           domain_id: category.domain_id,
           scope_id: ticketScopeId,
-        });
-        // Only use inline assignee if they have matching scope assignment
-        if (hasMatch) {
-          inlineAssignee = subcategory.assigned_admin_id;
-        }
-      } else {
-        // No scope on ticket, use inline assignee directly
-        inlineAssignee = subcategory.assigned_admin_id;
-      }
-    }
-    
-    // Priority 2: Admin assignment rules by domain/scope (strict scope matching)
-    let ruleBasedAssignee: string | null = null;
-    if (category.domain_id && ticketScopeId) {
-      ruleBasedAssignee = await findBestAssignee({
-        domain_id: category.domain_id,
-        scope_id: ticketScopeId,
-      });
-    }
-    
-    // Priority 3: Category assignments - ONLY if ticket has NO scope
-    // If ticket has a scope, we must use admin_assignments (which check scope)
-    let categoryAssignee: string | null = null;
-    if (!ticketScopeId) {
-      // No scope on ticket, safe to use category assignments
-      categoryAssignee = await findCategoryAssignee(input.category_id, category.default_admin_id, txn);
+        }).then(result => ({ type: 'inlineMatch', result }))
+      );
     }
 
-    const assignedTo = inlineAssignee || ruleBasedAssignee || categoryAssignee || null;
+    // Query 2: Find rule-based assignee (if domain + scope exist)
+    if (category.domain_id && ticketScopeId) {
+      assignmentPromises.push(
+        findBestAssignee({
+          domain_id: category.domain_id,
+          scope_id: ticketScopeId,
+        }).then(result => ({ type: 'ruleBased', result }))
+      );
+    }
+
+    // Query 3: Find category assignee (if no scope)
+    if (!ticketScopeId) {
+      assignmentPromises.push(
+        findCategoryAssignee(input.category_id, category.default_admin_id, txn)
+          .then(result => ({ type: 'category', result }))
+      );
+    }
+
+    // Run all queries in parallel
+    const assignmentResults = await Promise.all(assignmentPromises);
+
+    // Process results in priority order
+    let assignedTo: string | null = null;
+
+    // Priority 1: Inline subcategory admin (if scope matched)
+    if (subcategory?.assigned_admin_id) {
+      if (!ticketScopeId || !category.domain_id) {
+        // No scope check needed
+        assignedTo = subcategory.assigned_admin_id;
+      } else {
+        const inlineMatch = assignmentResults.find(r => r.type === 'inlineMatch');
+        if (inlineMatch?.result === true) {
+          assignedTo = subcategory.assigned_admin_id;
+        }
+      }
+    }
+
+    // Priority 2: Rule-based assignee
+    if (!assignedTo) {
+      const ruleBased = assignmentResults.find(r => r.type === 'ruleBased');
+      if (ruleBased?.result && typeof ruleBased.result === 'string') {
+        assignedTo = ruleBased.result;
+      }
+    }
+
+    // Priority 3: Category assignee
+    if (!assignedTo) {
+      const categoryResult = assignmentResults.find(r => r.type === 'category');
+      if (categoryResult?.result && typeof categoryResult.result === 'string') {
+        assignedTo = categoryResult.result;
+      }
+    }
 
     // 5. Create ticket
     const [ticket] = await txn

@@ -23,7 +23,7 @@ import { getOrCreateUser, type ClerkUser } from './user-sync';
  */
 export async function getAuthUser() {
   const { userId } = await auth();
-  
+
   if (!userId) {
     return null;
   }
@@ -60,9 +60,9 @@ export async function requireAuth() {
 /**
  * Get or create user in local database from Clerk session (cached per request)
  * 
- * This syncs the Clerk user to our database if needed.
+ * OPTIMIZED: First checks if user exists in DB using just userId (fast).
+ * Only calls currentUser() API if user needs to be synced (rare).
  * Uses React cache() for request-level deduplication.
- * Use this when you need the database user record.
  * 
  * @example
  * const { user, dbUser } = await requireDbUser();
@@ -74,7 +74,28 @@ export const requireDbUser = cache(async () => {
     throw Errors.unauthorized('Authentication required');
   }
 
-  // Get full user data from Clerk
+  // OPTIMIZATION: First try to get user from database without Clerk API call
+  // This is the fast path for 99% of requests (user already exists)
+  const { db, users } = await import('@/db');
+  const { eq } = await import('drizzle-orm');
+
+  const [existingUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.external_id, userId))
+    .limit(1);
+
+  if (existingUser) {
+    // User exists - skip expensive Clerk API call
+    return {
+      clerkUserId: userId,
+      user: null, // Clerk user not needed for most operations
+      dbUser: existingUser,
+    };
+  }
+
+  // SLOW PATH: User doesn't exist - need to sync from Clerk (only happens once per user)
+  logger.info({ userId }, 'New user detected, syncing from Clerk');
   const clerkUser = await currentUser();
 
   if (!clerkUser) {
