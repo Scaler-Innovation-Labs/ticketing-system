@@ -64,20 +64,8 @@ export default async function SnrAdminAllTicketsPage({ searchParams }: { searchP
   }
 
   if (primaryDomainId) {
-    // Tickets in snr-admin's domain (unassigned tickets in their domain)
-    const domainCondition = and(
-      isNull(tickets.assigned_to),
-      sql`${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`
-    );
-    // and() can return undefined, so check before pushing
-    if (domainCondition) {
-      baseConditions.push(domainCondition);
-    } else {
-      // Fallback: use SQL directly if and() returns undefined
-      baseConditions.push(
-        sql`${tickets.assigned_to} IS NULL AND ${tickets.category_id} IN (SELECT id FROM ${categories} WHERE ${categories.domain_id} = ${primaryDomainId})`
-      );
-    }
+    // All tickets in snr-admin's domain (assigned or not)
+    baseConditions.push(eq(categories.domain_id, primaryDomainId));
   }
 
   if (committeeUserIds.length > 0) {
