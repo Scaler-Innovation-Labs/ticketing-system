@@ -33,15 +33,12 @@ export default async function SnrAdminAnalyticsPage() {
 
         // === SYSTEM-WIDE DATA COLLECTION ===
 
-        // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain (no scope check)
+        // For snr_admin: show all tickets in their domain (regardless of assignment), plus any assigned to them (fallback)
         let ticketsWhere;
         if (primaryDomainId && dbUser) {
             ticketsWhere = or(
-                eq(tickets.assigned_to, dbUser.id),
-                and(
-                    isNull(tickets.assigned_to),
-                    eq(categories.domain_id, primaryDomainId)
-                )
+                eq(categories.domain_id, primaryDomainId),
+                eq(tickets.assigned_to, dbUser.id)
             );
         } else {
             ticketsWhere = undefined;

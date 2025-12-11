@@ -223,9 +223,12 @@ export function CommitteeTagging({ ticketId, onTagAdded, onTagRemoved }: Committ
     }
   };
 
-  // Filter out already tagged committees
+  // Filter out already tagged committees and inactive committees
   const availableCommittees = committees.filter(
-    (committee) => !tags.some((tag) => tag.committee_id === committee.id)
+    (committee) =>
+      // Default to active when flag is missing
+      (committee as any)?.is_active !== false &&
+      !tags.some((tag) => tag.committee_id === committee.id)
   );
 
   // Show button as disabled only if there are committees but all are tagged

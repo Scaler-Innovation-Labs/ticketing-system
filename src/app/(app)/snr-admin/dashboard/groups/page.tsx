@@ -1,5 +1,5 @@
-import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
-import { desc, eq, isNotNull, and, sql, ilike, or, isNull } from "drizzle-orm";
+import { db, tickets, categories, ticket_statuses, ticket_groups, users, roles } from "@/db";
+import { desc, eq, isNotNull, and, sql, ilike, or, isNull, inArray } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
 import { TicketGroupManager } from "@/components/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +35,21 @@ export default async function SnrAdminGroupsPage({
   const primaryDomainId = dbUser?.primary_domain_id ?? null;
   const isGlobal = primaryDomainId === null;
 
+  // Fetch committee user IDs (for committee-created tickets)
+  const committeeUserIds: string[] = [];
+  const [committeeRole] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, "committee"))
+    .limit(1);
+  if (committeeRole) {
+    const committeeUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role_id, committeeRole.id));
+    committeeUserIds.push(...committeeUsers.map(u => u.id));
+  }
+
   // Parse search params
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const params = resolvedSearchParams || {};
@@ -45,6 +60,21 @@ export default async function SnrAdminGroupsPage({
 
   // Build where conditions
   const conditions = [];
+
+  // Base filter: tickets in snr-admin domain OR assigned to them OR created by committees
+  const baseConditions: ReturnType<typeof sql>[] = [];
+  if (!isGlobal && primaryDomainId !== null) {
+    baseConditions.push(eq(categories.domain_id, primaryDomainId));
+  }
+  if (dbUser?.id) {
+    baseConditions.push(eq(tickets.assigned_to, dbUser.id));
+  }
+  if (committeeUserIds.length > 0) {
+    baseConditions.push(inArray(tickets.created_by, committeeUserIds));
+  }
+  if (baseConditions.length > 0) {
+    conditions.push(or(...baseConditions));
+  }
 
   // Status filter
   if (statusFilter) {
@@ -80,20 +110,6 @@ export default async function SnrAdminGroupsPage({
   // Fetch all tickets for snr admin with proper joins
   const creatorUser = aliasedTable(users, "creator");
 
-  // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain (no scope check)
-  const domainConditions = [...conditions];
-  if (!isGlobal && primaryDomainId !== null && dbUser?.id) {
-    domainConditions.push(
-      or(
-        eq(tickets.assigned_to, dbUser.id),
-        and(
-          isNull(tickets.assigned_to),
-          eq(categories.domain_id, primaryDomainId)
-        )
-      )!
-    );
-  }
-
   const allTicketRows = await db
     .select({
       id: tickets.id,
@@ -121,33 +137,17 @@ export default async function SnrAdminGroupsPage({
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
     .leftJoin(creatorUser, eq(tickets.created_by, creatorUser.id))
-    .where(domainConditions.length > 0 ? and(...domainConditions) : sql`true`)
+    .where(conditions.length > 0 ? and(...conditions) : sql`true`)
     .orderBy(desc(tickets.created_at))
     .limit(500); // Reduced limit for better performance - can paginate if needed
 
   // Grouping stats based purely on data, not placeholders
   const totalTicketsCount = allTicketRows.length;
 
-  // Group stats: domain-scoped when primaryDomainId set, otherwise global
-  // For snr_admin: show tickets assigned to them OR unassigned tickets in their domain
-  let groupedTicketWhere;
-  if (!isGlobal && primaryDomainId !== null && dbUser) {
-    groupedTicketWhere = and(
-      isNotNull(tickets.group_id),
-      or(
-        eq(tickets.assigned_to, dbUser.id),
-        and(
-          isNull(tickets.assigned_to),
-          eq(categories.domain_id, primaryDomainId)
-        )
-      )
-    );
-  } else {
-    groupedTicketWhere = and(
-      isNotNull(tickets.group_id),
-      sql`true`
-    );
-  }
+  // Group stats: use same base filter
+  const groupedTicketWhere = conditions.length > 0
+    ? and(isNotNull(tickets.group_id), ...conditions)
+    : and(isNotNull(tickets.group_id), sql`true`);
 
   const groupedTicketIds = await db
     .select({ id: tickets.id })
