@@ -157,6 +157,10 @@ export default async function SnrAdminAnalyticsPage() {
         const ticketStatuses = await getAllTicketStatuses();
         const activeStatuses = ticketStatuses.filter(s => s.is_active);
         const finalStatuses = new Set(ticketStatuses.filter(s => s.is_final).map(s => s.value));
+        const statusDistribution = ticketStatuses.filter(s => {
+            const val = (s.value || "").toLowerCase();
+            return val !== "acknowledged" && val !== "cancelled";
+        });
 
         // Time periods
         const now = new Date();
@@ -597,13 +601,14 @@ export default async function SnrAdminAnalyticsPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-3 md:grid-cols-2">
-                                    {ticketStatuses.map((status) => {
+                                    {statusDistribution.map((status) => {
                                         const count = allTickets.filter(t => t.status === status.value).length;
                                         const percentage = totalTickets > 0 ? (count / totalTickets) * 100 : 0;
+                                        const badgeStyle = status.color ? { backgroundColor: status.color } : undefined;
                                         return (
                                             <div key={status.id} className="flex items-center justify-between p-3 border rounded-lg">
                                                 <div className="flex items-center gap-3">
-                                                    <Badge variant={(status.color as "default" | "secondary" | "destructive" | "outline") || "default"}>
+                                                    <Badge variant="default" style={badgeStyle}>
                                                         {status.label}
                                                     </Badge>
                                                     <div>

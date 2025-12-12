@@ -135,6 +135,10 @@ export default async function SuperAdminAnalyticsPage() {
         // Fetch dynamic statuses
         const ticketStatuses = await getAllTicketStatuses();
         const activeStatuses = ticketStatuses.filter(s => s.is_active);
+        const statusDistribution = ticketStatuses.filter(s => {
+            const val = (s.value || "").toLowerCase();
+            return val !== "acknowledged" && val !== "cancelled";
+        });
         const finalStatuses = new Set(['resolved', 'closed']);
 
         // Time periods
@@ -583,7 +587,7 @@ export default async function SuperAdminAnalyticsPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-3 md:grid-cols-2">
-                                    {ticketStatuses.map((status) => {
+                                    {statusDistribution.map((status) => {
                                         const count = allTickets.filter(t => t.status === status.value).length;
                                         const percentage = totalTickets > 0 ? (count / totalTickets) * 100 : 0;
                                         return (
