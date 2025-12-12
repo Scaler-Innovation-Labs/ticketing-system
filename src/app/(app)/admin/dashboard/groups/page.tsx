@@ -59,16 +59,27 @@ export default async function AdminGroupsPage({
       }
     }
 
-    // Category filter - match by slug or name
+    // Category filter (prefer exact ID; fallback to slug/name search)
     if (categoryFilter) {
-      conditions.push(
-        and(
-          // Ensure category is present
-          isNotNull(tickets.category_id),
-          // Match either category slug or name (case-insensitive)
-          sql`(${categories.slug} ILIKE ${`%${categoryFilter}%`} OR ${categories.name} ILIKE ${`%${categoryFilter}%`})`
-        )
-      );
+      const categoryId = Number(categoryFilter);
+      if (Number.isFinite(categoryId)) {
+        conditions.push(eq(tickets.category_id, categoryId));
+      } else {
+        conditions.push(
+          and(
+            isNotNull(tickets.category_id),
+            sql`(${categories.slug} ILIKE ${`%${categoryFilter}%`} OR ${categories.name} ILIKE ${`%${categoryFilter}%`})`
+          )
+        );
+      }
+    }
+
+    // Subcategory filter (exact ID match when numeric)
+    if (subcategoryFilter) {
+      const subcatId = Number(subcategoryFilter);
+      if (Number.isFinite(subcatId)) {
+        conditions.push(eq(tickets.subcategory_id, subcatId));
+      }
     }
 
     // Location filter

@@ -56,7 +56,9 @@ export default async function SnrAdminLayout({
       <Suspense fallback={<NavLoadingShimmer />}>
         <RoleNav role="snr_admin" />
       </Suspense>
+      <main className="min-h-screen p-4 md:p-6 lg:p-8">
       {children}
+      </main>
     </>
   );
 }

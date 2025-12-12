@@ -26,6 +26,7 @@ import { DynamicFieldDisplay } from "@/components/features/tickets/display/Dynam
 import { CardDescription } from "@/components/ui/card";
 import { Info } from "lucide-react";
 import { format } from "date-fns";
+import { addBusinessHours } from "@/lib/ticket/utils/tat-calculator";
 
 // Revalidate every 10 seconds for ticket detail page (more frequent for real-time updates)
 export const revalidate = 10;
@@ -314,11 +315,19 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     });
   }
 
-  // Add Overdue entry if TAT date has passed and ticket is not resolved
-  const tatDate = ticket.due_at || (metadata?.tatDate ? new Date(metadata.tatDate) : null);
-  if (tatDate) {
+  // Add Overdue entry if TAT date has passed and ticket is not resolved (skip when TAT is paused)
+  const tatDateRaw = ticket.due_at || (metadata?.tatDate ? new Date(metadata.tatDate) : null);
+  const isTatPaused = normalizedStatus === "awaiting_student_response" && !!metadata?.tatPausedAt;
+  const remainingTatHours = metadata?.tatRemainingHours ? Number(metadata.tatRemainingHours) : null;
+  const now = new Date();
+
+  let tatDate = tatDateRaw;
+  if (isTatPaused && remainingTatHours && Number.isFinite(remainingTatHours)) {
+    tatDate = addBusinessHours(now, remainingTatHours);
+  }
+
+  if (tatDate && !isTatPaused) {
     const tatDateObj = new Date(tatDate);
-    const now = new Date();
     const isResolved = normalizedStatus === "resolved" || normalizedStatus === "closed" || ticketProgress === 100;
 
     if (!isNaN(tatDateObj.getTime()) && tatDateObj.getTime() < now.getTime() && !isResolved) {
@@ -338,8 +347,8 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     return a.date.getTime() - b.date.getTime();
   });
 
-  const hasTATDue = tatDate && tatDate.getTime() < new Date().getTime();
-  const isTATToday = tatDate && tatDate.toDateString() === new Date().toDateString();
+  const hasTATDue = tatDate && tatDate.getTime() < new Date().getTime() && !isTatPaused;
+  const isTATToday = tatDate && tatDate.toDateString() === new Date().toDateString() && !isTatPaused;
 
   // Icon map for timeline
   const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {

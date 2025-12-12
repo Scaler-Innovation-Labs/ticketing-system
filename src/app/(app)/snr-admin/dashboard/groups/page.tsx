@@ -55,6 +55,7 @@ export default async function SnrAdminGroupsPage({
   const params = resolvedSearchParams || {};
   const statusFilter = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
   const categoryFilter = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
+  const subcategoryFilter = (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "";
   const searchQuery = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const locationFilter = (typeof params["location"] === "string" ? params["location"] : params["location"]?.[0]) || "";
 
@@ -86,9 +87,22 @@ export default async function SnrAdminGroupsPage({
     }
   }
 
-  // Category filter
+  // Category filter (prefer exact ID match; fallback to name search)
   if (categoryFilter) {
-    conditions.push(ilike(categories.name, `%${categoryFilter}%`));
+    const categoryId = Number(categoryFilter);
+    if (Number.isFinite(categoryId)) {
+      conditions.push(eq(tickets.category_id, categoryId));
+    } else {
+      conditions.push(ilike(categories.name, `%${categoryFilter}%`));
+    }
+  }
+
+  // Subcategory filter (exact ID match)
+  if (subcategoryFilter) {
+    const subcatId = Number(subcategoryFilter);
+    if (Number.isFinite(subcatId)) {
+      conditions.push(eq(tickets.subcategory_id, subcatId));
+    }
   }
 
   // Location filter

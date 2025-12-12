@@ -46,6 +46,7 @@ import { DynamicFieldDisplay } from "@/components/features/tickets/display/Dynam
 import { CardDescription } from "@/components/ui/card";
 import { Info } from "lucide-react";
 import { format } from "date-fns";
+import { addBusinessHours } from "@/lib/ticket/utils/tat-calculator";
 
 
 
@@ -246,6 +247,28 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
   if (!dbUser) throw new Error("User not found");
 
   if (ticketRows.length === 0) notFound();
+
+  // Access control: admin can view only tickets assigned to them or previously assigned to them
+  const ticketRow = ticketRows[0];
+  const isCurrentlyAssigned = ticketRow.assigned_to === dbUser.id;
+  let wasPreviouslyAssigned = false;
+  try {
+    const meta = ticketRow.metadata;
+    if (meta && typeof meta === "object") {
+      const prev = (meta as any).previous_assigned_to;
+      if (Array.isArray(prev)) {
+        wasPreviouslyAssigned = prev.includes(dbUser.id);
+      } else if (typeof prev === "string") {
+        wasPreviouslyAssigned = prev === dbUser.id;
+      }
+    }
+  } catch {
+    // ignore metadata parsing issues
+  }
+
+  if (!isCurrentlyAssigned && !wasPreviouslyAssigned) {
+    redirect("/admin/dashboard");
+  }
 
   // Layout already ensures user exists, so dbUser will exist
 
@@ -662,15 +685,24 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   // Add Overdue entry if TAT date has passed and ticket is not resolved
 
-  const tatDate = ticket.due_at || (metadata?.tatDate ? new Date(metadata.tatDate) : null);
+  const tatDateRaw = ticket.due_at || (metadata?.tatDate ? new Date(metadata.tatDate) : null);
 
   const now = new Date();
 
   const isResolved = normalizedStatus === "resolved" || normalizedStatus === "closed" || ticketProgress === 100;
+  const isTatPaused = normalizedStatus === "awaiting_student_response" && !!metadata?.tatPausedAt;
+  const remainingTatHours = metadata?.tatRemainingHours ? Number(metadata.tatRemainingHours) : null;
+
+  let tatDate = tatDateRaw;
+
+  // While awaiting student response, pause TAT and show a projected resume deadline (if remaining hours available)
+  if (isTatPaused && remainingTatHours && Number.isFinite(remainingTatHours)) {
+    tatDate = addBusinessHours(now, remainingTatHours);
+  }
 
 
 
-  if (tatDate) {
+  if (tatDate && !isTatPaused) {
 
     const tatDateObj = new Date(tatDate);
 
@@ -710,9 +742,9 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
 
   // TAT helpers for UI badges/alerts
 
-  const hasTATDue = tatDate && tatDate.getTime() < now.getTime() && !isResolved;
+  const hasTATDue = tatDate && tatDate.getTime() < now.getTime() && !isResolved && !isTatPaused;
 
-  const isTATToday = tatDate && tatDate.toDateString() === now.toDateString() && !isResolved;
+  const isTATToday = tatDate && tatDate.toDateString() === now.toDateString() && !isResolved && !isTatPaused;
 
 
 

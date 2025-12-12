@@ -3,6 +3,7 @@ import { db, tickets, ticket_statuses, categories, subcategories, users, ticket_
 import { eq, and, desc, asc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { buildTimeline } from '@/lib/ticket/formatting/buildTimeline';
+import { addBusinessHours } from '@/lib/ticket/utils/tat-calculator';
 
 /**
  * Get default progress percentage based on status value
@@ -304,16 +305,29 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         // Use progress_percent from status, or calculate based on status value as fallback
         ticketProgress: status?.progress_percent ?? getDefaultProgressForStatus(normalizedStatus),
         normalizedStatus,
-        tatInfo: {
-            deadline: ticket.resolution_due_at,
-            isOverdue: ticket.resolution_due_at ? new Date() > ticket.resolution_due_at : false,
-            formattedDeadline: ticket.resolution_due_at ? ticket.resolution_due_at.toLocaleDateString() : 'No Deadline',
-            expectedResolution: ticket.resolution_due_at || null,
-            tatSetAt: null, // TODO: Implement if available
-            tatSetBy: null,
-            tat: null,
-            tatExtensions: [], // TODO: Implement if available
-        },
+        tatInfo: (() => {
+            const tatDateRaw = ticket.resolution_due_at || null;
+            const isTatPaused = normalizedStatus === 'awaiting_student_response' && !!metadata?.tatPausedAt;
+            const remainingTatHours = metadata?.tatRemainingHours ? Number(metadata.tatRemainingHours) : null;
+
+            let expectedResolution = tatDateRaw;
+            if (isTatPaused && remainingTatHours && Number.isFinite(remainingTatHours)) {
+                expectedResolution = addBusinessHours(new Date(), remainingTatHours);
+            }
+
+            const isOverdue = expectedResolution ? (new Date() > expectedResolution && !isTatPaused) : false;
+
+            return {
+                deadline: expectedResolution,
+                isOverdue,
+                formattedDeadline: expectedResolution ? expectedResolution.toLocaleDateString() : (isTatPaused ? 'Paused (awaiting student response)' : 'No Deadline'),
+                expectedResolution: expectedResolution || null,
+                tatSetAt: null, // TODO: Implement if available
+                tatSetBy: null,
+                tat: null,
+                tatExtensions: [], // TODO: Implement if available
+            };
+        })(),
         images: attachments.map(a => ({
             id: a.id,
             url: a.file_url,

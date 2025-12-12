@@ -85,10 +85,14 @@ export function AdminTicketFilters() {
         }
         
         // Fetch domains for quick action buttons
-        const domainRes = await fetch("/api/admin/master-data");
+        const domainRes = await fetch("/api/domains");
         if (domainRes.ok) {
           const domainData = await domainRes.json();
-          setDomainOptions(domainData.domains || []);
+          const domains = Array.isArray(domainData) ? domainData : (domainData.domains || []);
+          setDomainOptions(domains.map((d: any) => ({
+            value: d.slug || d.id?.toString?.() || d.name,
+            label: d.name,
+          })));
         }
       } catch (error) {
         console.error("Error fetching filters:", error);
