@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { db, tickets, categories, ticket_statuses } from "@/db";
+import { db, tickets, categories, ticket_statuses, users } from "@/db";
 import type { TicketMetadata } from "@/db/inferred-types";
 import type { Ticket } from "@/db/types-only";
 import { desc, eq, isNull, or } from "drizzle-orm";
@@ -54,10 +54,13 @@ export default async function AdminEscalatedAnalyticsPage() {
       created_at: tickets.created_at,
       updated_at: tickets.updated_at,
       category_name: categories.name,
+      creator_name: users.full_name,
+      creator_email: users.email,
     })
     .from(tickets)
     .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
     .leftJoin(categories, eq(tickets.category_id, categories.id))
+    .leftJoin(users, eq(tickets.created_by, users.id))
     .where(
       or(
         eq(tickets.assigned_to, adminUserDbId),
