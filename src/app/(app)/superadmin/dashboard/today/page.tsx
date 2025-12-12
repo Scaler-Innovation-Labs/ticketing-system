@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, AlertTriangle, CheckCircle2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { auth } from "@clerk/nextjs/server";
+import { getCachedAdminUser } from "@/lib/cache/cached-queries";
 
 // Use ISR (Incremental Static Regeneration) - cache for 30 seconds
 // Removed force-dynamic to allow revalidation to work
@@ -18,6 +20,11 @@ export const revalidate = 30;
  * Note: Auth and role checks are handled by superadmin/layout.tsx
  */
 export default async function SuperAdminTodayPendingPage() {
+
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+  const { dbUser } = await getCachedAdminUser(userId);
+  if (!dbUser) throw new Error("User not found");
 
   const creatorUser = aliasedTable(users, "creator");
   
@@ -69,6 +76,9 @@ export default async function SuperAdminTodayPendingPage() {
     };
   });
 
+  // Restrict to tickets assigned to current superadmin or unassigned
+  const visibleTickets = allTickets.filter(t => !t.assigned_to || t.assigned_to === dbUser.id);
+
   const now = new Date();
   const todayYear = now.getFullYear();
   const todayMonth = now.getMonth();
@@ -78,7 +88,7 @@ export default async function SuperAdminTodayPendingPage() {
 
   // Filter tickets that are due today OR overdue (for the "Today Pending" page)
   // This page shows tickets with TAT due today, but also includes overdue tickets for visibility
-  const todayPending = allTickets.filter(t => {
+  const todayPending = visibleTickets.filter(t => {
     const status = (t.status || "").toLowerCase();
     const hasPendingStatus = pendingStatuses.has(status);
     
