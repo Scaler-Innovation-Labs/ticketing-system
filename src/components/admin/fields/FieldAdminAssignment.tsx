@@ -37,6 +37,11 @@ export function FieldAdminAssignment({
   loadingStaff,
   subcategoryDefaultAdmin,
 }: FieldAdminAssignmentProps) {
+  // Find the assigned admin for display
+  const assignedAdmin = assignedAdminId 
+    ? adminUsers.find((admin) => String(admin.id) === String(assignedAdminId))
+    : null;
+
   return (
     <div className="space-y-3 border rounded-lg p-4">
       <div className="flex items-center space-x-2">
@@ -72,7 +77,13 @@ export function FieldAdminAssignment({
             disabled={loadingStaff}
           >
             <SelectTrigger id="assigned_admin_id_field">
-              <SelectValue placeholder="Select admin (overrides subcategory default)" />
+              <SelectValue placeholder="Select admin (overrides subcategory default)">
+                {assignedAdmin 
+                  ? assignedAdmin.name + (assignedAdmin.domain ? ` (${assignedAdmin.domain}${assignedAdmin.scope ? ` - ${assignedAdmin.scope}` : ""})` : "")
+                  : assignedAdminId 
+                    ? "Unknown admin"
+                    : "No admin"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">No admin</SelectItem>

@@ -20,6 +20,7 @@ const CreateSubcategorySchema = z.object({
   description: z.string().max(500).optional(),
   sla_hours: z.number().int().positive().optional(),
   display_order: z.number().int().default(0).optional(),
+  assigned_admin_id: z.string().uuid().nullable().optional(),
 });
 
 export async function GET(request: NextRequest) {

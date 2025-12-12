@@ -105,6 +105,7 @@ export const category_fields = pgTable('category_fields', {
   placeholder: varchar('placeholder', { length: 255 }),
   options: jsonb('options'), // For select/multiselect fields
   validation: jsonb('validation'), // Validation rules (min, max, regex, etc.)
+  assigned_admin_id: uuid('assigned_admin_id').references(() => users.id), // Admin assigned to handle tickets with this field value
   display_order: integer('display_order').default(0),
   is_active: boolean('is_active').notNull().default(true),
   created_at: timestamp('created_at').notNull().defaultNow(),

@@ -20,6 +20,7 @@ interface Field {
   validation_rules: Record<string, unknown> | null;
   display_order: number;
   active: boolean;
+  assigned_admin_id?: string | null;
   options?: FieldOption[];
 }
 

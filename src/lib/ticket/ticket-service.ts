@@ -147,7 +147,7 @@ async function findFieldLevelAssignee(
       .select({ 
         id: category_fields.id,
         slug: category_fields.slug,
-        assigned_admin_id: (category_fields as any).assigned_admin_id,
+        assigned_admin_id: category_fields.assigned_admin_id,
       })
       .from(category_fields)
       .where(
@@ -159,7 +159,7 @@ async function findFieldLevelAssignee(
 
     for (const field of fields) {
       const fieldValue = metadata[field.slug];
-      const assignedAdminId = (field as any).assigned_admin_id;
+      const assignedAdminId = field.assigned_admin_id;
       
       if (fieldValue && assignedAdminId) {
         return assignedAdminId;
@@ -168,9 +168,6 @@ async function findFieldLevelAssignee(
 
     return null;
   } catch (error: any) {
-    if (error?.message?.includes('assigned_admin_id') || error?.message?.includes('column')) {
-      return null;
-    }
     logger.error({ error, subcategoryId }, 'Error finding field-level assignee');
     return null;
   }
@@ -261,53 +258,6 @@ async function findDomainScopeAssignee(
                 scopeId = student.batch_id;
                 break;
             }
-          }
-        }
-      }
-      
-      // If still no scope and category doesn't have scope_id, try to find any scope config in domain
-      if (!scopeId && !categoryScopeId) {
-        const domainScopes = await db
-          .select({ id: scopes.id, student_field_key: scopes.student_field_key })
-          .from(scopes)
-          .where(
-            and(
-              eq(scopes.domain_id, categoryDomainId),
-              sql`${scopes.student_field_key} IS NOT NULL`
-            )
-          );
-        
-        for (const scopeConfig of domainScopes) {
-          if (!scopeConfig.student_field_key) continue;
-          
-          const [student] = await db
-            .select({
-              hostel_id: students.hostel_id,
-              class_section_id: students.class_section_id,
-              batch_id: students.batch_id,
-            })
-            .from(students)
-            .where(eq(students.user_id, userId))
-            .limit(1);
-          
-          if (!student) continue;
-          
-          let resolvedScopeId: number | null = null;
-          switch (scopeConfig.student_field_key) {
-            case 'hostel_id':
-              resolvedScopeId = student.hostel_id;
-              break;
-            case 'class_section_id':
-              resolvedScopeId = student.class_section_id;
-              break;
-            case 'batch_id':
-              resolvedScopeId = student.batch_id;
-              break;
-          }
-          
-          if (resolvedScopeId === scopeConfig.id) {
-            scopeId = scopeConfig.id;
-            break;
           }
         }
       }
@@ -445,27 +395,28 @@ export async function createTicket(
     const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
 
     // Strip non-field profile keys before validation (they shouldn't be validated against dynamic fields)
+    // Includes variants to handle different naming conventions (camelCase, snake_case, short forms)
+    // Normalize to lowercase for case-insensitive matching
     const PROFILE_KEYS = new Set([
       'name',
       'email',
       'phone',
       'hostel',
-      'Hostel',
       'hostel_name',
-      'roomNumber',
+      'roomnumber', // camelCase normalized
       'room_number',
       'room',
-      'batchYear',
+      'batchyear', // camelCase normalized
       'batch_year',
       'batch',
-      'classSection',
+      'classsection', // camelCase normalized
       'class_section',
       'section',
     ]);
     const metadataForValidation = input.metadata && typeof input.metadata === 'object'
       ? Object.fromEntries(
           Object.entries(input.metadata as Record<string, unknown>).filter(
-            ([key]) => !PROFILE_KEYS.has(key)
+            ([key]) => !PROFILE_KEYS.has(key.toLowerCase())
           )
         )
       : input.metadata;
@@ -494,9 +445,9 @@ export async function createTicket(
 
     // 4. Find best assignee (priority order):
     // 1) Field-level assignment (from category_fields.assigned_admin_id)
-    // 2) Domain/scope-based assignment (only for Hostel/College)
-    // 3) Subcategory-level assignment (from subcategories.assigned_admin_id)
-    // 4) Category default admin (from categories.default_admin_id)
+    // 2) Subcategory-level assignment (from subcategories.assigned_admin_id)
+    // 3) Category default admin (from categories.default_admin_id)
+    // 4) Domain/scope-based assignment (only for Hostel/College)
     // 5) Super admin fallback
     
     // Determine the ticket's final scope (resolved scope takes precedence over category scope)
@@ -509,7 +460,17 @@ export async function createTicket(
       txn
     );
     
-    // Priority 2: Domain/scope-based assignment
+    // Priority 2: Subcategory-level assignment
+    if (!assignedTo) {
+      assignedTo = subcategory?.assigned_admin_id || null;
+    }
+    
+    // Priority 3: Category default admin
+    if (!assignedTo) {
+      assignedTo = category.default_admin_id;
+    }
+    
+    // Priority 4: Domain/scope-based assignment
     if (!assignedTo) {
       assignedTo = await findDomainScopeAssignee(
         category.domain_id,
@@ -520,16 +481,6 @@ export async function createTicket(
         ticketLocation ? null : userId, // Skip userId if location is in ticket (no need to fetch profile)
         input.category_id
       );
-    }
-    
-    // Priority 3: Subcategory-level assignment
-    if (!assignedTo) {
-      assignedTo = subcategory?.assigned_admin_id || null;
-    }
-    
-    // Priority 4: Category default admin
-    if (!assignedTo) {
-      assignedTo = category.default_admin_id;
     }
     
     // Priority 5: Super admin fallback

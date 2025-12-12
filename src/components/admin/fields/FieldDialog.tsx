@@ -114,35 +114,68 @@ export function FieldDialog({
   }));
   const safeSubcategoryDefaultAdmin = subcategoryDefaultAdmin ?? null;
   const { slugManuallyEdited, handleNameChange: handleSlugNameChange, handleSlugChange: handleSlugChangeCallback, setManualEdit } = useSlugGeneration("_"); // FieldDialog uses underscore separator
+  
+  // State to hold the full field data (fetched from API if needed)
+  const [fullFieldData, setFullFieldData] = useState<Field | null>(null);
+  const [loadingField, setLoadingField] = useState(false);
+
+  // Fetch full field data from API when editing (to get assigned_admin_id and other complete data)
+  useEffect(() => {
+    if (field && field.id && open) {
+      setLoadingField(true);
+      api.get<Field>(`${endpoints.admin.fields}/${field.id}`)
+        .then((fetchedField) => {
+          setFullFieldData(fetchedField);
+        })
+        .catch((error) => {
+          console.error("Error fetching field:", error);
+          // Fallback to passed field if API fails
+          setFullFieldData(field);
+        })
+        .finally(() => {
+          setLoadingField(false);
+        });
+    } else {
+      setFullFieldData(field || null);
+    }
+  }, [field?.id, open]);
 
   useEffect(() => {
-    if (field) {
+    // When editing, prefer fullFieldData (fetched from API with assigned_admin_id)
+    // If still loading, don't update form yet (wait for API response)
+    // For new fields, field will be null/undefined
+    if (field?.id && loadingField) {
+      // Still loading field data, don't update form yet
+      return;
+    }
+    const fieldToUse = field?.id ? (fullFieldData || field) : field;
+    if (fieldToUse) {
       // Ensure validation_rules is properly parsed
-      const rawValidationRules = field.validation_rules || {};
+      const rawValidationRules = fieldToUse.validation_rules || {};
       const initialRules: LogicValidationRules = {
         ...(typeof rawValidationRules === 'object' && !Array.isArray(rawValidationRules) 
           ? rawValidationRules 
           : {}),
-        ...(field.field_type === "multi_select" ? { multiSelect: true } : {}),
+        ...(fieldToUse.field_type === "multi_select" ? { multiSelect: true } : {}),
       };
       
       // If there is an explicit admin on the field, do NOT inherit.
       // If there isn't, still default to NOT inheriting; user must opt in.
       setInheritFromSubcategory(false);
       setFormData({
-        name: field.name || "",
-        slug: field.slug || "",
-        field_type: field.field_type || "text",
-        required: field.required || false,
-        placeholder: field.placeholder || "",
-        help_text: field.help_text || "",
-        display_order: field.display_order || 0,
+        name: fieldToUse.name || "",
+        slug: fieldToUse.slug || "",
+        field_type: fieldToUse.field_type || "text",
+        required: fieldToUse.required || false,
+        placeholder: fieldToUse.placeholder || "",
+        help_text: fieldToUse.help_text || "",
+        display_order: fieldToUse.display_order || 0,
         validation_rules: initialRules,
-        assigned_admin_id: field.assigned_admin_id || null,
+        assigned_admin_id: fieldToUse.assigned_admin_id ?? null, // Use ?? instead of || to preserve null
       });
       
       // Ensure options are properly formatted
-      const formattedOptions = (field.options || []).map((opt: any) => ({
+      const formattedOptions = (fieldToUse.options || []).map((opt: any) => ({
         id: opt.id,
         label: opt.label || '',
         value: opt.value || '',
@@ -161,7 +194,7 @@ export function FieldDialog({
         (initialRules.hideWhenValue as string | string[] | undefined)
       ).join(", ");
       setManualLogicInput(initialValues);
-    } else {
+    } else if (!loadingField) {
       // New field: do not inherit from subcategory by default
       setInheritFromSubcategory(false);
       setFormData({
@@ -180,7 +213,7 @@ export function FieldDialog({
       setLogicSectionOpen(false);
       setManualLogicInput("");
     }
-  }, [field, open, setManualEdit]);
+  }, [fullFieldData, field, open, setManualEdit, loadingField]);
 
   const handleNameChange = (name: string) => {
     handleSlugNameChange(name, formData.slug, (newSlug) => {

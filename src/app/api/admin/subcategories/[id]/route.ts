@@ -20,6 +20,7 @@ const UpdateSubcategorySchema = z.object({
   sla_hours: z.number().int().positive().nullable().optional(),
   display_order: z.number().int().optional(),
   is_active: z.boolean().optional(),
+  assigned_admin_id: z.string().uuid().nullable().optional(),
 });
 
 export async function GET(

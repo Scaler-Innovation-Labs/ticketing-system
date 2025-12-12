@@ -27,7 +27,7 @@ const CreateFieldSchema = z.object({
   validation_rules: z.record(z.string(), z.any()).optional().nullable(), // Accept validation_rules as alias
   help_text: z.string().optional().nullable(), // Accept but don't store (not in schema)
   display_order: z.number().int().default(0),
-  assigned_admin_id: z.string().uuid().optional().nullable(), // Accept but don't store (not in schema)
+  assigned_admin_id: z.string().uuid().optional().nullable(),
   options: z.array(z.object({
     label: z.string(),
     value: z.string(),
@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
           placeholder: parsed.data.placeholder || null,
           validation: validation,
           display_order: parsed.data.display_order,
+          assigned_admin_id: parsed.data.assigned_admin_id || null,
         })
         .returning();
 

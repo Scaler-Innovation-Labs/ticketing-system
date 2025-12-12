@@ -77,8 +77,9 @@ export function SubcategoryDialog({
   useEffect(() => {
     if (subcategory) {
       // If there is an explicit admin on the subcategory, do NOT inherit.
-      // If there isn't, still default to NOT inheriting; user must opt in.
-      setInheritFromCategory(false);
+      // If there isn't, check if we should inherit from category
+      const hasAssignedAdmin = subcategory.assigned_admin_id && typeof subcategory.assigned_admin_id === 'string' && subcategory.assigned_admin_id.trim() !== '';
+      setInheritFromCategory(!hasAssignedAdmin && !!categoryDefaultAdmin);
       setFormData({
         name: subcategory.name || "",
         slug: subcategory.slug || "",
@@ -132,7 +133,7 @@ export function SubcategoryDialog({
       const payload = {
         ...formData,
         category_id: categoryId,
-        assigned_admin_id: inheritFromCategory ? undefined : (formData.assigned_admin_id || undefined),
+        assigned_admin_id: inheritFromCategory ? null : (formData.assigned_admin_id ?? null),
         description: formData.description || undefined,
       };
 

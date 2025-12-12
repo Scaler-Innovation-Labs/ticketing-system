@@ -176,6 +176,20 @@ export async function validateTicketMetadata(
 
   // Validate each field
   for (const field of fields) {
+    // Check if field has conditional display logic
+    const validationRules = (field.validation as Record<string, unknown>) || {};
+    const hasConditionalLogic = 
+      validationRules.dependsOn || 
+      validationRules.showWhenValue !== undefined || 
+      validationRules.hideWhenValue !== undefined ||
+      validationRules.requiredWhenValue !== undefined;
+    
+    // If field has conditional logic, check if it's present in metadata
+    // If not present, it means the condition wasn't met (field is hidden), so skip validation
+    if (hasConditionalLogic && !(field.slug in metadata)) {
+      continue;
+    }
+    
     const value = metadata[field.slug];
     const result = validateFieldValue(field, value);
     

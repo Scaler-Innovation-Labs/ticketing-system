@@ -187,7 +187,20 @@ export const getCachedCategoriesHierarchy = unstable_cache(
         // Fetch fields
         const subcatIds = subcats.map(s => s.id);
         const fields = subcatIds.length > 0 ? await db
-            .select()
+            .select({
+                id: category_fields.id,
+                subcategory_id: category_fields.subcategory_id,
+                name: category_fields.name,
+                slug: category_fields.slug,
+                field_type: category_fields.field_type,
+                required: category_fields.required,
+                placeholder: category_fields.placeholder,
+                options: category_fields.options,
+                validation: category_fields.validation,
+                display_order: category_fields.display_order,
+                is_active: category_fields.is_active,
+                // assigned_admin_id is optional - only select if it exists in schema
+            })
             .from(category_fields)
             .where(
                 and(

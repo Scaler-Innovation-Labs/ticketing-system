@@ -47,10 +47,9 @@ export async function getFieldById(id: number) {
         display_order: category_fields.display_order,
         is_active: category_fields.is_active,
         created_at: category_fields.created_at,
-        assigned_admin_id: subcategories.assigned_admin_id, // Get from subcategory
+        assigned_admin_id: category_fields.assigned_admin_id, // Get from field itself
       })
       .from(category_fields)
-      .leftJoin(subcategories, eq(category_fields.subcategory_id, subcategories.id))
       .where(eq(category_fields.id, id))
       .limit(1);
 
