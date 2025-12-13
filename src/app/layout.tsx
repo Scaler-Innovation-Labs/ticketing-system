@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ConditionalNav } from "@/components/nav/ConditionalNav";
 import { NavLoadingShimmer } from "@/components/nav/NavLoadingShimmer";
 import { Toaster } from "@/components/ui/sonner";
@@ -63,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
             <Toaster />
             <WebVitals />
+            <SpeedInsights />
           </ThemeProvider>
         </body>
       </html>
