@@ -59,11 +59,35 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
         "images",
         "details", // Exclude nested details object
         "profile", // Exclude nested profile object
+        "previous_assigned_to", // System field for escalation tracking
       ];
 
-      // Build form details: include subcategory name first, then all dynamic fields (excluding system keys)
+      // Student profile fields to exclude (they're shown in separate columns)
+      const studentProfileKeys = [
+        "name",
+        "email",
+        "hostel",
+        "Hostel",
+        "hostel_name",
+        "roomNumber",
+        "room",
+        "room_number",
+        "batchYear",
+        "batch",
+        "batch_year",
+        "classSection",
+        "section",
+        "class_section",
+      ];
+
+      // Build form details: include subcategory name first, then all dynamic fields 
+      // (excluding system keys and student profile fields)
       const metaEntries = Object.entries(meta || {}).filter(
-        ([k, v]) => !systemKeys.includes(k) && v != null && v !== ""
+        ([k, v]) => 
+          !systemKeys.includes(k) && 
+          !studentProfileKeys.includes(k) && 
+          v != null && 
+          v !== ""
       );
       const formDetailsFromMeta = metaEntries.map(([k, v]) => {
         const value = typeof v === "string" ? v : String(v);
@@ -75,6 +99,18 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
       ];
 
       // Extract student fields from multiple possible locations
+      const studentName = 
+        meta?.name || 
+        meta?.Name ||
+        metaProfile?.name ||
+        t.creator_full_name ||
+        "-";
+      const studentEmail = 
+        meta?.email || 
+        meta?.Email ||
+        metaProfile?.email ||
+        t.creator_email ||
+        "-";
       const studentHostel = 
         meta?.hostel || 
         meta?.Hostel || 
@@ -101,9 +137,20 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
         metaProfile?.classSection ||
         "-";
 
+      // Build profile details array
+      const profileDetails: string[] = [];
+      if (studentName !== "-") profileDetails.push(`Name: ${studentName}`);
+      if (studentEmail !== "-") profileDetails.push(`Email: ${studentEmail}`);
+      if (studentHostel !== "-") profileDetails.push(`Hostel: ${studentHostel}`);
+      if (studentRoom !== "-") profileDetails.push(`Room: ${studentRoom}`);
+      if (studentBatch !== "-") profileDetails.push(`Batch: ${studentBatch}`);
+      if (studentClass !== "-") profileDetails.push(`Class: ${studentClass}`);
+      if (t.location) profileDetails.push(`Location: ${t.location}`);
+
       return {
         ...t,
         formDetails,
+        profileDetails,
         studentHostel: studentHostel !== "-" ? studentHostel : "-",
         studentRoom: studentRoom !== "-" ? studentRoom : "-",
         studentBatch: studentBatch !== "-" ? studentBatch : "-",
@@ -121,12 +168,8 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
             <th className="px-4 py-2 font-semibold">Status</th>
             <th className="px-4 py-2 font-semibold">Category</th>
             <th className="px-4 py-2 font-semibold">Form Details</th>
-            <th className="px-4 py-2 font-semibold">Student</th>
-            <th className="px-4 py-2 font-semibold">Hostel</th>
-            <th className="px-4 py-2 font-semibold">Room</th>
-            <th className="px-4 py-2 font-semibold">Batch</th>
-            <th className="px-4 py-2 font-semibold">Class</th>
-            <th className="px-4 py-2 font-semibold">Location</th>
+            <th className="px-4 py-2 font-semibold">Description</th>
+            <th className="px-4 py-2 font-semibold">Profile Details</th>
             <th className="px-4 py-2 font-semibold">Created</th>
             <th className="px-4 py-2 font-semibold">TAT Due</th>
           </tr>
@@ -134,7 +177,7 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={12} className="px-4 py-6 text-center text-muted-foreground">
+              <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
                 No tickets found.
               </td>
             </tr>
@@ -155,7 +198,6 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
                     <div className="font-semibold text-primary">
                       <a href={`${basePath}/ticket/${t.id}`}>#{t.id}</a>
                     </div>
-                    <div className="text-sm text-foreground">{t.title || "Untitled"}</div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -176,14 +218,15 @@ export function TicketListTable({ tickets, basePath }: TicketListTableProps) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm font-medium">{t.creator_full_name || "Unknown"}</div>
-                    <div className="text-xs text-muted-foreground">{t.creator_email || "—"}</div>
+                    <div className="text-sm text-foreground">{t.title || "Untitled"}</div>
                   </td>
-                  <td className="px-4 py-3 text-sm">{t.studentHostel || "—"}</td>
-                  <td className="px-4 py-3 text-sm">{t.studentRoom || "—"}</td>
-                  <td className="px-4 py-3 text-sm">{t.studentBatch || "—"}</td>
-                  <td className="px-4 py-3 text-sm">{t.studentClass || "—"}</td>
-                  <td className="px-4 py-3 text-sm">{t.location || "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {t.profileDetails && t.profileDetails.length > 0
+                        ? t.profileDetails.map((detail, idx) => <div key={idx}>{detail}</div>)
+                        : "—"}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-sm">{formatDate(t.created_at)}</td>
                   <td className="px-4 py-3 text-sm">{tat}</td>
                 </tr>

@@ -20,7 +20,7 @@ import {
     isEmailConfigured,
     notifyNewTicketEmail,
     notifyStatusUpdateEmail,
-    notifyAssignmentEmail,
+    notifyReassignmentEmail,
     TicketEmailData,
 } from '@/lib/integrations/email';
 
@@ -466,23 +466,6 @@ export async function notifyTicketAssigned(
             result.slack = { sent: true };
         } catch (error: any) {
             logger.error({ error: error.message, ticketId }, 'Slack assignment notification failed');
-        }
-    }
-
-    // Email to assigned admin
-    if (isEmailConfigured() && assignedToEmail) {
-        try {
-            const messageId = await notifyAssignmentEmail(
-                ticketNumber,
-                title,
-                assignedTo,
-                assignedBy,
-                link,
-                assignedToEmail
-            );
-            result.email = { sent: true, messageId: messageId || undefined };
-        } catch (error: any) {
-            logger.error({ error: error.message, ticketId }, 'Email assignment notification failed');
         }
     }
 

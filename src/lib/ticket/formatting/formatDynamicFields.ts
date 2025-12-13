@@ -14,7 +14,7 @@ export function extractDynamicFields(metadata: Record<string, any>, schema: any 
         return [];
     }
 
-    const knownFields = ['subcategory', 'comments', 'images', 'tat', 'tatDate', 'tatSetAt', 'tatSetBy', 'tatExtensions', 'resolved_at', 'reopened_at', 'acknowledged_at'];
+    const knownFields = ['subcategory', 'comments', 'images', 'tat', 'tatDate', 'tatSetAt', 'tatSetBy', 'tatExtensions', 'resolved_at', 'reopened_at', 'acknowledged_at', 'previous_assigned_to', 'tatPausedAt', 'tatRemainingHours', 'tatPausedStatus'];
 
     const dynamicFields = Object.entries(metadata)
         .filter(([key]) => !knownFields.includes(key))

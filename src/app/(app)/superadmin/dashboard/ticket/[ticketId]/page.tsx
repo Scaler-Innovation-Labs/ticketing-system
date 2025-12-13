@@ -273,6 +273,21 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
   const reopenedAt = ticketMetadata.reopened_at ? new Date(ticketMetadata.reopened_at) : null;
   const acknowledgedAt = ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null;
 
+  // Fetch escalation activities to show reasons
+  const escalationActivities = commentActivities
+    .filter(a => a.action === 'escalated')
+    .map(a => {
+      const details = a.details as { reason?: string; escalation_level?: number; previous_level?: number; due_at?: string } | null;
+      return {
+        id: a.id,
+        reason: details?.reason || 'Escalated due to SLA breach',
+        escalation_level: details?.escalation_level || 0,
+        previous_level: details?.previous_level || 0,
+        due_at: details?.due_at,
+        created_at: a.created_at,
+      };
+    });
+
   // Build timeline
   const timelineEntries = buildTimeline({
     created_at: ticket.created_at,
@@ -283,6 +298,25 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     escalation_level: ticket.escalation_level,
     status: statusValueStr,
   }, normalizedStatus) as any[];
+
+  // Replace generic escalation entry with actual escalation activities that include reasons
+  // Remove the generic escalation entry from buildTimeline
+  const genericEscalationIndex = timelineEntries.findIndex((e: any) => e.title && e.title.startsWith('Escalated to Level'));
+  if (genericEscalationIndex !== -1) {
+    timelineEntries.splice(genericEscalationIndex, 1);
+  }
+
+  // Add actual escalation activities with reasons
+  escalationActivities.forEach(escalation => {
+    timelineEntries.push({
+      title: `Escalated to Level ${escalation.escalation_level}`,
+      icon: "AlertTriangle",
+      date: escalation.created_at,
+      color: "bg-red-100 dark:bg-red-900/30",
+      textColor: "text-red-600 dark:text-red-400",
+      description: escalation.reason,
+    });
+  });
 
   // Add TAT set entry if TAT was set
   const tatSetAt = metadata?.tatSetAt;
@@ -613,12 +647,15 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                     const entryDate = entry.date instanceof Date ? entry.date : null;
                     return (
                       <div key={index} className="flex items-start gap-4 relative">
-                        <div className={`relative z - 10 p - 2.5 rounded - full flex - shrink - 0 border - 2 bg - background ${color} `}>
-                          <IconComponent className={`w - 4 h - 4 ${textColor} `} />
+                        <div className={`relative z-10 p-2.5 rounded-full flex-shrink-0 border-2 bg-background ${color}`}>
+                          <IconComponent className={`w-4 h-4 ${textColor}`} />
                         </div>
                         <div className="flex-1 min-w-0 pb-4">
                           <div className="p-3 rounded-lg bg-muted/50 border">
-                            <p className={`text - sm font - semibold mb - 1.5 break-words ${textColor} `}>{title}</p>
+                            <p className={`text-sm font-semibold mb-1.5 break-words ${textColor}`}>{title}</p>
+                            {entry.description && typeof entry.description === 'string' && (
+                              <p className="text-xs text-muted-foreground mb-2 break-words">{entry.description}</p>
+                            )}
                             {entryDate && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Calendar className="w-3.5 h-3.5" />

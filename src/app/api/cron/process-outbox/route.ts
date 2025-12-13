@@ -381,17 +381,6 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
       const references = inReplyTo ? inReplyTo : undefined;
       const ticketLink = `${BASE_URL}/student/dashboard/ticket/${ticketId}`;
 
-      // Send email to admin (assignment notification)
-      await notifyTicketAssigned(
-        ticketId,
-        ticket.ticket_number || `TKT-${ticketId}`,
-        ticket.title || '',
-        assignee.full_name || 'Unknown',
-        assignee.email,
-        assignedBy,
-        `${BASE_URL}/admin/dashboard/ticket/${ticketId}`
-      );
-
       // Send threaded email to student (reassignment/forward notification)
       if (student?.email && isEmailConfigured()) {
         try {

@@ -8,15 +8,146 @@
  * - Feedback submission
  */
 
-import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses, users } from '@/db';
-import { eq, and, isNull } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { db, tickets, ticket_activity, ticket_feedback, ticket_statuses, users, categories, escalation_rules } from '@/db';
+import { eq, and, isNull, isNotNull, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
 import { getUserRole } from '@/lib/auth/roles';
 import { USER_ROLES, TICKET_STATUS } from '@/conf/constants';
 import { getStatusId } from './ticket-service';
+import { addBusinessHours } from './utils/tat-calculator';
+
+/**
+ * Helper function to escalate a ticket to the next level
+ * Used by various escalation triggers (TAT extension, reopen, negative feedback)
+ */
+async function escalateTicketToNextLevel(
+  txn: any,
+  ticket: any,
+  reason: string
+) {
+  const now = new Date();
+  
+  // Get category to find domain_id
+  const [category] = await txn
+    .select({
+      domain_id: categories.domain_id,
+    })
+    .from(categories)
+    .where(eq(categories.id, ticket.category_id))
+    .limit(1);
+
+  if (!category) {
+    logger.warn({ ticketId: ticket.id }, 'Ticket category not found, skipping escalation');
+    return;
+  }
+
+  // Find next escalation rule based on current escalation level
+  const currentEscalationLevel = ticket.escalation_level ?? 0;
+  const nextLevel = currentEscalationLevel + 1;
+
+  // Find escalation rule matching domain, scope (if any), and next level
+  const applicableRules = await txn
+    .select()
+    .from(escalation_rules)
+    .where(
+      and(
+        eq(escalation_rules.is_active, true),
+        category.domain_id
+          ? eq(escalation_rules.domain_id, category.domain_id)
+          : isNull(escalation_rules.domain_id),
+        ticket.scope_id
+          ? eq(escalation_rules.scope_id, ticket.scope_id)
+          : isNull(escalation_rules.scope_id),
+        eq(escalation_rules.level, nextLevel)
+      )
+    )
+    .orderBy(asc(escalation_rules.level))
+    .limit(1);
+
+  const prevAssignee = ticket.assigned_to;
+  const updateData: any = {
+    escalation_level: nextLevel,
+    escalated_at: now,
+    updated_at: now,
+  };
+
+  // Add 48 business hours to TAT deadlines when escalating
+  if (ticket.acknowledgement_due_at) {
+    updateData.acknowledgement_due_at = addBusinessHours(new Date(ticket.acknowledgement_due_at), 48);
+  }
+  if (ticket.resolution_due_at) {
+    updateData.resolution_due_at = addBusinessHours(new Date(ticket.resolution_due_at), 48);
+  }
+
+  if (applicableRules.length > 0) {
+    const rule = applicableRules[0];
+    if (rule.escalate_to_user_id) {
+      updateData.assigned_to = rule.escalate_to_user_id;
+      const metadata = ticket.metadata as any || {};
+      const updatedMetadata = { ...metadata, previous_assigned_to: prevAssignee };
+      updateData.metadata = sql`COALESCE(${tickets.metadata}, '{}'::jsonb) || ${JSON.stringify(updatedMetadata)}::jsonb`;
+    }
+
+    // Log escalation activity
+    await txn.insert(ticket_activity).values({
+      ticket_id: ticket.id,
+      user_id: null, // System action
+      action: 'escalated',
+      details: {
+        reason,
+        escalation_level: nextLevel,
+        previous_level: currentEscalationLevel,
+        escalated_to_user_id: rule.escalate_to_user_id,
+        rule_id: rule.id,
+      },
+      visibility: 'admin_only',
+    });
+
+    logger.warn(
+      {
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticket_number,
+        escalationLevel: nextLevel,
+        escalatedTo: rule.escalate_to_user_id,
+        ruleId: rule.id,
+        reason,
+      },
+      'Ticket escalated (using escalation rule)'
+    );
+  } else {
+    // No matching rule found, just increment escalation level
+    await txn.insert(ticket_activity).values({
+      ticket_id: ticket.id,
+      user_id: null,
+      action: 'escalated',
+      details: {
+        reason: `${reason} (no matching escalation rule found)`,
+        escalation_level: nextLevel,
+        previous_level: currentEscalationLevel,
+      },
+      visibility: 'admin_only',
+    });
+
+    logger.warn(
+      {
+        ticketId: ticket.id,
+        ticketNumber: ticket.ticket_number,
+        escalationLevel: nextLevel,
+        domainId: category.domain_id,
+        scopeId: ticket.scope_id,
+        reason,
+      },
+      'Ticket escalated but no matching escalation rule found'
+    );
+  }
+
+  await txn
+    .update(tickets)
+    .set(updateData)
+    .where(eq(tickets.id, ticket.id));
+}
 
 /**
  * Parse TAT string to hours
@@ -156,18 +287,9 @@ export async function reopenTicket(
     const newReopenCount = (ticket.reopen_count ?? 0) + 1;
     const now = new Date();
 
-    // Warning threshold
+    // Escalation threshold: escalate on 3rd reopen
+    const ESCALATION_THRESHOLD = 3;
     const WARNING_THRESHOLD = 3;
-    if (newReopenCount > WARNING_THRESHOLD) {
-      logger.warn(
-        {
-          ticketId,
-          ticketNumber: ticket.ticket_number,
-          reopenCount: newReopenCount,
-        },
-        'Ticket reopened multiple times - may need escalation'
-      );
-    }
 
     // Get "reopened" status (or fall back to "open")
     // Note: You should have a "reopened" status in ticket_statuses table
@@ -217,12 +339,17 @@ export async function reopenTicket(
       'Ticket reopened'
     );
 
+    // Auto-escalate on 3rd reopen
+    if (newReopenCount === ESCALATION_THRESHOLD) {
+      await escalateTicketToNextLevel(txn, updated, 'Repeated reopening (3rd time)');
+    }
+
     return {
       ticket: updated,
       reopenCount: newReopenCount,
       warning:
         newReopenCount >= WARNING_THRESHOLD
-          ? `This ticket has been reopened ${newReopenCount} times. After 3 reopens, tickets are flagged for review.`
+          ? `This ticket has been reopened ${newReopenCount} times. Tickets are auto-escalated on the 3rd reopen.`
           : undefined,
     };
   });
@@ -266,8 +393,8 @@ export async function extendTAT(
     }
 
     const newTatExtensions = (ticket.tat_extensions ?? 0) + 1;
-    // Escalation thresholds on TAT extensions: 1st at 3, next at 5, then at 6
-    const ESCALATION_THRESHOLDS = [3, 5, 6];
+    // Escalation thresholds on TAT extensions: 1st at 3, next at 5, then at 7
+    const ESCALATION_THRESHOLDS = [3, 5, 7];
     const WARNING_THRESHOLD = 3;
 
     if (newTatExtensions > WARNING_THRESHOLD) {
@@ -312,32 +439,9 @@ export async function extendTAT(
       visibility: 'admin_only',
     });
 
-    // Auto-escalate on configured extension thresholds
+    // Auto-escalate on configured extension thresholds (3, 5, 7)
     if (ESCALATION_THRESHOLDS.includes(newTatExtensions)) {
-      const newEscalationLevel = (ticket.escalation_level ?? 0) + 1;
-      const now = new Date();
-
-      await txn
-        .update(tickets)
-        .set({
-          escalation_level: newEscalationLevel,
-          escalated_at: now,
-          updated_at: now,
-        })
-        .where(eq(tickets.id, ticketId));
-
-      await txn.insert(ticket_activity).values({
-        ticket_id: ticketId,
-        user_id: userId,
-        action: 'escalated',
-        details: {
-          reason: `Auto-escalated due to TAT extension #${newTatExtensions}`,
-          escalation_level: newEscalationLevel,
-          previous_level: ticket.escalation_level,
-          tat_extensions: newTatExtensions,
-        },
-        visibility: 'admin_only',
-      });
+      await escalateTicketToNextLevel(txn, updated, `TAT extension limit reached (extension #${newTatExtensions})`);
     }
 
     logger.info(
@@ -357,7 +461,7 @@ export async function extendTAT(
       tatExtensions: newTatExtensions,
       warning:
         newTatExtensions >= WARNING_THRESHOLD
-          ? `This is TAT extension #${newTatExtensions}. Auto-escalations occur at 3, 5, and 6 extensions.`
+          ? `This is TAT extension #${newTatExtensions}. Auto-escalations occur at 3, 5, and 7 extensions.`
           : undefined,
     };
   });
@@ -437,7 +541,7 @@ export async function submitFeedback(
       visibility: 'admin_only',
     });
 
-    // Poor ratings (<=2) should trigger review
+    // Poor ratings (1-2 stars) should trigger escalation
     if (rating <= 2) {
       logger.warn(
         {
@@ -446,10 +550,11 @@ export async function submitFeedback(
           rating,
           userId,
         },
-        'Poor rating received - may need review'
+        'Poor rating received - escalating ticket'
       );
 
-      // You could trigger escalation or notification here
+      // Escalate ticket due to negative feedback
+      await escalateTicketToNextLevel(txn, ticket, `Negative feedback (${rating} star${rating === 1 ? '' : 's'})`);
     }
 
     logger.info(

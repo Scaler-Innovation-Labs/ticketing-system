@@ -560,44 +560,6 @@ export function buildReassignmentEmail(
 }
 
 /**
- * Send notification for ticket assignment (to admin, not student)
- */
-export async function notifyAssignmentEmail(
-    ticketNumber: string,
-    title: string,
-    assignedTo: string,
-    assignedBy: string,
-    link: string,
-    recipientEmail: string
-): Promise<string | null> {
-    const recipients = getRecipients([recipientEmail]);
-
-    // Build HTML - only add debug note in non-production
-    const debugNote = !IS_PRODUCTION
-        ? `<div style="margin-top: 20px; padding: 10px; background: #f0f0f0; border-left: 3px solid #667eea; font-size: 12px;">
-            <strong>Note:</strong> This email was redirected for testing. Original recipient: ${recipientEmail}
-           </div>`
-        : '';
-
-    return sendEmail({
-        to: recipients,
-        subject: `[${ticketNumber}] Ticket Assigned to You`,
-        html: `
-      <div style="font-family: sans-serif; padding: 20px;">
-        <h2>Ticket Assigned to You</h2>
-        <p>You have been assigned to ticket <strong>${ticketNumber}</strong>:</p>
-        <p><strong>${title}</strong></p>
-        <p>Assigned to: ${assignedTo}</p>
-        <p>Assigned by: ${assignedBy}</p>
-        <a href="${link}" style="display: inline-block; background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">View Ticket</a>
-        ${debugNote}
-      </div>
-    `,
-        text: `You have been assigned to ticket ${ticketNumber}: ${title}\nAssigned to: ${assignedTo}\nAssigned by: ${assignedBy}\n\nView: ${link}`,
-    });
-}
-
-/**
  * Send notification for ticket comment/question (threaded to student)
  */
 export async function notifyCommentEmail(

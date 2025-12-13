@@ -8,6 +8,10 @@ import { requireRole } from '@/lib/auth/helpers';
 import { db, tickets, ticket_activity, users } from '@/db';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { withTransaction } from '@/lib/db-transaction';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const ReassignSchema = z.object({
   assignedTo: z.union([z.string().uuid(), z.literal('unassigned')]),
@@ -56,7 +60,7 @@ export async function POST(
     }
 
     // Update ticket
-    await db.transaction(async (tx) => {
+    await withTransaction(async (tx) => {
       const [ticket] = await tx
         .select()
         .from(tickets)
@@ -100,10 +104,20 @@ export async function POST(
       assigned_to_name: assignee?.full_name || null,
     });
   } catch (error: any) {
+    logger.error({ error: error.message || String(error), stack: error.stack }, 'Error reassigning ticket');
+    
     if (error.message === 'Ticket not found') {
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
     }
-    logger.error({ error: error.message }, 'Error reassigning ticket');
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    
+    // Handle validation errors from withTransaction
+    if (error.statusCode) {
+      return NextResponse.json({ error: error.message || 'Request failed' }, { status: error.statusCode });
+    }
+    
+    return NextResponse.json({ 
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, { status: 500 });
   }
 }

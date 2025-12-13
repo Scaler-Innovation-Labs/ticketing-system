@@ -193,14 +193,13 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
       .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
       .leftJoin(users, eq(tickets.created_by, users.id))
       .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-      .orderBy(desc(tickets.created_at))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(tickets.created_at));
 
     const rowsQuery = whereClauses.length > 0
       ? baseQuery.where(and(...whereClauses))
       : baseQuery;
 
+    // Fetch all tickets matching DB filters (pagination will be applied after in-memory filters)
     const rawTickets: TicketRowRaw[] = await rowsQuery;
     
     allTickets = rawTickets.map(t => {
@@ -270,6 +269,9 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
 
   if (sort === "oldest") allTickets = [...allTickets].reverse();
 
+  // Apply pagination AFTER all filters
+  const paginatedTickets = allTickets.slice(offset, offset + limit);
+
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const hasNext = page < totalPages;
   const hasPrev = page > 1;
@@ -305,11 +307,11 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
       <div className="flex justify-between items-center pt-4">
         <h2 className="text-2xl font-semibold flex items-center gap-2">
           <FileText className="w-6 h-6" />
-          Tickets ({allTickets.length})
+          Tickets ({total})
         </h2>
       </div>
 
-      {allTickets.length === 0 ? (
+      {paginatedTickets.length === 0 ? (
         <Card className="border-2 border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -323,7 +325,7 @@ export default async function SuperAdminAllTicketsPage({ searchParams }: { searc
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {allTickets.map((ticket) => (
+          {paginatedTickets.map((ticket) => (
             <TicketCard 
               key={ticket.id} 
               ticket={{
