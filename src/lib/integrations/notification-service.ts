@@ -403,9 +403,11 @@ export async function notifyStatusUpdated(
                 .limit(1);
 
             const inReplyTo = integration?.email_thread_id || undefined;
+            // References should include all previous message IDs in the thread
             const references = inReplyTo ? inReplyTo : undefined;
 
             const messageId = await notifyStatusUpdateEmail(
+                ticketId,
                 ticketNumber,
                 title,
                 oldStatus,

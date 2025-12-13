@@ -86,7 +86,8 @@ export async function escalateUnacknowledgedTickets() {
         const rule = applicableRules[0];
         if (rule.escalate_to_user_id) {
           updateData.assigned_to = rule.escalate_to_user_id;
-          updateData.metadata = sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${prevAssignee}))`;
+          const metadata = ticket.metadata as any || {};
+          updateData.metadata = { ...metadata, previous_assigned_to: prevAssignee };
         }
 
         // Log escalation activity
@@ -231,7 +232,8 @@ export async function escalateUnresolvedTickets() {
         const rule = applicableRules[0];
         if (rule.escalate_to_user_id) {
           updateData.assigned_to = rule.escalate_to_user_id;
-          updateData.metadata = sql`jsonb_set(coalesce(${tickets.metadata}, '{}'::jsonb), '{previous_assigned_to}', to_jsonb(${prevAssignee}))`;
+          const metadata = ticket.metadata as any || {};
+          updateData.metadata = { ...metadata, previous_assigned_to: prevAssignee };
         }
 
         // Log escalation activity

@@ -42,7 +42,7 @@ function getTransporter(): nodemailer.Transporter | null {
 }
 
 const FROM_EMAIL = process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@example.com';
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
+const FROM_NAME = process.env.EMAIL_FROM_NAME || 'SST-RESOLVE';
 
 // Test email redirect - ONLY for non-production environments
 const TEST_EMAIL = 'n.vedvarshit@gmail.com';
@@ -68,6 +68,7 @@ export interface EmailOptions {
     html?: string;
     cc?: string | string[];
     replyTo?: string;
+    messageId?: string; // Message ID for this email (for threading first email)
     inReplyTo?: string; // Message ID to reply to (for threading)
     references?: string; // References header (for threading)
     attachments?: Array<{
@@ -86,6 +87,7 @@ export interface TicketEmailData {
     subcategory?: string;
     status: string;
     createdBy: string;
+    createdByEmail?: string;
     assignedTo?: string;
     link: string;
     metadata?: Record<string, any>;
@@ -100,6 +102,15 @@ export interface TicketEmailData {
  */
 export function isEmailConfigured(): boolean {
     return !!getTransporter();
+}
+
+/**
+ * Generate a proper email Message ID for threading
+ */
+function generateMessageId(ticketNumber: string, ticketId: number): string {
+    const timestamp = Date.now();
+    const domain = FROM_EMAIL.split('@')[1] || 'example.com';
+    return `<ticket-${ticketId}-${timestamp}@${domain}>`;
 }
 
 /**
@@ -144,6 +155,9 @@ export async function sendEmail(options: EmailOptions): Promise<string | null> {
         }
 
         // Add threading headers if provided (for email threading/replies)
+        if (options.messageId) {
+            mailOptions.messageId = options.messageId;
+        }
         if (options.inReplyTo) {
             mailOptions.inReplyTo = options.inReplyTo;
         }
@@ -198,23 +212,19 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
     const rawMeta = ticket.metadata && typeof ticket.metadata === 'object' ? ticket.metadata : {};
     const metaDetails = (rawMeta as any)?.details || {};
     const metaProfile = (rawMeta as any)?.profile || {};
-    const mergedMeta: Record<string, any> = { ...rawMeta, ...metaDetails, ...metaProfile };
-
-    // Exclude system keys
-    const systemKeys = [
-        'acknowledged_at',
-        'resolved_at',
-        'reopened_at',
-        'rating',
-        'feedback',
-        'attachments',
-        'images',
-        'details',
-        'profile',
-    ];
-
-    const formEntries = Object.entries(mergedMeta)
-        .filter(([k, v]) => !systemKeys.includes(k) && v !== null && v !== undefined && v !== '')
+    
+    // Separate student profile from form fields (exclude roll_no and department)
+    const studentProfileKeys = ['full_name', 'email', 'phone', 'room_no', 'hostel', 'batch', 'class_section'];
+    const systemKeys = ['acknowledged_at', 'resolved_at', 'reopened_at', 'rating', 'feedback', 'attachments', 'images', 'details', 'profile'];
+    
+    // Extract student profile
+    const studentProfile = Object.entries({ ...rawMeta, ...metaProfile })
+        .filter(([k]) => studentProfileKeys.includes(k))
+        .map(([k, v]) => ({ key: k, value: typeof v === 'string' ? v : String(v) }));
+    
+    // Extract form fields (exclude student profile and system keys)
+    const formEntries = Object.entries({ ...rawMeta, ...metaDetails })
+        .filter(([k, v]) => !studentProfileKeys.includes(k) && !systemKeys.includes(k) && v !== null && v !== undefined && v !== '')
         .map(([k, v]) => ({ key: k, value: typeof v === 'string' ? v : String(v) }));
 
     return `
@@ -223,94 +233,75 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ticket Confirmation: ${ticket.ticketNumber}</title>
+  <title>Ticket #${ticket.ticketId} Created</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">✅ Ticket Created Successfully</h1>
-    <p style="color: rgba(255,255,255,0.95); margin: 15px 0 0 0; font-size: 16px;">Your ticket has been submitted and is being processed</p>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px; font-weight: 500;">Ticket Number: ${ticket.ticketNumber}</p>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+  
+  <!-- Header -->
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 35px 30px; border-radius: 12px 12px 0 0; text-align: center; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+    <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: inline-block; padding: 8px 20px; border-radius: 20px; margin-bottom: 15px;">
+      <span style="color: white; font-size: 14px; font-weight: 600; letter-spacing: 0.5px;">✓ TICKET CREATED</span>
+    </div>
+    <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Ticket #${ticket.ticketId}</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px; font-family: 'Courier New', monospace;">${ticket.ticketNumber}</p>
   </div>
   
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 10px 10px;">
-    <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin-bottom: 25px; border-radius: 4px;">
-      <p style="margin: 0; color: #495057; font-size: 14px;">
-        <strong>Thank you for submitting your ticket!</strong> We have received your request and will review it shortly. 
-        ${ticket.assignedTo ? `Your ticket has been assigned to ${ticket.assignedTo} who will assist you.` : 'An admin will be assigned to your ticket soon.'}
-      </p>
-    </div>
-
-    <h2 style="margin-top: 0; color: #212529; font-size: 20px; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">Ticket Details</h2>
+  <!-- Content -->
+  <div style="background: #ffffff; padding: 35px 30px; border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
     
-    <div style="margin: 20px 0;">
-      <h3 style="color: #495057; margin: 0 0 8px 0; font-size: 16px;">${ticket.title}</h3>
-      <p style="color: #6c757d; margin: 0; white-space: pre-wrap;">${ticket.description}</p>
+    <!-- Ticket Info -->
+    <div style="background: linear-gradient(to right, #f8f9fa, #ffffff); padding: 20px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 30px;">
+      <h2 style="margin: 0 0 15px 0; color: #212529; font-size: 20px; font-weight: 600;">${ticket.title}</h2>
+      <p style="margin: 0 0 15px 0; color: #495057; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${ticket.description}</p>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 15px;">
+        <span style="background: #e7f3ff; color: #0066cc; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;">${ticket.category}${ticket.subcategory ? ` → ${ticket.subcategory}` : ''}</span>
+        <span style="background: #28a745; color: white; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; text-transform: capitalize;">${ticket.status}</span>
+        ${ticket.assignedTo ? `<span style="background: #6c757d; color: white; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;">👤 ${ticket.assignedTo}</span>` : ''}
+      </div>
     </div>
-    
-    <table style="width: 100%; border-collapse: collapse; margin: 25px 0; background: #f8f9fa; border-radius: 6px; overflow: hidden;">
-      <tr>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; width: 35%;"><strong style="color: #495057;">Ticket Number:</strong></td>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529; font-family: monospace; font-weight: 600;">${ticket.ticketNumber}</td>
-      </tr>
-      <tr>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Category:</strong></td>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529;">${ticket.category}</td>
-      </tr>
-      ${ticket.subcategory ? `
-      <tr>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Subcategory:</strong></td>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6; color: #212529;">${ticket.subcategory}</td>
-      </tr>` : ''}
-      <tr>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;"><strong style="color: #495057;">Status:</strong></td>
-        <td style="padding: 12px 15px; border-bottom: 1px solid #dee2e6;">
-          <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 500; text-transform: capitalize;">${ticket.status}</span>
-        </td>
-      </tr>
-      ${ticket.assignedTo ? `
-      <tr>
-        <td style="padding: 12px 15px;"><strong style="color: #495057;">Assigned To:</strong></td>
-        <td style="padding: 12px 15px; color: #212529;">${ticket.assignedTo}</td>
-      </tr>
-      ` : `
-      <tr>
-        <td style="padding: 12px 15px;"><strong style="color: #495057;">Assigned To:</strong></td>
-        <td style="padding: 12px 15px; color: #6c757d; font-style: italic;">Pending assignment</td>
-      </tr>
-      `}
-    </table>
 
     ${formEntries.length > 0 ? `
-    <div style="margin-top: 10px;">
-      <h3 style="color: #495057; margin: 0 0 8px 0; font-size: 16px;">Form Details</h3>
-      <table style="width: 100%; border-collapse: collapse; background: #f8f9fa; border-radius: 6px; overflow: hidden;">
-        ${formEntries.map(entry => `
-          <tr>
-            <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; width: 40%; color: #495057; font-weight: 600; text-transform: capitalize;">${entry.key.replace(/_/g, ' ')}</td>
-            <td style="padding: 10px 12px; border-bottom: 1px solid #dee2e6; color: #212529;">${entry.value}</td>
-          </tr>
+    <!-- Form Fields -->
+    <div style="margin-bottom: 30px;">
+      <h3 style="color: #495057; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e9ecef; padding-bottom: 8px;">📋 Form Details</h3>
+      <div style="background: #f8f9fa; border-radius: 8px; overflow: hidden; border: 1px solid #e9ecef;">
+        ${formEntries.map((entry, idx) => `
+          <div style="padding: 14px 18px; border-bottom: ${idx < formEntries.length - 1 ? '1px solid #dee2e6' : 'none'}; display: flex; align-items: start;">
+            <span style="flex: 0 0 40%; color: #6c757d; font-size: 13px; font-weight: 600; text-transform: capitalize;">${entry.key.replace(/_/g, ' ')}</span>
+            <span style="flex: 1; color: #212529; font-size: 14px; word-break: break-word;">${entry.value}</span>
+          </div>
         `).join('')}
-      </table>
+      </div>
+    </div>
+    ` : ''}
+
+    ${studentProfile.length > 0 ? `
+    <!-- Student Details -->
+    <div style="margin-bottom: 30px;">
+      <h3 style="color: #495057; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e9ecef; padding-bottom: 8px;">👤 Student Information</h3>
+      <div style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 8px; padding: 20px; border: 1px solid #e9ecef;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          ${studentProfile.map(entry => `
+            <div>
+              <div style="color: #6c757d; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px;">${entry.key.replace(/_/g, ' ')}</div>
+              <div style="color: #212529; font-size: 15px; font-weight: 500;">${entry.value}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
     </div>
     ` : ''}
     
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="${ticket.link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">View Your Ticket</a>
-    </div>
-
-    <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-top: 25px;">
-      <p style="margin: 0 0 10px 0; color: #495057; font-size: 14px; font-weight: 600;">What happens next?</p>
-      <ul style="margin: 0; padding-left: 20px; color: #6c757d; font-size: 14px; line-height: 1.8;">
-        <li>Your ticket will be reviewed by our support team</li>
-        <li>You'll receive updates via email when there are status changes</li>
-        <li>You can track the progress by clicking the "View Your Ticket" button above</li>
-      </ul>
+    <!-- CTA Button -->
+    <div style="text-align: center; margin: 35px 0 0 0;">
+      <a href="${ticket.link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); transition: transform 0.2s;">View Ticket →</a>
     </div>
   </div>
   
-  <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
-    <p style="margin: 0;">This is an automated confirmation email from the Ticketing System.</p>
-    <p style="margin: 5px 0 0 0;">Please do not reply to this email. If you need to add more information, please update your ticket using the link above.</p>
+  <!-- Footer -->
+  <div style="padding: 25px 20px; text-align: center;">
+    <p style="margin: 0; color: #6c757d; font-size: 13px; font-weight: 500;">SST-RESOLVE Ticketing System</p>
+    <p style="margin: 8px 0 0 0; color: #adb5bd; font-size: 12px;">Powered by your campus support team</p>
   </div>
 </body>
 </html>`;
@@ -320,6 +311,7 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
  * Generate HTML for status update notification
  */
 export function buildStatusUpdateEmail(
+    ticketId: number,
     ticketNumber: string,
     title: string,
     oldStatus: string,
@@ -331,15 +323,17 @@ export function buildStatusUpdateEmail(
     // Status color mapping
     const statusColors: Record<string, string> = {
         open: '#007bff',
+        acknowledged: '#17a2b8',
         in_progress: '#ffc107',
         resolved: '#28a745',
         closed: '#6c757d',
-        awaiting_student_response: '#17a2b8',
+        awaiting_student_response: '#A855F7',
         reopened: '#dc3545',
+        cancelled: '#9CA3AF',
     };
 
-    const newStatusColor = statusColors[newStatus.toLowerCase()] || '#667eea';
-    const oldStatusColor = statusColors[oldStatus.toLowerCase()] || '#6c757d';
+    const newStatusColor = statusColors[newStatus.toLowerCase().replace(/ /g, '_')] || '#667eea';
+    const oldStatusColor = statusColors[oldStatus.toLowerCase().replace(/ /g, '_')] || '#6c757d';
 
     return `
 <!DOCTYPE html>
@@ -347,38 +341,38 @@ export function buildStatusUpdateEmail(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Status Update: ${ticketNumber}</title>
+  <title>Ticket #${ticketId} Update</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
   <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
-    <h2 style="margin-top: 0; color: #212529;">📋 Ticket Status Updated</h2>
-    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    <h2 style="margin-top: 0; color: #212529; font-size: 22px;">Ticket Update</h2>
+    <p style="color: #495057; font-size: 16px; margin: 5px 0 20px 0;"><strong>Ticket #${ticketId}:</strong> ${title}</p>
     
     <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
       <p style="margin: 0 0 10px 0; color: #495057; font-weight: 600;">Status Changed:</p>
       <p style="margin: 0; font-size: 16px;">
-        <span style="background: ${oldStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${oldStatus.replace('_', ' ')}</span>
+        <span style="background: ${oldStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${oldStatus.replace(/_/g, ' ')}</span>
         <span style="margin: 0 12px; color: #6c757d;">→</span>
-        <span style="background: ${newStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${newStatus.replace('_', ' ')}</span>
+        <span style="background: ${newStatusColor}; color: white; padding: 6px 14px; border-radius: 4px; font-weight: 500; text-transform: capitalize;">${newStatus.replace(/_/g, ' ')}</span>
       </p>
     </div>
     
     ${comment ? `
-    <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
-      <p style="margin: 0 0 8px 0; color: #495057; font-weight: 600; font-size: 14px;">Message:</p>
-      <p style="margin: 0; color: #212529; white-space: pre-wrap;">${comment}</p>
+    <div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+      <p style="margin: 0 0 8px 0; color: #495057; font-weight: 600; font-size: 16px;">💬 ${newStatus.toLowerCase() === 'awaiting_student_response' ? 'Question from Admin' : 'Message'}:</p>
+      <p style="margin: 0; color: #212529; white-space: pre-wrap; font-size: 15px;">${comment}</p>
     </div>
     ` : ''}
     
-    <p style="color: #6c757d; font-size: 14px; margin: 20px 0 0 0;"><strong>Updated by:</strong> ${updatedBy}</p>
+    <p style="color: #6c757d; font-size: 14px; margin: 20px 0;"><strong>Updated by:</strong> ${updatedBy}</p>
     
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View Ticket</a>
+      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View & Reply</a>
     </div>
   </div>
   
   <div style="padding: 20px; text-align: center; color: #6c757d; font-size: 12px;">
-    <p style="margin: 0;">This is an automated update from the Ticketing System.</p>
+    <p style="margin: 0;">SST-RESOLVE Ticketing System</p>
   </div>
 </body>
 </html>`;
@@ -398,6 +392,9 @@ export async function notifyNewTicketEmail(
     const recipients = getRecipients(recipientEmails);
     const originalRecipients = recipientEmails.join(', ');
     let emailBody = buildNewTicketEmail(ticket);
+    
+    // Generate a Message ID for threading (using ticket ID like Slack)
+    const messageId = generateMessageId(ticket.ticketNumber, ticket.ticketId);
 
     // Add debug note only in non-production
     if (!IS_PRODUCTION) {
@@ -411,8 +408,9 @@ export async function notifyNewTicketEmail(
 
     return sendEmail({
         to: recipients,
-        subject: `Ticket Confirmation: ${ticket.ticketNumber} - ${ticket.title}`,
+        subject: `[${ticket.ticketNumber}] ${ticket.title}`,
         html: emailBody,
+        messageId, // Set the Message ID for threading
         text: `Ticket Created Successfully
 
 Ticket Number: ${ticket.ticketNumber}
@@ -435,6 +433,7 @@ This is an automated confirmation email. Please do not reply to this email.`,
  * Send notification for status update
  */
 export async function notifyStatusUpdateEmail(
+    ticketId: number,
     ticketNumber: string,
     title: string,
     oldStatus: string,
@@ -447,7 +446,7 @@ export async function notifyStatusUpdateEmail(
     comment?: string
 ): Promise<string | null> {
     const recipients = getRecipients(recipientEmails);
-    let emailBody = buildStatusUpdateEmail(ticketNumber, title, oldStatus, newStatus, updatedBy, link, comment);
+    let emailBody = buildStatusUpdateEmail(ticketId, ticketNumber, title, oldStatus, newStatus, updatedBy, link, comment);
 
     // Add debug note only in non-production
     if (!IS_PRODUCTION) {

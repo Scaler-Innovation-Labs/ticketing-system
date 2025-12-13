@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ConditionalNav } from "@/components/nav/ConditionalNav";
 import { NavLoadingShimmer } from "@/components/nav/NavLoadingShimmer";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/provider/ThemeProvider";
 import { ProgressBar } from "@/components/dashboard/ProgressBar";
-import { WebVitals } from "./web-vitals";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {children}
             </main>
             <Toaster />
-            <WebVitals />
+            <SpeedInsights />
           </ThemeProvider>
         </body>
       </html>
