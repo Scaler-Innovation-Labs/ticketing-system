@@ -1,5 +1,4 @@
 import * as dotenv from 'dotenv';
-import { defineConfig } from 'drizzle-kit';
 
 dotenv.config({
   path: '.env.local',
@@ -9,7 +8,7 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set in environment variables || .env.local file");
 }
 
-export default defineConfig({
+export default {
   out: './src/db/drizzle',
   schema: [
     './src/db/schema.ts',
@@ -17,7 +16,7 @@ export default defineConfig({
     './src/db/schema-queue.ts',
     './src/db/schema-notifications.ts',
   ],
-  dialect: 'postgresql',
+  dialect: 'postgresql' as const,
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
@@ -27,4 +26,4 @@ export default defineConfig({
   },
   verbose: true,
   strict: true,
-});
+};

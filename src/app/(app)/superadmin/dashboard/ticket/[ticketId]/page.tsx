@@ -653,9 +653,12 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
                         <div className="flex-1 min-w-0 pb-4">
                           <div className="p-3 rounded-lg bg-muted/50 border">
                             <p className={`text-sm font-semibold mb-1.5 break-words ${textColor}`}>{title}</p>
-                            {entry.description && typeof entry.description === 'string' && (
-                              <p className="text-xs text-muted-foreground mb-2 break-words">{entry.description}</p>
-                            )}
+                            {(() => {
+                              const description = typeof entry.description === 'string' ? entry.description : null;
+                              return description && (
+                                <p className="text-xs text-muted-foreground mb-2 break-words">{description}</p>
+                              );
+                            })()}
                             {entryDate && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Calendar className="w-3.5 h-3.5" />

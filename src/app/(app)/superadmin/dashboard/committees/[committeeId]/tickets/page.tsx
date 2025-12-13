@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { StatsCards } from "@/components/dashboard/StatsCards";
+import { PaginationControls } from "@/components/dashboard/PaginationControls";
 import { filterTickets } from "@/lib/ticket/filters/filterTickets";
 import { calculateTicketStats } from "@/lib/committee/calculateStats";
 import { getCommitteeTaggedTickets } from "@/lib/committee/getCommitteeTaggedTickets";
@@ -55,6 +56,9 @@ export default async function CommitteeTicketsPage({
   const search = (typeof paramsObj["search"] === "string" ? paramsObj["search"] : paramsObj["search"]?.[0]) || "";
   const statusFilter = (typeof paramsObj["status"] === "string" ? paramsObj["status"] : paramsObj["status"]?.[0]) || "";
   const categoryFilter = (typeof paramsObj["category"] === "string" ? paramsObj["category"] : paramsObj["category"]?.[0]) || "";
+  const page = parseInt((typeof paramsObj["page"] === "string" ? paramsObj["page"] : paramsObj["page"]?.[0]) || "1", 10);
+  const limit = Math.min(50, Math.max(10, parseInt((typeof paramsObj["limit"] === "string" ? paramsObj["limit"] : paramsObj["limit"]?.[0]) || "20", 10)));
+  const offset = (page - 1) * limit;
 
   // Fetch tagged and created tickets separately
   const [taggedTickets, createdTickets] = await Promise.all([
@@ -65,6 +69,23 @@ export default async function CommitteeTicketsPage({
   // Apply filters to both sets
   const filteredTaggedTickets = filterTickets(taggedTickets, search, statusFilter, categoryFilter);
   const filteredCreatedTickets = filterTickets(createdTickets, search, statusFilter, categoryFilter);
+  
+  // Pagination metadata
+  const totalTaggedTickets = filteredTaggedTickets.length;
+  const totalCreatedTickets = filteredCreatedTickets.length;
+  
+  // Apply pagination to filtered tickets
+  const paginatedTaggedTickets = filteredTaggedTickets.slice(offset, offset + limit);
+  const paginatedCreatedTickets = filteredCreatedTickets.slice(offset, offset + limit);
+  
+  // Determine which tab is active and use appropriate totals
+  const currentTab = (typeof paramsObj["tab"] === "string" ? paramsObj["tab"] : paramsObj["tab"]?.[0]) || "tagged";
+  const totalTickets = currentTab === "tagged" ? totalTaggedTickets : totalCreatedTickets;
+  const totalPages = Math.max(1, Math.ceil(totalTickets / limit));
+  const hasNextPage = page < totalPages;
+  const hasPrevPage = page > 1;
+  const startIndex = totalTickets > 0 ? offset + 1 : 0;
+  const endIndex = Math.min(offset + (currentTab === "tagged" ? paginatedTaggedTickets.length : paginatedCreatedTickets.length), totalTickets);
 
   // Calculate stats from all tickets (for display)
   const allTickets = [...taggedTickets, ...createdTickets];
@@ -99,13 +120,27 @@ export default async function CommitteeTicketsPage({
         committeeId={id}
         taggedTickets={taggedTickets}
         createdTickets={createdTickets}
-        filteredTaggedTickets={filteredTaggedTickets}
-        filteredCreatedTickets={filteredCreatedTickets}
+        filteredTaggedTickets={paginatedTaggedTickets}
+        filteredCreatedTickets={paginatedCreatedTickets}
         search={search}
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
         basePath="/superadmin/dashboard"
       />
+
+      {/* Pagination Controls */}
+      {totalTickets > 0 && (
+        <PaginationControls
+          currentPage={page}
+          totalPages={totalPages}
+          hasNext={hasNextPage}
+          hasPrev={hasPrevPage}
+          totalCount={totalTickets}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          baseUrl={`/superadmin/dashboard/committees/${id}/tickets`}
+        />
+      )}
     </div>
   );
 }

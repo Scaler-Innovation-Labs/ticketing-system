@@ -1,5 +1,5 @@
 import { db, tickets, categories, ticket_statuses, ticket_groups, users } from "@/db";
-import { desc, eq, isNotNull, and, sql, ilike } from "drizzle-orm";
+import { desc, eq, isNotNull, and, sql, ilike, count } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm";
 import { TicketGroupsManager } from "@/components/admin/tickets/TicketGroupsManager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
+import { PaginationControls } from "@/components/dashboard/PaginationControls";
 
 import type { Ticket, TicketMetadata } from "@/db/types-only";
 import { listTicketGroups } from "@/lib/ticket/ticket-groups-service";
@@ -31,6 +32,9 @@ export default async function SuperAdminGroupsPage({
   const categoryFilter = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
   const searchQuery = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const locationFilter = (typeof params["location"] === "string" ? params["location"] : params["location"]?.[0]) || "";
+  const page = parseInt((typeof params["page"] === "string" ? params["page"] : params["page"]?.[0]) || "1", 10);
+  const limit = Math.min(50, Math.max(10, parseInt((typeof params["limit"] === "string" ? params["limit"] : params["limit"]?.[0]) || "20", 10)));
+  const offset = (page - 1) * limit;
 
   // Build where conditions
   const conditions: any[] = [];
@@ -73,9 +77,25 @@ export default async function SuperAdminGroupsPage({
     );
   }
 
-  // Fetch all tickets for super admin with proper joins
+  // Fetch total count for pagination
   const creatorUser = aliasedTable(users, "creator");
+  
+  // Build count query with same joins as main query (needed for filters)
+  let countQuery: any = db
+    .select({ total: count() })
+    .from(tickets)
+    .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+    .leftJoin(categories, eq(tickets.category_id, categories.id));
+  
+  // Apply where conditions to count query
+  if (conditions.length > 0) {
+    countQuery = countQuery.where(and(...conditions));
+  }
+  
+  const [totalRow] = await countQuery;
+  const totalTicketsCount = totalRow?.total || 0;
 
+  // Fetch paginated tickets for super admin with proper joins
   const allTicketRows = await db
     .select({
       id: tickets.id,
@@ -105,12 +125,10 @@ export default async function SuperAdminGroupsPage({
     .leftJoin(creatorUser, eq(tickets.created_by, creatorUser.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(tickets.created_at))
-    .limit(500); // Reduced limit for better performance - can paginate if needed
+    .limit(limit)
+    .offset(offset);
 
-  // Grouping stats based purely on data, not placeholders
-  const totalTicketsCount = allTicketRows.length;
-
-  // Tickets that are in any group
+  // Tickets that are in any group (for stats - use total count, not paginated)
   const groupedTicketIds = await db
     .select({ id: tickets.id })
     .from(tickets)
@@ -121,6 +139,13 @@ export default async function SuperAdminGroupsPage({
 
   // Tickets not in any group
   const availableTicketsCount = totalTicketsCount - groupedTicketsCount;
+  
+  // Pagination metadata
+  const totalPages = Math.max(1, Math.ceil(totalTicketsCount / limit));
+  const hasNextPage = page < totalPages;
+  const hasPrevPage = page > 1;
+  const startIndex = totalTicketsCount > 0 ? offset + 1 : 0;
+  const endIndex = Math.min(offset + allTicketRows.length, totalTicketsCount);
 
   // Initial groups for UI hydration
   const initialGroups = await listTicketGroups();
@@ -242,6 +267,20 @@ export default async function SuperAdminGroupsPage({
           totalTicketsInGroups,
         }}
       />
+
+      {/* Pagination Controls */}
+      {totalTicketsCount > 0 && (
+        <PaginationControls
+          currentPage={page}
+          totalPages={totalPages}
+          hasNext={hasNextPage}
+          hasPrev={hasPrevPage}
+          totalCount={totalTicketsCount}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          baseUrl="/superadmin/dashboard/groups"
+        />
+      )}
     </div>
   );
 }
