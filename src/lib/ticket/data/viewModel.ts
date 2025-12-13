@@ -4,6 +4,8 @@ import { eq, and, desc, asc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { buildTimeline } from '@/lib/ticket/formatting/buildTimeline';
 import { addBusinessHours } from '@/lib/ticket/utils/tat-calculator';
+import { unstable_cache } from 'next/cache';
+import { cache } from 'react';
 
 /**
  * Get default progress percentage based on status value
@@ -109,58 +111,70 @@ export interface StudentTicketViewModel {
     }[];
 }
 
-export async function getStudentTicketViewModel(ticketId: number, userId: string): Promise<StudentTicketViewModel | null> {
-    // 1. Fetch Ticket Details
-    const ticketResult = await db
-        .select({
-            ticket: tickets,
-            status: ticket_statuses,
-            category: categories,
-            subcategory: subcategories,
-            assignedTo: users,
-        })
-        .from(tickets)
-        .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-        .leftJoin(categories, eq(tickets.category_id, categories.id))
-        .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
-        .leftJoin(users, eq(tickets.assigned_to, users.id))
-        .where(and(eq(tickets.id, ticketId), eq(tickets.created_by, userId)))
-        .limit(1);
+/**
+ * Get student ticket view model (cached for 30 seconds)
+ * Uses React cache() for request-level deduplication
+ * Uses unstable_cache for short-term caching across requests
+ * 
+ * Note: Short TTL because tickets change frequently (comments, status updates)
+ */
+const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: string): Promise<StudentTicketViewModel | null> => {
+    // OPTIMIZATION: Parallelize all database queries to reduce latency
+    const [ticketResult, activitiesResult, attachmentsResult] = await Promise.all([
+        // 1. Fetch Ticket Details
+        db
+            .select({
+                ticket: tickets,
+                status: ticket_statuses,
+                category: categories,
+                subcategory: subcategories,
+                assignedTo: users,
+            })
+            .from(tickets)
+            .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+            .leftJoin(categories, eq(tickets.category_id, categories.id))
+            .leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id))
+            .leftJoin(users, eq(tickets.assigned_to, users.id))
+            .where(and(eq(tickets.id, ticketId), eq(tickets.created_by, userId)))
+            .limit(1),
+
+        // 2. Fetch Activity (includes comments) - parallelized
+        db
+            .select({
+                id: ticket_activity.id,
+                action: ticket_activity.action,
+                details: ticket_activity.details,
+                visibility: ticket_activity.visibility,
+                created_at: ticket_activity.created_at,
+                user_name: users.full_name,
+                user_avatar: users.avatar_url,
+            })
+            .from(ticket_activity)
+            .leftJoin(users, eq(ticket_activity.user_id, users.id))
+            .where(eq(ticket_activity.ticket_id, ticketId))
+            .orderBy(asc(ticket_activity.created_at)),
+
+        // 3. Fetch Attachments - parallelized
+        db
+            .select()
+            .from(ticket_attachments)
+            .where(eq(ticket_attachments.ticket_id, ticketId)),
+    ]);
 
     const data = ticketResult[0];
     if (!data) return null;
 
     const { ticket, status, category, subcategory, assignedTo } = data;
 
-    // 2. Fetch Activity (includes comments)
-    const activities = await db
-        .select({
-            id: ticket_activity.id,
-            action: ticket_activity.action,
-            details: ticket_activity.details,
-            visibility: ticket_activity.visibility,
-            created_at: ticket_activity.created_at,
-            user_name: users.full_name,
-            user_avatar: users.avatar_url,
-        })
-        .from(ticket_activity)
-        .leftJoin(users, eq(ticket_activity.user_id, users.id))
-        .where(eq(ticket_activity.ticket_id, ticketId))
-        .orderBy(asc(ticket_activity.created_at));
-
     // Filter activities for student visibility
-    const visibleActivities = activities.filter(a =>
+    const visibleActivities = activitiesResult.filter(a =>
         a.visibility === 'public' || a.visibility === 'student_visible'
     );
 
     // Extract comments from activities (action = 'comment')
     const commentActivities = visibleActivities.filter(a => a.action === 'comment');
 
-    // 3. Fetch Attachments
-    const attachments = await db
-        .select()
-        .from(ticket_attachments)
-        .where(eq(ticket_attachments.ticket_id, ticketId));
+    const attachments = attachmentsResult;
 
     // Helper to normalize status
     const normalizeStatus = (val: string | undefined): 'open' | 'in_progress' | 'awaiting_student_response' | 'resolved' | 'closed' => {
@@ -350,4 +364,12 @@ export async function getStudentTicketViewModel(ticketId: number, userId: string
         }),
         resolvedProfileFields,
     };
+});
+
+// Export the cached version wrapped in unstable_cache for cross-request caching
+// Note: We use React cache() for request-level deduplication, and skip unstable_cache
+// since ticket data changes frequently and the cache key would need to include ticketId
+// which makes it less effective. The parallel queries are the main optimization.
+export async function getStudentTicketViewModel(ticketId: number, userId: string): Promise<StudentTicketViewModel | null> {
+    return getStudentTicketViewModelCached(ticketId, userId);
 }

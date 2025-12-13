@@ -268,66 +268,53 @@ async function findDomainScopeAssignee(
       return null;
     }
 
-    // PRIORITY: Check category_assignments first, then admin_profiles
-    // Step 1: Get admins assigned to this category
-    if (categoryId) {
-      const categoryAssignedAdmins = await db
-        .select({ user_id: category_assignments.user_id })
-        .from(category_assignments)
-        .where(eq(category_assignments.category_id, categoryId));
+    // Optimize: Combine queries for better performance
+    // Check category_assignments, admin_assignments, and admin_profiles in parallel
+    const [categoryAssignedAdmins, assignmentAdmins, profileAdmins] = await Promise.all([
+      // Step 1: Get admins assigned to this category (if categoryId provided)
+      categoryId
+        ? db
+            .select({ user_id: category_assignments.user_id })
+            .from(category_assignments)
+            .where(eq(category_assignments.category_id, categoryId))
+        : Promise.resolve([]),
+      // Step 2: Check admin_assignments (secondary)
+      db
+        .select({ user_id: admin_assignments.user_id })
+        .from(admin_assignments)
+        .where(
+          and(
+            eq(admin_assignments.domain_id, categoryDomainId),
+            eq(admin_assignments.scope_id, scopeId)
+          )
+        ),
+      // Step 3: Check admin_profiles (primary)
+      db
+        .select({ user_id: admin_profiles.user_id })
+        .from(admin_profiles)
+        .innerJoin(users, eq(admin_profiles.user_id, users.id))
+        .innerJoin(roles, eq(users.role_id, roles.id))
+        .where(
+          and(
+            sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
+            eq(admin_profiles.primary_domain_id, categoryDomainId),
+            eq(admin_profiles.primary_scope_id, scopeId),
+            eq(users.is_active, true)
+          )
+        ),
+    ]);
+    
+    // If category assignments exist, filter profile admins to only those in category assignments
+    if (categoryAssignedAdmins.length > 0) {
+      const categoryAssignedUserIds = new Set(categoryAssignedAdmins.map(a => a.user_id));
+      const matchingCategoryAdmins = profileAdmins.filter(p => categoryAssignedUserIds.has(p.user_id));
       
-      if (categoryAssignedAdmins.length > 0) {
-        const categoryAssignedUserIds = categoryAssignedAdmins.map(a => a.user_id);
-        
-        // Step 2: Check if any category-assigned admins match domain/scope from admin_profiles
-        const matchingCategoryAdmins = await db
-          .select({ user_id: admin_profiles.user_id })
-          .from(admin_profiles)
-          .innerJoin(users, eq(admin_profiles.user_id, users.id))
-          .innerJoin(roles, eq(users.role_id, roles.id))
-          .where(
-            and(
-              sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
-              eq(admin_profiles.primary_domain_id, categoryDomainId),
-              eq(admin_profiles.primary_scope_id, scopeId),
-              eq(users.is_active, true),
-              inArray(admin_profiles.user_id, categoryAssignedUserIds)
-            )
-          );
-        
-        if (matchingCategoryAdmins.length === 1) {
-          return matchingCategoryAdmins[0].user_id;
-        }
+      if (matchingCategoryAdmins.length === 1) {
+        return matchingCategoryAdmins[0].user_id;
       }
     }
     
-    // Step 3: If no category assignment match, check admin_assignments (secondary)
-    const assignmentAdmins = await db
-      .select({ user_id: admin_assignments.user_id })
-      .from(admin_assignments)
-      .where(
-        and(
-          eq(admin_assignments.domain_id, categoryDomainId),
-          eq(admin_assignments.scope_id, scopeId)
-        )
-      );
-    
-    // Step 4: Check admin_profiles (primary)
-    const profileAdmins = await db
-      .select({ user_id: admin_profiles.user_id })
-      .from(admin_profiles)
-      .innerJoin(users, eq(admin_profiles.user_id, users.id))
-      .innerJoin(roles, eq(users.role_id, roles.id))
-      .where(
-        and(
-          sql`${roles.name} IN ('admin', 'snr_admin', 'super_admin')`,
-          eq(admin_profiles.primary_domain_id, categoryDomainId),
-          eq(admin_profiles.primary_scope_id, scopeId),
-          eq(users.is_active, true)
-        )
-      );
-    
-    // Combine and deduplicate
+    // Combine and deduplicate all matching admins
     const allMatchingAdmins = new Set<string>();
     assignmentAdmins.forEach(a => allMatchingAdmins.add(a.user_id));
     profileAdmins.forEach(p => allMatchingAdmins.add(p.user_id));
@@ -378,70 +365,79 @@ export async function createTicket(
   userId: string,
   input: CreateTicketInput
 ) {
-  // 1. Check rate limit (outside transaction for better performance)
-  await checkTicketRateLimit(userId);
+  // OPTIMIZATION: Move read-only validation queries outside transaction
+  // These are read-only operations that don't need transaction isolation
+  // This reduces transaction time and improves performance
+  const [categoryValidationResult, openStatusId] = await Promise.all([
+    // 1. Check rate limit (outside transaction for better performance)
+    checkTicketRateLimit(userId).then(() => 
+      validateCategoryAndSubcategory(input.category_id, input.subcategory_id)
+    ),
+    getStatusId(TICKET_STATUS.OPEN),
+  ]);
 
-  return withTransaction(async (txn) => {
-    // 2. Run independent queries in parallel for better performance
-    const [categoryValidationResult, openStatusId] = await Promise.all([
-      validateCategoryAndSubcategory(input.category_id, input.subcategory_id),
-      getStatusId(TICKET_STATUS.OPEN),
-    ]);
+  const { category, subcategory } = categoryValidationResult;
 
-    const { category, subcategory } = categoryValidationResult;
+  // OPTIMIZATION: Move metadata validation and scope resolution outside transaction
+  // These are read-only operations that don't need transaction isolation
+  const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
 
-    // 2.5. Validate metadata
-    // Only resolve scope from profile if location is not in ticket (optimization)
-    const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
-
-    // Strip non-field profile keys before validation (they shouldn't be validated against dynamic fields)
-    // Includes variants to handle different naming conventions (camelCase, snake_case, short forms)
-    // Normalize to lowercase for case-insensitive matching
-    const PROFILE_KEYS = new Set([
-      'name',
-      'email',
-      'phone',
-      'hostel',
-      'hostel_name',
-      'roomnumber', // camelCase normalized
-      'room_number',
-      'room',
-      'batchyear', // camelCase normalized
-      'batch_year',
-      'batch',
-      'classsection', // camelCase normalized
-      'class_section',
-      'section',
-    ]);
-    const metadataForValidation = input.metadata && typeof input.metadata === 'object'
-      ? Object.fromEntries(
-          Object.entries(input.metadata as Record<string, unknown>).filter(
-            ([key]) => !PROFILE_KEYS.has(key.toLowerCase())
-          )
+  // Strip non-field profile keys before validation (they shouldn't be validated against dynamic fields)
+  // Includes variants to handle different naming conventions (camelCase, snake_case, short forms)
+  // Normalize to lowercase for case-insensitive matching
+  const PROFILE_KEYS = new Set([
+    'name',
+    'email',
+    'phone',
+    'hostel',
+    'hostel_name',
+    'roomnumber', // camelCase normalized
+    'room_number',
+    'room',
+    'batchyear', // camelCase normalized
+    'batch_year',
+    'batch',
+    'classsection', // camelCase normalized
+    'class_section',
+    'section',
+  ]);
+  const metadataForValidation = input.metadata && typeof input.metadata === 'object'
+    ? Object.fromEntries(
+        Object.entries(input.metadata as Record<string, unknown>).filter(
+          ([key]) => !PROFILE_KEYS.has(key.toLowerCase())
         )
-      : input.metadata;
+      )
+    : input.metadata;
 
-    const metadataValidation = input.subcategory_id && metadataForValidation
-      ? await validateTicketMetadata(input.subcategory_id, metadataForValidation)
-      : { valid: true, errors: [] };
-    
+  // OPTIMIZATION: Parallelize metadata validation and scope resolution
+  // These are independent operations and can run simultaneously
+  const [metadataValidation, resolvedScopeId] = await Promise.all([
+    // Validate metadata if subcategory and metadata are provided
+    input.subcategory_id && metadataForValidation
+      ? validateTicketMetadata(input.subcategory_id, metadataForValidation)
+      : Promise.resolve({ valid: true, errors: [] }),
     // Only fetch from student profile if location is not provided in ticket
-    const resolvedScopeId = ticketLocation
-      ? null // Skip profile lookup if location is in ticket
-      : await resolveTicketScope(input.category_id, userId, {
+    ticketLocation
+      ? Promise.resolve(null) // Skip profile lookup if location is in ticket
+      : resolveTicketScope(input.category_id, userId, {
           scope_id: category.scope_id,
           scope_mode: category.scope_mode,
-        });
+        }),
+  ]);
 
-    if (!metadataValidation.valid) {
-      throw Errors.validation(
-        'Invalid ticket metadata',
-        { errors: metadataValidation.errors }
-      );
-    }
+  if (!metadataValidation.valid) {
+    throw Errors.validation(
+      'Invalid ticket metadata',
+      { errors: metadataValidation.errors }
+    );
+  }
 
-    // 3. Calculate deadlines based on SLA
-    const deadlines = calculateDeadlines(category.sla_hours || 48);
+  // Calculate deadlines outside transaction (pure computation)
+  const deadlines = calculateDeadlines(category.sla_hours || 48);
+
+  // All validation and preparation is done outside transaction
+  // Now we only do writes inside the transaction
+  return withTransaction(async (txn) => {
 
     // 4. Find best assignee (priority order):
     // 1) Field-level assignment (from category_fields.assigned_admin_id)
@@ -453,39 +449,54 @@ export async function createTicket(
     // Determine the ticket's final scope (resolved scope takes precedence over category scope)
     const ticketScopeId = resolvedScopeId || category.scope_id || null;
     
-    // Priority 1: Field-level assignment
-    let assignedTo: string | null = await findFieldLevelAssignee(
-      input.subcategory_id || null,
-      input.metadata || null,
-      txn
-    );
+    // OPTIMIZATION: Pre-fetch all potential assignees in parallel
+    // This reduces sequential query delays by fetching all candidates upfront
+    const [fieldLevelAssignee, superAdmin, domainScopeAssignee] = await Promise.all([
+      // Priority 1: Field-level assignment
+      findFieldLevelAssignee(
+        input.subcategory_id || null,
+        input.metadata || null,
+        txn
+      ),
+      // Priority 5: Super admin fallback (pre-fetch in case we need it)
+      findSuperAdmin(txn).catch(() => null), // Don't fail if super admin lookup fails
+      // Priority 4: Domain/scope-based assignment (pre-fetch, will be used if other priorities fail)
+      // Only fetch if we have a domain_id (early exit optimization)
+      category.domain_id
+        ? findDomainScopeAssignee(
+            category.domain_id,
+            ticketScopeId,
+            ticketLocation,
+            category.scope_mode,
+            category.scope_id,
+            ticketLocation ? null : userId, // Skip userId if location is in ticket
+            input.category_id
+          ).catch(() => null) // Don't fail if domain/scope lookup fails
+        : Promise.resolve(null),
+    ]);
     
-    // Priority 2: Subcategory-level assignment
+    // Apply assignment priority (using pre-fetched values)
+    // Priority 1: Field-level assignment
+    let assignedTo: string | null = fieldLevelAssignee;
+    
+    // Priority 2: Subcategory-level assignment (no query needed, already in memory)
     if (!assignedTo) {
       assignedTo = subcategory?.assigned_admin_id || null;
     }
     
-    // Priority 3: Category default admin
+    // Priority 3: Category default admin (no query needed, already in memory)
     if (!assignedTo) {
       assignedTo = category.default_admin_id;
     }
     
-    // Priority 4: Domain/scope-based assignment
+    // Priority 4: Domain/scope-based assignment (already fetched)
     if (!assignedTo) {
-      assignedTo = await findDomainScopeAssignee(
-        category.domain_id,
-        ticketScopeId,
-        ticketLocation,
-        category.scope_mode,
-        category.scope_id,
-        ticketLocation ? null : userId, // Skip userId if location is in ticket (no need to fetch profile)
-        input.category_id
-      );
+      assignedTo = domainScopeAssignee;
     }
     
-    // Priority 5: Super admin fallback
+    // Priority 5: Super admin fallback (already fetched)
     if (!assignedTo) {
-      assignedTo = await findSuperAdmin(txn);
+      assignedTo = superAdmin;
     }
 
     // 5. Create ticket
@@ -511,40 +522,57 @@ export async function createTicket(
       })
       .returning();
 
-    // 6. Insert attachments into ticket_attachments table
-    if (input.attachments && input.attachments.length > 0) {
-      await txn.insert(ticket_attachments).values(
-        input.attachments.map((attachment) => ({
-          ticket_id: ticket.id,
-          uploaded_by: userId,
-          file_name: attachment.filename,
-          file_url: attachment.url,
-          file_size: attachment.size,
-          mime_type: attachment.mime_type,
-        }))
+    // OPTIMIZATION: Parallelize critical inserts after ticket creation
+    // Attachments and activity are critical, outbox is non-blocking
+    const [attachmentsResult, activityResult] = await Promise.all([
+      // 6. Insert attachments into ticket_attachments table (if any)
+      input.attachments && input.attachments.length > 0
+        ? txn.insert(ticket_attachments).values(
+            input.attachments.map((attachment) => ({
+              ticket_id: ticket.id,
+              uploaded_by: userId,
+              file_name: attachment.filename,
+              file_url: attachment.url,
+              file_size: attachment.size,
+              mime_type: attachment.mime_type,
+            }))
+          )
+        : Promise.resolve(),
+
+      // 7. Log activity (critical - must succeed)
+      txn.insert(ticket_activity).values({
+        ticket_id: ticket.id,
+        user_id: userId,
+        action: 'created',
+        details: {
+          title: ticket.title,
+          category_id: ticket.category_id,
+          subcategory_id: ticket.subcategory_id,
+          priority: ticket.priority,
+        },
+      }),
+    ]);
+
+    // 8. Queue notification (non-blocking - don't fail if this errors)
+    // Run this separately so it doesn't block ticket creation
+    try {
+      await txn.insert(outbox).values({
+        event_type: 'ticket.created',
+        aggregate_type: 'ticket',
+        aggregate_id: String(ticket.id),
+        payload: { ticketId: ticket.id },
+      });
+    } catch (outboxError: any) {
+      // Log but don't throw - notification queueing failure shouldn't block ticket creation
+      logger.error(
+        { 
+          error: outboxError?.message || String(outboxError),
+          ticketId: ticket.id,
+          userId 
+        },
+        'Failed to queue ticket creation notification'
       );
     }
-
-    // 7. Log activity
-    await txn.insert(ticket_activity).values({
-      ticket_id: ticket.id,
-      user_id: userId,
-      action: 'created',
-      details: {
-        title: ticket.title,
-        category_id: ticket.category_id,
-        subcategory_id: ticket.subcategory_id,
-        priority: ticket.priority,
-      },
-    });
-
-    // 7. Queue notification
-    await txn.insert(outbox).values({
-      event_type: 'ticket.created',
-      aggregate_type: 'ticket',
-      aggregate_id: String(ticket.id),
-      payload: { ticketId: ticket.id },
-    });
 
     logger.info(
       {

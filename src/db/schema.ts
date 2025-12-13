@@ -104,6 +104,9 @@ export const students = pgTable('students', {
   userIdx: uniqueIndex('students_user_idx').on(table.user_id),
   rollNoIdx: index('students_roll_no_idx').on(table.roll_no),
   hostelIdx: index('students_hostel_idx').on(table.hostel_id),
+  // Additional indexes for performance
+  classSectionIdx: index('students_class_section_idx').on(table.class_section_id),
+  batchIdx: index('students_batch_idx').on(table.batch_id),
 }));
 
 export const admin_profiles = pgTable('admin_profiles', {

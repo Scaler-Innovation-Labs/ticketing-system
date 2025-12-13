@@ -114,7 +114,7 @@ export const ALLOWED_FILE_EXTENSIONS = [
 
 export const CACHE_TTL = {
   USER_ROLE: 5 * 60 * 1000,           // 5 minutes
-  CATEGORY_LIST: 60 * 60 * 1000,      // 1 hour
+  CATEGORY_LIST: 4 * 60 * 60 * 1000,  // 4 hours (increased from 1 hour for better performance)
   TICKET_STATUS: 60 * 60 * 1000,      // 1 hour
   SUPER_ADMIN: 5 * 60 * 1000,         // 5 minutes
 } as const;

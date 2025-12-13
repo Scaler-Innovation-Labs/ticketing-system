@@ -106,43 +106,41 @@ export async function getStudentTickets(filters: TicketFilters) {
         ? asc(tickets.created_at)
         : desc(tickets.created_at);
 
+    // OPTIMIZATION: Run count and ticket queries in parallel when possible
     // Check if we need joins for count query
     const needsStatusJoin = status && isNaN(parseInt(status, 10));
     const needsCategoryJoin = category && isNaN(parseInt(category, 10));
     const needsSubcategoryJoin = subcategory && isNaN(parseInt(subcategory, 10));
     const needsAnyJoin = needsStatusJoin || needsCategoryJoin || needsSubcategoryJoin;
 
-    // Get total count - need JOINs if filtering by status value, category slug, or subcategory slug
-    let totalCount = 0;
-    if (needsAnyJoin) {
-        let countQuery: any = db
-            .select({ count: sql<number>`count(*)` })
-            .from(tickets);
-        
-        if (needsStatusJoin) {
-            countQuery = countQuery.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
+    // Build count query
+    const buildCountQuery = () => {
+        if (needsAnyJoin) {
+            let countQuery: any = db
+                .select({ count: sql<number>`count(*)` })
+                .from(tickets);
+            
+            if (needsStatusJoin) {
+                countQuery = countQuery.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
+            }
+            if (needsCategoryJoin) {
+                countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
+            }
+            if (needsSubcategoryJoin) {
+                countQuery = countQuery.leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id));
+            }
+            
+            return countQuery.where(and(...conditions));
+        } else {
+            return db
+                .select({ count: sql<number>`count(*)` })
+                .from(tickets)
+                .where(and(...conditions));
         }
-        if (needsCategoryJoin) {
-            countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
-        }
-        if (needsSubcategoryJoin) {
-            countQuery = countQuery.leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id));
-        }
-        
-        const countResult = await countQuery.where(and(...conditions));
-        totalCount = Number(countResult[0]?.count || 0);
-    } else {
-        const countResult = await db
-            .select({ count: sql<number>`count(*)` })
-            .from(tickets)
-            .where(and(...conditions));
-        totalCount = Number(countResult[0]?.count || 0);
-    }
+    };
 
-    const totalPages = Math.ceil(totalCount / limit);
-
-    // Get tickets
-    const ticketList = await db
+    // Build ticket list query
+    const buildTicketQuery = () => db
         .select({
             id: tickets.id,
             ticket_number: tickets.ticket_number,
@@ -179,6 +177,15 @@ export async function getStudentTickets(filters: TicketFilters) {
         .limit(limit)
         .offset(offset);
 
+    // OPTIMIZATION: Run count and ticket queries in parallel
+    const [countResult, ticketList] = await Promise.all([
+        buildCountQuery(),
+        buildTicketQuery(),
+    ]);
+
+    const totalCount = Number(countResult[0]?.count || 0);
+    const totalPages = Math.ceil(totalCount / limit);
+
     return {
         tickets: ticketList,
         pagination: {
@@ -195,26 +202,31 @@ export async function getStudentTickets(filters: TicketFilters) {
 
 /**
  * Get ticket statistics for a user
+ * OPTIMIZATION: Parallelize status count and escalated count queries
  */
 export async function getTicketStats(userId: string) {
-    const result = await db
-        .select({
-            status_value: ticket_statuses.value,
-            count: sql<number>`count(*)`,
-        })
-        .from(tickets)
-        .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-        .where(eq(tickets.created_by, userId))
-        .groupBy(ticket_statuses.value);
-
-    // Get escalated count
-    const escalatedResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(tickets)
-        .where(and(
-            eq(tickets.created_by, userId),
-            sql`${tickets.escalation_level} > 0`
-        ));
+    // OPTIMIZATION: Run both queries in parallel
+    const [result, escalatedResult] = await Promise.all([
+        // Get status counts
+        db
+            .select({
+                status_value: ticket_statuses.value,
+                count: sql<number>`count(*)`,
+            })
+            .from(tickets)
+            .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+            .where(eq(tickets.created_by, userId))
+            .groupBy(ticket_statuses.value),
+        
+        // Get escalated count (parallelized)
+        db
+            .select({ count: sql<number>`count(*)` })
+            .from(tickets)
+            .where(and(
+                eq(tickets.created_by, userId),
+                sql`${tickets.escalation_level} > 0`
+            )),
+    ]);
 
     const escalatedCount = Number(escalatedResult[0]?.count || 0);
 

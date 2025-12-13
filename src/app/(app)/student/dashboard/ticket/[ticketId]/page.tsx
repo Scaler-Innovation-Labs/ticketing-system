@@ -79,6 +79,7 @@ export default async function StudentTicketPage({
   if (!Number.isFinite(id)) notFound();
 
   // Get user (ensure exists; handle Clerk external_id changes)
+  // Note: This is cached, so it's fast
   let dbUser = await getCachedUser(userId);
   if (!dbUser) {
     // Try to create/link user and retry once
@@ -94,6 +95,8 @@ export default async function StudentTicketPage({
   }
 
   // Load view model (handles all business logic)
+  // OPTIMIZATION: getStudentTicketViewModel now parallelizes all internal queries
+  // (ticket, activities, attachments are fetched in parallel)
   let vm;
   try {
     vm = await getStudentTicketViewModel(id, dbUser.id);

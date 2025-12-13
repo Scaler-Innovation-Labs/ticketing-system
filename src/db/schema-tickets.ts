@@ -71,7 +71,13 @@ export const categories = pgTable('categories', {
   slugIdx: uniqueIndex('categories_slug_idx').on(table.slug),
   domainIdx: index('categories_domain_idx').on(table.domain_id),
   scopeIdx: index('categories_scope_idx').on(table.scope_id),
+  defaultAdminIdx: index('categories_default_admin_idx').on(table.default_admin_id),
   parentIdx: index('categories_parent_idx').on(table.parent_category_id),
+  // Index for filtering active categories (frequently queried)
+  isActiveIdx: index('categories_is_active_idx').on(table.is_active),
+  // Composite index for common queries
+  activeDisplayOrderIdx: index('categories_active_display_order_idx')
+    .on(table.is_active, table.display_order),
 }));
 
 export const subcategories = pgTable('subcategories', {
@@ -88,7 +94,13 @@ export const subcategories = pgTable('subcategories', {
   updated_at: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
   categoryIdx: index('subcategories_category_idx').on(table.category_id),
+  assignedAdminIdx: index('subcategories_assigned_admin_idx').on(table.assigned_admin_id),
   uniqueSlug: uniqueIndex('subcategories_category_slug_idx').on(table.category_id, table.slug),
+  // Index for filtering active subcategories
+  isActiveIdx: index('subcategories_is_active_idx').on(table.is_active),
+  // Composite index for common queries (category + active + display_order)
+  categoryActiveDisplayIdx: index('subcategories_category_active_display_idx')
+    .on(table.category_id, table.is_active, table.display_order),
 }));
 
 // ============================================
@@ -112,7 +124,11 @@ export const category_fields = pgTable('category_fields', {
   updated_at: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => ({
   subcategoryIdx: index('category_fields_subcategory_idx').on(table.subcategory_id),
+  assignedAdminIdx: index('category_fields_assigned_admin_idx').on(table.assigned_admin_id),
   uniqueSlug: uniqueIndex('category_fields_subcategory_slug_idx').on(table.subcategory_id, table.slug),
+  // Composite index for field-level assignment queries
+  subcategoryAdminIdx: index('category_fields_subcategory_admin_idx')
+    .on(table.subcategory_id, table.assigned_admin_id),
 }));
 
 // ============================================
@@ -216,11 +232,18 @@ export const tickets = pgTable('tickets', {
   assignedToIdx: index('tickets_assigned_to_idx').on(table.assigned_to),
   statusIdx: index('tickets_status_idx').on(table.status_id),
   categoryIdx: index('tickets_category_idx').on(table.category_id),
+  subcategoryIdx: index('tickets_subcategory_idx').on(table.subcategory_id),
+  scopeIdx: index('tickets_scope_idx').on(table.scope_id),
   groupIdx: index('tickets_group_idx').on(table.group_id),
   createdAtIdx: index('tickets_created_at_idx').on(table.created_at),
   // Composite index for rate limiting queries
   createdByCreatedAtIdx: index('tickets_created_by_created_at_idx')
     .on(table.created_by, table.created_at),
+  // Composite index for common filtering patterns
+  categorySubcategoryIdx: index('tickets_category_subcategory_idx')
+    .on(table.category_id, table.subcategory_id),
+  statusCategoryIdx: index('tickets_status_category_idx')
+    .on(table.status_id, table.category_id),
 }));
 
 // ============================================

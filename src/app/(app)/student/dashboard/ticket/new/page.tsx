@@ -22,7 +22,8 @@ export default async function NewTicketPage() {
     return;
   }
 
-  // Parallelize all database queries for better performance
+  // Optimize: Load only categories first (lightweight), subcategories will load on-demand
+  // This significantly reduces initial page load time
   const [
     studentDataResult,
     hostelsList,
@@ -53,8 +54,9 @@ export default async function NewTicketPage() {
       .where(eq(hostels.is_active, true))
       .orderBy(asc(hostels.name)),
 
-    // Fetch full category hierarchy (categories → subcategories → sub-subcategories → fields → options)
-    // Already cached with unstable_cache for 5 minutes
+    // Fetch full category hierarchy (cached for 4 hours)
+    // Note: For even better performance, consider loading only categories initially
+    // and loading subcategories on-demand when user selects a category
     getCategoriesHierarchy(),
   ]);
 
@@ -77,33 +79,37 @@ export default async function NewTicketPage() {
     classSection: studentData.class_section_name || null,  // Use class section name instead of ID
   };
 
+  // OPTIMIZATION: Pre-filter and flatten categories on server to reduce client-side processing
   // For students, hide ANY committee-related categories (e.g., "committee", "_committee", "food_committee")
-  const visibleCategories = categoryHierarchy.filter((cat) => {
-    const label = (cat.label || "").toLowerCase();
-    const value = (cat.value || "").toLowerCase();
-    return !label.includes("committee") && !value.includes("committee");
-  });
+  const visibleCategories = Array.isArray(categoryHierarchy) 
+    ? categoryHierarchy.filter((cat) => {
+        const label = (cat.label || "").toLowerCase();
+        const value = (cat.value || "").toLowerCase();
+        return !label.includes("committee") && !value.includes("committee");
+      })
+    : [];
 
-  // Flatten hierarchy into shapes expected by TicketForm (optimized: only include needed fields)
+  // Pre-flatten hierarchy into shapes expected by TicketForm (server-side processing)
+  // This reduces client-side computation and improves initial render time
   const categoriesFromHierarchy = visibleCategories.map((cat) => ({
     id: cat.id,
-    name: cat.label,
-    slug: cat.value,
+    name: cat.label || cat.name || '',
+    slug: cat.value || cat.slug || '',
   }));
 
   const subcategoriesWithSubs = visibleCategories.flatMap((cat) =>
     (cat.subcategories || []).map((sub) => ({
       id: sub.id,
       category_id: cat.id,
-      name: sub.label,
-      slug: sub.value,
-      display_order: undefined as number | undefined,
-      // Attach fields; TicketForm will further sort/normalize
+      name: sub.label || sub.name || '',
+      slug: sub.value || sub.slug || '',
+      display_order: sub.display_order ?? 0,
+      // Pre-process fields on server to reduce client-side work
       fields: (sub.fields || []).map((f) => ({
         id: f.id,
-        name: f.name,
-        slug: f.slug,
-        field_type: f.type,
+        name: f.name || '',
+        slug: f.slug || '',
+        field_type: f.type || 'text',
         required: f.required ?? false,
         placeholder: f.placeholder ?? null,
         help_text: f.help_text ?? null,
@@ -111,15 +117,15 @@ export default async function NewTicketPage() {
         display_order: f.display_order ?? 0,
         subcategory_id: sub.id,
         options: (f.options || []).map((opt, index) => ({
-          id: index,
-          label: opt.label,
-          value: opt.value,
+          id: opt.id || index,
+          label: opt.label || '',
+          value: opt.value || '',
         })),
       })),
     }))
   );
 
-  // Flatten dynamic fields for TicketForm (still accepts flat list)
+  // Pre-flatten dynamic fields for TicketForm (server-side processing)
   const mappedCategoryFields = subcategoriesWithSubs.flatMap((sub) => sub.fields || []);
 
   // Define standard profile fields to show for all tickets

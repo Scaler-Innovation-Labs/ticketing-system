@@ -46,7 +46,17 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  // Protect all other routes - require authentication
+  // For API routes, let them through - they'll handle auth themselves
+  // This prevents CORS errors from redirects and allows API routes to return proper 401 JSON
+  const isApiRoute = req.nextUrl.pathname.startsWith('/api/');
+  
+  if (isApiRoute) {
+    // Let API routes handle their own authentication
+    // They can return proper 401 JSON responses without CORS issues
+    return NextResponse.next();
+  }
+
+  // For page routes, use protect() which redirects to sign-in
   await auth.protect();
 
   return NextResponse.next();
