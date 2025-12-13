@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/helpers';
 import { db } from '@/db';
-import { users, roles, domains, scopes, admin_profiles, admin_assignments } from '@/db';
-import { eq, and, or, like, inArray } from 'drizzle-orm';
+import { users, roles, domains, scopes, admin_profiles, admin_assignments, category_fields, categories } from '@/db';
+import { eq, and, or, like, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -106,13 +106,38 @@ const DeleteStaffSchema = z.object({
 /**
  * DELETE /api/admin/staff
  * Delete a staff member (hard delete user + related admin profile/assignments)
+ * Supports both query parameter (?id=...) and JSON body
  */
 export async function DELETE(request: Request) {
   try {
     await requireRole(['super_admin', 'snr_admin']);
 
-    const body = await request.json();
-    const data = DeleteStaffSchema.parse(body);
+    // Try to get ID from query parameters first
+    const { searchParams } = new URL(request.url);
+    const queryId = searchParams.get('id');
+    
+    let userId: string;
+    
+    if (queryId) {
+      // Use query parameter
+      userId = queryId;
+    } else {
+      // Fall back to JSON body
+      try {
+        const body = await request.json();
+        const data = DeleteStaffSchema.parse(body);
+        userId = data.id;
+      } catch (bodyError) {
+        // If body parsing fails, return error
+        if (bodyError instanceof SyntaxError || (bodyError instanceof Error && bodyError.message.includes('JSON'))) {
+          return NextResponse.json({ error: 'Missing id parameter. Provide ?id=... in query or { id: "..." } in body' }, { status: 400 });
+        }
+        throw bodyError;
+      }
+    }
+
+    // Validate UUID format
+    const data = DeleteStaffSchema.parse({ id: userId });
 
     const [existingUser] = await db
       .select({ id: users.id })
@@ -124,11 +149,26 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Clean up related admin data
+    // Clean up all references to this user before deletion
+    // 1. Set assigned_admin_id to NULL in category_fields
+    await db
+      .update(category_fields)
+      .set({ assigned_admin_id: null })
+      .where(eq(category_fields.assigned_admin_id, data.id));
+
+    // 2. Set default_admin_id to NULL in categories
+    await db
+      .update(categories)
+      .set({ default_admin_id: null })
+      .where(eq(categories.default_admin_id, data.id));
+
+    // 3. Delete admin profiles
     await db.delete(admin_profiles).where(eq(admin_profiles.user_id, data.id));
+
+    // 4. Delete admin assignments (cascade should handle this, but being explicit)
     await db.delete(admin_assignments).where(eq(admin_assignments.user_id, data.id));
 
-    // Delete user
+    // 5. Delete user (category_assignments will cascade automatically)
     await db.delete(users).where(eq(users.id, data.id));
 
     return NextResponse.json({ success: true }, { status: 200 });
