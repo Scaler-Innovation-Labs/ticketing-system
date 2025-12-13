@@ -68,62 +68,53 @@ export async function updateTicketStatus(
   userId: string,
   comment?: string
 ) {
+  // OPTIMIZATION: Move read-only status lookups outside transaction
+  // These are read-only operations that don't need transaction isolation
+  // First, get the ticket to read its status_id
+  const [ticket] = await db
+    .select({ status_id: tickets.status_id })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+
+  if (!ticket || !ticket.status_id) {
+    throw Errors.notFound('Ticket', String(ticketId));
+  }
+
+  // OPTIMIZATION: Parallelize status lookups
+  const normalizedNewStatus = (newStatusValue || '').toLowerCase();
+  const [currentStatus, newStatusId] = await Promise.all([
+    getStatusValue(ticket.status_id),
+    getStatusId(normalizedNewStatus),
+  ]);
+
+  const normalizedCurrentStatus = (currentStatus || '').toLowerCase();
+
+  // Validate transition
+  if (!isValidTransition(normalizedCurrentStatus, normalizedNewStatus)) {
+    throw Errors.invalidStatusTransition(currentStatus, newStatusValue);
+  }
+
+  if (!newStatusId || typeof newStatusId !== 'number') {
+    throw Errors.invalidRequest(`Invalid status ID for status: ${newStatusValue}`);
+  }
+
+  // Now proceed with transaction for writes
   return withTransaction(async (txn) => {
-    // 1. Get current ticket
-    const [ticket] = await txn
+    // Get full ticket data for updates
+    const [ticketData] = await txn
       .select()
       .from(tickets)
       .where(eq(tickets.id, ticketId))
       .limit(1);
 
-    if (!ticket || typeof ticket !== 'object') {
+    if (!ticketData || typeof ticketData !== 'object') {
       throw Errors.notFound('Ticket', String(ticketId));
-    }
-
-    // 2. Get current and new status values
-    if (!ticket.status_id || typeof ticket.status_id !== 'number') {
-      throw Errors.invalidRequest('Ticket has no valid status_id');
-    }
-    
-    let currentStatus: string;
-    try {
-      currentStatus = await getStatusValue(ticket.status_id);
-    } catch (statusError) {
-      logger.error(
-        { error: statusError, ticketId, statusId: ticket.status_id },
-        'Failed to get current ticket status'
-      );
-      throw Errors.invalidRequest(`Failed to get current ticket status: ${statusError instanceof Error ? statusError.message : String(statusError)}`);
-    }
-
-    // 3. Normalize status values for comparison (case-insensitive)
-    const normalizedCurrentStatus = (currentStatus || '').toLowerCase();
-    const normalizedNewStatus = (newStatusValue || '').toLowerCase();
-    
-    // 3. Validate transition
-    if (!isValidTransition(normalizedCurrentStatus, normalizedNewStatus)) {
-      throw Errors.invalidStatusTransition(currentStatus, newStatusValue);
-    }
-
-    // 4. Get new status ID (use normalized value for lookup)
-    let newStatusId: number;
-    try {
-      newStatusId = await getStatusId(normalizedNewStatus);
-    } catch (statusIdError) {
-      logger.error(
-        { error: statusIdError, ticketId, newStatusValue },
-        'Failed to get new status ID'
-      );
-      throw Errors.invalidRequest(`Failed to get status ID for status "${newStatusValue}": ${statusIdError instanceof Error ? statusIdError.message : String(statusIdError)}`);
-    }
-    
-    if (!newStatusId || typeof newStatusId !== 'number') {
-      throw Errors.invalidRequest(`Invalid status ID for status: ${newStatusValue}`);
     }
 
     // 5. Handle TAT pause/resume for awaiting_student_response
     const { calculateRemainingBusinessHours, addBusinessHours } = require('./utils/tat-calculator');
-    const metadata = (ticket.metadata as Record<string, any>) || {};
+    const metadata = (ticketData.metadata as Record<string, any>) || {};
     const now = new Date();
     let metadataUpdated = false;
     
@@ -137,8 +128,8 @@ export async function updateTicketStatus(
     if (normalizedNewStatus === TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase() && 
         normalizedCurrentStatus !== TICKET_STATUS.AWAITING_STUDENT_RESPONSE.toLowerCase()) {
       // Calculate remaining TAT hours
-      if (ticket.resolution_due_at) {
-        const remainingHours = calculateRemainingBusinessHours(now, new Date(ticket.resolution_due_at));
+      if (ticketData.resolution_due_at) {
+        const remainingHours = calculateRemainingBusinessHours(now, new Date(ticketData.resolution_due_at));
         metadata.tatPausedAt = now.toISOString();
         metadata.tatRemainingHours = remainingHours;
         metadata.tatPausedStatus = normalizedCurrentStatus;
@@ -183,7 +174,7 @@ export async function updateTicketStatus(
     }
 
     if (normalizedNewStatus === TICKET_STATUS.REOPENED.toLowerCase()) {
-      const currentReopenCount = ticket?.reopen_count;
+      const currentReopenCount = ticketData?.reopen_count;
       const reopenCountValue = (typeof currentReopenCount === 'number' ? currentReopenCount : 0) + 1;
       updates.reopen_count = reopenCountValue;
       updates.resolved_at = null;
@@ -202,7 +193,8 @@ export async function updateTicketStatus(
 
     const [updatedTicket] = updatedTickets;
 
-    // 6. Log activity
+    // OPTIMIZATION: Parallelize activity and outbox inserts
+    // These are independent operations and can run simultaneously
     const activityDetails: Record<string, string> = {
       from: String(currentStatus || 'unknown'),
       to: String(newStatusValue || 'unknown'),
@@ -210,59 +202,50 @@ export async function updateTicketStatus(
     if (comment && typeof comment === 'string' && comment.trim()) {
       activityDetails.comment = String(comment.trim());
     }
-    
-    try {
-      await txn.insert(ticket_activity).values({
+
+    await Promise.allSettled([
+      // 6. Log activity
+      txn.insert(ticket_activity).values({
         ticket_id: Number(ticketId),
         user_id: String(userId),
         action: 'status_changed',
         details: activityDetails as any, // JSONB field
-      });
-    } catch (activityError: any) {
-      logger.error(
-        { 
-          error: activityError?.message || String(activityError), 
-          errorStack: activityError?.stack,
-          ticketId, 
-          userId 
-        },
-        'Failed to log ticket activity'
-      );
-      // Don't throw - activity logging failure shouldn't block status update
-    }
+      }),
 
-    // Queue notification
-    try {
-      const payload = {
-        ticketId: Number(ticketId),
-        oldStatus: String(currentStatus || 'unknown'),
-        newStatus: String(newStatusValue || 'unknown'),
-        updatedBy: String(userId || 'unknown'),
-      };
-      
-      await txn.insert(outbox).values({
+      // 7. Queue notification
+      txn.insert(outbox).values({
         event_type: 'ticket.status_updated',
         aggregate_type: 'ticket',
         aggregate_id: String(ticketId),
-        payload: payload as any, // JSONB field
+        payload: {
+          ticketId: Number(ticketId),
+          oldStatus: String(currentStatus || 'unknown'),
+          newStatus: String(newStatusValue || 'unknown'),
+          updatedBy: String(userId || 'unknown'),
+        } as any, // JSONB field
+      }),
+    ]).then((results) => {
+      // Log any failures but don't throw (these are non-critical operations)
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const operation = ['activity', 'outbox'][index];
+          logger.error(
+            { 
+              error: result.reason?.message || String(result.reason),
+              ticketId, 
+              userId,
+              operation
+            },
+            `Failed to ${operation} insert during status update`
+          );
+        }
       });
-    } catch (outboxError: any) {
-      logger.error(
-        { 
-          error: outboxError?.message || String(outboxError),
-          errorStack: outboxError?.stack,
-          ticketId, 
-          userId 
-        },
-        'Failed to queue notification'
-      );
-      // Don't throw - notification queueing failure shouldn't block status update
-    }
+    });
 
     logger.info(
       {
         ticketId: Number(ticketId),
-        ticketNumber: ticket?.ticket_number || null,
+        ticketNumber: ticketData?.ticket_number || null,
         from: String(currentStatus || 'unknown'),
         to: String(newStatusValue || 'unknown'),
         userId: String(userId || 'unknown'),

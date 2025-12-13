@@ -147,7 +147,7 @@ export default async function StudentTicketPage({
               optimisticComments={[]}
             />
 
-            {(vm.normalizedStatus === "closed" || vm.normalizedStatus === "resolved") && (
+            {vm.normalizedStatus === "resolved" && (
               <TicketRating
                 ticketId={vm.ticket.id}
                 currentRating={vm.ticket.rating ? String(vm.ticket.rating) : undefined}

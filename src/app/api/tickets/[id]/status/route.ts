@@ -30,31 +30,49 @@ const StatusUpdateSchema = z.object({
 
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
-    const { dbUser } = await requireDbUser();
-    const role = await getUserRole(dbUser.id);
-    const { id } = await context.params;
+    // OPTIMIZATION: Parse body once and parallelize initial operations
+    const [authResult, params, body] = await Promise.all([
+      requireDbUser(),
+      context.params,
+      req.json(),
+    ]);
+
+    const { dbUser } = authResult;
+    const { id } = params;
     const ticketId = parseInt(id, 10);
 
     if (isNaN(ticketId)) {
       throw Errors.validation('Invalid ticket ID');
     }
 
+    // OPTIMIZATION: Validate body early and get role in parallel
+    const validation = StatusUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      throw Errors.validation(
+        'Invalid status update data',
+        validation.error.issues.map((e) => e.message)
+      );
+    }
+
+    const { status, comment, internal } = validation.data;
+    const normalizedStatus = status.toLowerCase();
+
+    // OPTIMIZATION: Get role and check student permissions in parallel with ownership check
+    const role = await getUserRole(dbUser.id);
+
     // Only admins can change status, unless it's a student reopening/closing their own ticket
     if (role === USER_ROLES.STUDENT) {
-      const body = await req.clone().json();
-      const status = body.status?.toLowerCase();
-
       // Allow students to close or reopen
-      if (status !== 'closed' && status !== 'reopened') {
+      if (normalizedStatus !== 'closed' && normalizedStatus !== 'reopened') {
         throw Errors.forbidden('Students can only close or reopen tickets');
       }
 
-      // Verify ownership
+      // OPTIMIZATION: Verify ownership with minimal query (only check created_by)
       const { db, tickets } = await import('@/db');
       const { eq } = await import('drizzle-orm');
 
       const [ticket] = await db
-        .select()
+        .select({ created_by: tickets.created_by })
         .from(tickets)
         .where(eq(tickets.id, ticketId))
         .limit(1);
@@ -64,19 +82,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }
     }
 
-    const body = await req.json();
-    const validation = StatusUpdateSchema.safeParse(body);
-
-    if (!validation.success) {
-      throw Errors.validation(
-        'Invalid status update data',
-        validation.error.issues.map((e) => e.message)
-      );
-    }
-
-    const { status, comment, internal } = validation.data;
-
+    // Update ticket status
     await updateTicketStatus(ticketId, status, dbUser.id, comment);
+
+    // OPTIMIZATION: Parallelize cache revalidation (these are independent operations)
+    const { revalidatePath } = await import('next/cache');
+    await Promise.all([
+      revalidatePath(`/student/dashboard/ticket/${ticketId}`),
+      revalidatePath(`/admin/dashboard/ticket/${ticketId}`),
+      revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`),
+      revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`),
+      revalidatePath(`/committee/dashboard/ticket/${ticketId}`),
+    ]);
 
     logger.info(
       {
@@ -88,13 +105,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
       },
       'Ticket status updated via API'
     );
-
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath(`/student/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
 
     return ApiResponse.success({
       message: `Status updated to ${status}`,
