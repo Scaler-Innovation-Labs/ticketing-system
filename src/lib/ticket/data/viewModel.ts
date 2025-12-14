@@ -146,6 +146,7 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
                 details: ticket_activity.details,
                 visibility: ticket_activity.visibility,
                 created_at: ticket_activity.created_at,
+                user_id: ticket_activity.user_id,
                 user_name: users.full_name,
                 user_avatar: users.avatar_url,
             })
@@ -351,15 +352,18 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
         timelineEntries,
         normalizedComments: commentActivities.map(c => {
             const details = c.details as { comment?: string; attachments?: any[] } | null;
+            // Student comments: user_id matches ticket creator (userId parameter)
+            // Admin comments: user_id exists but doesn't match ticket creator
+            const isStudentComment = c.user_id === userId;
             return {
                 id: c.id,
                 text: details?.comment || '',
                 content: details?.comment || '',
-                source: c.user_name ? 'admin' : 'website', // admin comments have user_name
+                source: isStudentComment ? 'website' : 'admin',
                 created_at: c.created_at,
                 createdAt: c.created_at,
                 is_internal: false, // These are student-visible comments
-                author: c.user_name || 'Admin',
+                author: isStudentComment ? 'You' : (c.user_name || 'Admin'),
             };
         }),
         resolvedProfileFields,

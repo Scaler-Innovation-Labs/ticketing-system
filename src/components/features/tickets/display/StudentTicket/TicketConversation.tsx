@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageSquare, User, AlertCircle } from "lucide-react";
-import { format } from "date-fns";
+import { formatTimelineDate, formatTimelineTime } from "@/lib/utils/date-format";
 import { CommentForm } from "@/components/features/tickets/forms/CommentForm";
 import type { TicketComment, TicketStatusDisplay } from "@/types/ticket";
 
@@ -65,14 +65,14 @@ export function TicketConversation({
       </CardHeader>
       <CardContent className="pt-6">
         {allComments.length > 0 ? (
-          <ScrollArea className="max-h-[500px] min-h-[160px] pr-4">
+          <ScrollArea className="h-[500px] pr-4">
             <div className="space-y-4">
               {allComments.map((comment, idx) => {
                 const commentCreatedAt = comment.createdAt || comment.created_at;
                 const isStudent = comment.source === "website";
                 const isAdmin = !isStudent;
 
-                // Student (you) on the right, admin on the left
+                // Student (you) on the right, admin on the left (like superadmin)
                 const alignClass = isStudent ? 'justify-end' : 'justify-start';
                 const rowDir = isStudent ? 'flex-row-reverse' : 'flex-row';
                 const bubbleColor = isStudent ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm';
@@ -92,9 +92,9 @@ export function TicketConversation({
                         <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${metaDir}`}>
                           {commentCreatedAt && (
                             <>
-                              <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>
+                              <span className="font-medium">{formatTimelineDate(commentCreatedAt)}</span>
                               <span>•</span>
-                              <span className="font-medium">{format(new Date(commentCreatedAt), 'h:mm a')}</span>
+                              <span className="font-medium">{formatTimelineTime(commentCreatedAt)}</span>
                               {comment.author && (
                                 <>
                                   <span>•</span>
