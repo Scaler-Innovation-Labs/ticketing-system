@@ -105,9 +105,15 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     }
 
     // Determine sort order
-    const orderBy = sortBy === 'oldest'
-        ? asc(tickets.created_at)
-        : desc(tickets.created_at);
+    let orderBy;
+    if (sortBy === 'oldest') {
+        orderBy = asc(tickets.created_at);
+    } else if (sortBy === 'updated') {
+        orderBy = desc(tickets.updated_at);
+    } else {
+        // Default to 'newest' - sort by created_at descending
+        orderBy = desc(tickets.created_at);
+    }
 
     // OPTIMIZATION: Run count and ticket queries in parallel when possible
     // Check if we need joins for count query
