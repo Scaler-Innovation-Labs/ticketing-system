@@ -63,7 +63,10 @@ function ImageLightboxComponent({ images, initialIndex = 0 }: ImageLightboxProps
 
       {/* Lightbox Dialog */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-7xl w-full h-[90vh] p-0 overflow-hidden">
+        <DialogContent 
+          className="max-w-7xl w-full h-[90vh] p-0 overflow-hidden"
+          showCloseButton={false}
+        >
           <div className="relative w-full h-full flex items-center justify-center bg-black/95">
             {/* Close Button */}
             <Button

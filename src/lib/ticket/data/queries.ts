@@ -185,16 +185,18 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     const { withRetry } = await import('@/lib/db-transaction');
     
     // OPTIMIZATION: Run count and ticket queries in parallel with retry logic
+    // Note: buildCountQuery() and buildTicketQuery() return Drizzle query builders
+    // which are Promises that resolve when awaited
     const [countResult, ticketList] = await Promise.all([
         withRetry<Array<{ count: number }>>(
-            async () => buildCountQuery(),
+            () => buildCountQuery(),
             {
                 maxAttempts: 3,
                 delayMs: 200,
             }
         ),
         withRetry(
-            async () => buildTicketQuery(),
+            () => buildTicketQuery(),
             {
                 maxAttempts: 3,
                 delayMs: 200,

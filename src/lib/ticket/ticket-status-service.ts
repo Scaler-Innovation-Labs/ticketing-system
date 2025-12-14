@@ -90,6 +90,21 @@ export async function updateTicketStatus(
 
   const normalizedCurrentStatus = (currentStatus || '').toLowerCase();
 
+  // If status is already the same, return early (no-op) - this is a valid operation
+  if (normalizedCurrentStatus === normalizedNewStatus) {
+    logger.debug(
+      { ticketId, status: normalizedCurrentStatus },
+      'Ticket already in target status, skipping update'
+    );
+    // Return the ticket as-is (no changes needed)
+    const [updatedTicket] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.id, ticketId))
+      .limit(1);
+    return updatedTicket;
+  }
+
   // Validate transition
   if (!isValidTransition(normalizedCurrentStatus, normalizedNewStatus)) {
     throw Errors.invalidStatusTransition(currentStatus, newStatusValue);

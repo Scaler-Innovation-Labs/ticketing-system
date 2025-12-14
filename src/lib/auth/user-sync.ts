@@ -162,14 +162,47 @@ export async function getOrCreateUser(
 
   const userId = await syncUser(clerkUser);
 
-  // Fetch the newly created user
-  const [newUser] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  // Fetch the newly created user with retry logic (handles race conditions)
+  // Sometimes the insert hasn't fully propagated, so we retry a few times
+  let newUser;
+  let attempts = 0;
+  const maxAttempts = 3;
+  
+  while (attempts < maxAttempts) {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user) {
+      newUser = user;
+      break;
+    }
+
+    attempts++;
+    if (attempts < maxAttempts) {
+      // Wait a bit before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 50 * attempts));
+    }
+  }
 
   if (!newUser) {
+    // Last attempt: try to find by external_id in case the ID changed
+    const [userByExternalId] = await db
+      .select()
+      .from(users)
+      .where(eq(users.external_id, clerkUserId))
+      .limit(1);
+
+    if (userByExternalId) {
+      return userByExternalId;
+    }
+
+    logger.error(
+      { userId, clerkUserId, attempts },
+      'Failed to fetch user after creation'
+    );
     throw Errors.internal('Failed to create user');
   }
 

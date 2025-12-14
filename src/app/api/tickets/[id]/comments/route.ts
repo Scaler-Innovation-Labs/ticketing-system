@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { requireDbUser, ApiResponse } from '@/lib/auth/helpers';
 import { handleApiError, Errors } from '@/lib/errors';
 import { getUserRole } from '@/lib/auth/roles';
@@ -61,21 +62,22 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const { comment, is_internal, attachments } = validation.data;
 
+    // Get ticket to check ownership and get created_by for cache invalidation
+    const { db: dbInstance, tickets: ticketsTable } = await import('@/db');
+    const { eq } = await import('drizzle-orm');
+    
+    const [ticket] = await dbInstance
+      .select({ created_by: ticketsTable.created_by })
+      .from(ticketsTable)
+      .where(eq(ticketsTable.id, ticketId))
+      .limit(1);
+
+    if (!ticket) {
+      throw Errors.notFound('Ticket', String(ticketId));
+    }
+
     // Check ticket ownership for students
     if (role === USER_ROLES.STUDENT) {
-      const { db: dbInstance, tickets: ticketsTable } = await import('@/db');
-      const { eq } = await import('drizzle-orm');
-      
-      const [ticket] = await dbInstance
-        .select({ created_by: ticketsTable.created_by })
-        .from(ticketsTable)
-        .where(eq(ticketsTable.id, ticketId))
-        .limit(1);
-
-      if (!ticket) {
-        throw Errors.notFound('Ticket', String(ticketId));
-      }
-
       if (ticket.created_by !== dbUser.id) {
         throw Errors.forbidden('You can only comment on your own tickets');
       }
@@ -116,6 +118,51 @@ export async function POST(req: NextRequest, context: RouteContext) {
       },
       'Comment added to ticket'
     );
+
+    // Revalidate cache tags to immediately update ticket page and dashboard
+    // This ensures the new comment and status change appear instantly
+    Promise.resolve().then(async () => {
+      try {
+        // Revalidate ticket-specific cache
+        revalidateTag(`ticket-${ticketId}`, 'default');
+        
+        // Revalidate user-specific caches (for ticket creator)
+        if (ticket.created_by) {
+          revalidateTag(`user-${ticket.created_by}`, 'default');
+          revalidateTag(`student-tickets:${ticket.created_by}`, 'default');
+          revalidateTag(`student-stats:${ticket.created_by}`, 'default');
+        }
+        
+        // Also revalidate for comment author if different from ticket creator
+        if (dbUser.id !== ticket.created_by) {
+          revalidateTag(`user-${dbUser.id}`, 'default');
+        }
+        
+        // Revalidate global tickets cache
+        revalidateTag('tickets', 'default');
+        
+        logger.debug(
+          {
+            ticketId,
+            userId: dbUser.id,
+            createdBy: ticket.created_by,
+          },
+          'Cache tags revalidated after comment creation'
+        );
+      } catch (cacheError) {
+        // Don't fail comment creation if cache revalidation fails
+        logger.warn(
+          {
+            error: cacheError,
+            ticketId,
+            userId: dbUser.id,
+          },
+          'Failed to revalidate cache tags (non-critical, fire-and-forget)'
+        );
+      }
+    }).catch(() => {
+      // Swallow any errors from the promise chain itself
+    });
 
     return ApiResponse.success(
       {
