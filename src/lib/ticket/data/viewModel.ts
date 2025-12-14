@@ -106,6 +106,7 @@ export interface StudentTicketViewModel {
         author: string;
     }[];
     resolvedProfileFields: {
+        field_name: string;
         label: string;
         value: string;
     }[];
@@ -141,6 +142,7 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
 
         // 2. Fetch Activity (includes comments) - parallelized
         // OPTIMIZATION: Filter visibility in database query instead of in-memory
+        // OPTIMIZATION: Limit to recent 50 activities to reduce payload (can add "Load more" later)
         db
             .select({
                 id: ticket_activity.id,
@@ -163,7 +165,8 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
                     )
                 )
             )
-            .orderBy(asc(ticket_activity.created_at)),
+            .orderBy(desc(ticket_activity.created_at))
+            .limit(50), // Limit to recent 50 activities - can add pagination later
 
         // 3. Fetch Attachments - parallelized
         // OPTIMIZATION: Select only needed columns
@@ -183,8 +186,10 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
     const { ticket, status, category, subcategory, assignedTo } = data;
 
     // OPTIMIZATION: Activities are already filtered by visibility in the query
+    // Reverse to show oldest first (since we fetched with desc order, then limit)
+    const sortedActivities = [...activitiesResult].reverse();
     // Extract comments from activities (action = 'comment')
-    const commentActivities = activitiesResult.filter(a => a.action === 'comment');
+    const commentActivities = sortedActivities.filter(a => a.action === 'comment');
 
     const attachments = attachmentsResult;
 
@@ -202,26 +207,73 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
     const normalizedStatus = normalizeStatus(status?.value);
 
     // Parse metadata for dynamic fields
+    // Exclude student profile fields - these are shown separately in TicketStudentInfo
+    // OPTIMIZATION: Pre-compute Set for faster lookups
+    const studentProfileKeys = new Set([
+        'name', 'full_name', 'email', 'phone',
+        'hostel', 'hostel_name', 'roomnumber', 'room_number', 'room',
+        'batchyear', 'batch_year', 'batch',
+        'classsection', 'class_section', 'section',
+        'profile_snapshot', 'system_info', // Also exclude these system keys
+    ]);
+    
     const metadata = (ticket.metadata as Record<string, any>) || {};
-    const dynamicFields = metadata && typeof metadata === 'object'
-        ? Object.entries(metadata)
-            .filter(([key]) => !['profile_snapshot', 'system_info'].includes(key))
-            .map(([key, value]) => ({
-                key,
-                label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-                value: String(value),
-                type: 'text'
-            }))
-        : [];
+    // OPTIMIZATION: Use single pass filter + map for better performance
+    const dynamicFields: Array<{ key: string; label: string; value: string; type: string }> = [];
+    if (metadata && typeof metadata === 'object') {
+        for (const [key, value] of Object.entries(metadata)) {
+            // Skip if it's a student profile field or system key
+            if (studentProfileKeys.has(key) || 
+                studentProfileKeys.has(key.toLowerCase()) ||
+                key === 'profile_snapshot' || 
+                key === 'system_info') {
+                continue;
+            }
+            // Only process if value is not null/undefined/empty
+            if (value !== null && value !== undefined && value !== '') {
+                dynamicFields.push({
+                    key,
+                    label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                    value: String(value),
+                    type: 'text'
+                });
+            }
+        }
+    }
 
-    // Parse profile snapshot
+    // Parse profile snapshot for student information
+    // First try profile_snapshot, then fall back to extracting from metadata directly
     const profileSnapshot = (metadata.profile_snapshot as Record<string, any>) || {};
-    const resolvedProfileFields = profileSnapshot && typeof profileSnapshot === 'object'
-        ? Object.entries(profileSnapshot).map(([key, value]) => ({
+    let resolvedProfileFields: Array<{ field_name: string; label: string; value: string }> = [];
+    
+    if (profileSnapshot && typeof profileSnapshot === 'object' && Object.keys(profileSnapshot).length > 0) {
+        // Use profile_snapshot if it exists
+        resolvedProfileFields = Object.entries(profileSnapshot).map(([key, value]) => ({
+            field_name: key,
             label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
             value: String(value)
-        }))
-        : [];
+        }));
+    } else {
+        // Fallback: Extract student profile fields directly from metadata
+        const profileFieldKeys = new Set([
+            'name', 'full_name', 'email', 'phone',
+            'hostel', 'hostel_name', 'roomnumber', 'room_number', 'room',
+            'batchyear', 'batch_year', 'batch',
+            'classsection', 'class_section', 'section',
+        ]);
+        
+        resolvedProfileFields = Object.entries(metadata)
+            .filter(([key]) => {
+                const keyLower = key.toLowerCase();
+                return profileFieldKeys.has(key) || profileFieldKeys.has(keyLower);
+            })
+            .map(([key, value]) => ({
+                field_name: key,
+                label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                value: String(value || '')
+            }))
+            .filter(field => field.value.trim() !== ''); // Only include fields with values
+    }
 
     // Extract timestamps from metadata
     const ticketMetadata = (metadata as Record<string, any>) || {};
@@ -239,6 +291,21 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
         escalation_level: ticket.escalation_level,
         status: status?.value || null,
     }, normalizedStatus);
+    
+    // Add escalation reasons from activities (limited to recent 50)
+    sortedActivities.forEach((activity) => {
+        if (activity.action === 'escalated' && activity.details) {
+            const details = activity.details as { reason?: string; level?: number } | null;
+            if (details?.reason) {
+                const existingEntry = timelineEntries.find(
+                    (e) => e.title.includes('Escalated') && e.date.getTime() === activity.created_at.getTime()
+                );
+                if (existingEntry) {
+                    existingEntry.description = details.reason;
+                }
+            }
+        }
+    });
 
     // Add TAT set entry if TAT was set
     const tatSetAt = ticketMetadata?.tatSetAt;
@@ -361,35 +428,43 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
         })),
         normalizedDynamicFields: dynamicFields,
         timelineEntries,
-        normalizedComments: commentActivities.map(c => {
-            const details = c.details as { comment?: string; attachments?: any[] } | null;
-            // Student comments: user_id matches ticket creator (userId parameter)
-            // Admin comments: user_id exists but doesn't match ticket creator
-            const isStudentComment = c.user_id === userId;
-            return {
-                id: c.id,
-                text: details?.comment || '',
-                content: details?.comment || '',
-                source: isStudentComment ? 'website' : 'admin',
-                created_at: c.created_at,
-                createdAt: c.created_at,
-                is_internal: false, // These are student-visible comments
-                author: isStudentComment ? 'You' : (c.user_name || 'Admin'),
-            };
-        }),
+        // OPTIMIZATION: Pre-compute userId check once
+        normalizedComments: (() => {
+            const commentList = [];
+            for (const c of commentActivities) {
+                const details = c.details as { comment?: string; attachments?: any[] } | null;
+                const commentText = details?.comment || '';
+                // Skip empty comments
+                if (!commentText) continue;
+                
+                // Student comments: user_id matches ticket creator (userId parameter)
+                const isStudentComment = c.user_id === userId;
+                commentList.push({
+                    id: c.id,
+                    text: commentText,
+                    content: commentText,
+                    source: isStudentComment ? 'website' : 'admin',
+                    created_at: c.created_at,
+                    createdAt: c.created_at,
+                    is_internal: false, // These are student-visible comments
+                    author: isStudentComment ? 'You' : (c.user_name || 'Admin'),
+                });
+            }
+            return commentList;
+        })(),
         resolvedProfileFields,
     };
 });
 
 // Export the cached version wrapped in unstable_cache for cross-request caching
-// OPTIMIZATION: Add short TTL (5 seconds) for cross-request caching to reduce database load
+// OPTIMIZATION: Increased TTL to 10 seconds for better performance (still short enough for real-time updates)
 // React cache() handles request-level deduplication, unstable_cache handles cross-request caching
 export async function getStudentTicketViewModel(ticketId: number, userId: string): Promise<StudentTicketViewModel | null> {
     return unstable_cache(
         async () => getStudentTicketViewModelCached(ticketId, userId),
         [`student-ticket-${ticketId}-${userId}`],
         {
-            revalidate: 5, // 5 seconds - short TTL for frequently changing data
+            revalidate: 10, // 10 seconds - balance between performance and freshness
             tags: [`ticket-${ticketId}`, `user-${userId}`],
         }
     )();

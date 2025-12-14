@@ -7,6 +7,7 @@
 import { db, tickets, ticket_statuses, categories, subcategories, users } from '@/db';
 import { eq, and, desc, asc, ilike, sql, or } from 'drizzle-orm';
 import { cache } from 'react';
+import { unstable_cache } from 'next/cache';
 
 export interface TicketFilters {
     userId: string;
@@ -142,12 +143,13 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     };
 
     // Build ticket list query
+    // OPTIMIZATION: Select only list fields - keep description for display in ticket cards
     const buildTicketQuery = () => db
         .select({
             id: tickets.id,
             ticket_number: tickets.ticket_number,
             title: tickets.title,
-            description: tickets.description,
+            description: tickets.description, // Needed for ticket card display
             location: tickets.location,
             priority: tickets.priority,
             status_id: tickets.status_id,
@@ -202,8 +204,17 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     };
 });
 
+// Export with unstable_cache for cross-request caching and tag-based revalidation
 export async function getStudentTickets(filters: TicketFilters) {
-    return getStudentTicketsCached(filters);
+    const cacheKey = `student-tickets-${filters.userId}-${filters.page}-${filters.status}-${filters.category}-${filters.search}`;
+    return unstable_cache(
+        async () => getStudentTicketsCached(filters),
+        [cacheKey],
+        {
+            revalidate: 30, // 30 seconds - balance between freshness and performance for frequently accessed page
+            tags: [`student-tickets:${filters.userId}`, `tickets`],
+        }
+    )();
 }
 
 /**
@@ -275,6 +286,14 @@ const getTicketStatsCached = cache(async (userId: string) => {
     return stats;
 });
 
+// Export with unstable_cache for cross-request caching and tag-based revalidation
 export async function getTicketStats(userId: string) {
-    return getTicketStatsCached(userId);
+    return unstable_cache(
+        async () => getTicketStatsCached(userId),
+        [`student-stats-${userId}`],
+        {
+            revalidate: 30, // 30 seconds - balance between freshness and performance for frequently accessed page
+            tags: [`student-stats:${userId}`, `tickets`],
+        }
+    )();
 }

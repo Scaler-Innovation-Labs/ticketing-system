@@ -14,8 +14,8 @@ import { getAllTicketStatuses } from "@/lib/status/getTicketStatuses";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// Use ISR (Incremental Static Regeneration) - cache for 30 seconds
-export const revalidate = 30;
+// Force dynamic rendering since we use auth() and headers()
+export const dynamic = 'force-dynamic';
 
 /**
  * Senior Admin Analytics Page

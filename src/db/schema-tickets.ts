@@ -244,6 +244,9 @@ export const tickets = pgTable('tickets', {
     .on(table.category_id, table.subcategory_id),
   statusCategoryIdx: index('tickets_status_category_idx')
     .on(table.status_id, table.category_id),
+  // Composite index for student dashboard queries (created_by + status + updated_at for sorting)
+  studentDashboardIdx: index('tickets_student_dashboard_idx')
+    .on(table.created_by, table.status_id, table.updated_at),
 }));
 
 // ============================================
@@ -261,6 +264,9 @@ export const ticket_activity = pgTable('ticket_activity', {
 }, (table) => ({
   ticketIdx: index('ticket_activity_ticket_idx').on(table.ticket_id),
   createdAtIdx: index('ticket_activity_created_at_idx').on(table.created_at),
+  // Composite index for activity queries (ticket_id + created_at for sorting)
+  ticketCreatedAtIdx: index('ticket_activity_ticket_created_at_idx')
+    .on(table.ticket_id, table.created_at),
 }));
 
 // ============================================

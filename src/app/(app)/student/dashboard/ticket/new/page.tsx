@@ -1,10 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db, students, hostels, class_sections, batches } from "@/db";
 import { eq, asc } from "drizzle-orm";
-import { getCachedUser } from "@/lib/cache/cached-queries";
+import { getCachedUser, getCachedHostels } from "@/lib/cache/cached-queries";
 import { getCategoriesHierarchy } from "@/lib/category/getCategoriesHierarchy";
 import TicketForm from "@/components/features/tickets/forms/TicketForm/TicketForm";
+
+// ISR: Revalidate every 30 seconds for faster subsequent loads
+export const revalidate = 30;
 
 /**
  * Student New Ticket Page
@@ -22,8 +26,8 @@ export default async function NewTicketPage() {
     return;
   }
 
-  // Optimize: Load only categories first (lightweight), subcategories will load on-demand
-  // This significantly reduces initial page load time
+  // OPTIMIZATION: Parallelize all data fetching
+  // OPTIMIZATION: Use cached hostels query instead of direct DB query
   const [
     studentDataResult,
     hostelsList,
@@ -44,15 +48,10 @@ export default async function NewTicketPage() {
       .where(eq(students.user_id, dbUser.id))
       .limit(1),
 
-    // Fetch only id and name for hostels (optimized: reduce payload size)
-    db
-      .select({
-        id: hostels.id,
-        name: hostels.name,
-      })
-      .from(hostels)
-      .where(eq(hostels.is_active, true))
-      .orderBy(asc(hostels.name)),
+    // OPTIMIZATION: Use cached hostels query (1 hour TTL) instead of direct DB query
+    getCachedHostels().then(hostels => 
+      hostels.map(h => ({ id: h.id, name: h.name }))
+    ),
 
     // Fetch full category hierarchy (cached for 4 hours)
     // Note: For even better performance, consider loading only categories initially
@@ -79,54 +78,66 @@ export default async function NewTicketPage() {
     classSection: studentData.class_section_name || null,  // Use class section name instead of ID
   };
 
-  // OPTIMIZATION: Pre-filter and flatten categories on server to reduce client-side processing
-  // For students, hide ANY committee-related categories (e.g., "committee", "_committee", "food_committee")
-  const visibleCategories = Array.isArray(categoryHierarchy) 
-    ? categoryHierarchy.filter((cat) => {
-        const label = (cat.label || "").toLowerCase();
-        const value = (cat.value || "").toLowerCase();
-        return !label.includes("committee") && !value.includes("committee");
-      })
-    : [];
+  // OPTIMIZATION: Cache the expensive data processing with React cache()
+  // This deduplicates processing if called multiple times in the same request
+  const processCategoryData = cache((hierarchy: typeof categoryHierarchy) => {
+    // Pre-filter and flatten categories on server to reduce client-side processing
+    // For students, hide ANY committee-related categories (e.g., "committee", "_committee", "food_committee")
+    const visibleCategories = Array.isArray(hierarchy) 
+      ? hierarchy.filter((cat) => {
+          const label = (cat.label || "").toLowerCase();
+          const value = (cat.value || "").toLowerCase();
+          return !label.includes("committee") && !value.includes("committee");
+        })
+      : [];
 
-  // Pre-flatten hierarchy into shapes expected by TicketForm (server-side processing)
-  // This reduces client-side computation and improves initial render time
-  const categoriesFromHierarchy = visibleCategories.map((cat) => ({
-    id: cat.id,
-    name: cat.label || cat.name || '',
-    slug: cat.value || cat.slug || '',
-  }));
+    // Pre-flatten hierarchy into shapes expected by TicketForm (server-side processing)
+    // This reduces client-side computation and improves initial render time
+    const categoriesFromHierarchy = visibleCategories.map((cat) => ({
+      id: cat.id,
+      name: cat.label || cat.name || '',
+      slug: cat.value || cat.slug || '',
+    }));
 
-  const subcategoriesWithSubs = visibleCategories.flatMap((cat) =>
-    (cat.subcategories || []).map((sub) => ({
-      id: sub.id,
-      category_id: cat.id,
-      name: sub.label || sub.name || '',
-      slug: sub.value || sub.slug || '',
-      display_order: sub.display_order ?? 0,
-      // Pre-process fields on server to reduce client-side work
-      fields: (sub.fields || []).map((f) => ({
-        id: f.id,
-        name: f.name || '',
-        slug: f.slug || '',
-        field_type: f.type || 'text',
-        required: f.required ?? false,
-        placeholder: f.placeholder ?? null,
-        help_text: f.help_text ?? null,
-        validation_rules: (f.validation_rules ?? {}) as Record<string, unknown>,
-        display_order: f.display_order ?? 0,
-        subcategory_id: sub.id,
-        options: (f.options || []).map((opt, index) => ({
-          id: opt.id || index,
-          label: opt.label || '',
-          value: opt.value || '',
+    const subcategoriesWithSubs = visibleCategories.flatMap((cat) =>
+      (cat.subcategories || []).map((sub) => ({
+        id: sub.id,
+        category_id: cat.id,
+        name: sub.label || sub.name || '',
+        slug: sub.value || sub.slug || '',
+        display_order: sub.display_order ?? 0,
+        // Pre-process fields on server to reduce client-side work
+        fields: (sub.fields || []).map((f) => ({
+          id: f.id,
+          name: f.name || '',
+          slug: f.slug || '',
+          field_type: f.type || 'text',
+          required: f.required ?? false,
+          placeholder: f.placeholder ?? null,
+          help_text: f.help_text ?? null,
+          validation_rules: (f.validation_rules ?? {}) as Record<string, unknown>,
+          display_order: f.display_order ?? 0,
+          subcategory_id: sub.id,
+          options: (f.options || []).map((opt, index) => ({
+            id: opt.id || index,
+            label: opt.label || '',
+            value: opt.value || '',
+          })),
         })),
-      })),
-    }))
-  );
+      }))
+    );
 
-  // Pre-flatten dynamic fields for TicketForm (server-side processing)
-  const mappedCategoryFields = subcategoriesWithSubs.flatMap((sub) => sub.fields || []);
+    // Pre-flatten dynamic fields for TicketForm (server-side processing)
+    const mappedCategoryFields = subcategoriesWithSubs.flatMap((sub) => sub.fields || []);
+
+    return {
+      categoriesFromHierarchy,
+      subcategoriesWithSubs,
+      mappedCategoryFields,
+    };
+  });
+
+  const { categoriesFromHierarchy, subcategoriesWithSubs, mappedCategoryFields } = processCategoryData(categoryHierarchy);
 
   // Define standard profile fields to show for all tickets
   // These are always shown to help admins contact students

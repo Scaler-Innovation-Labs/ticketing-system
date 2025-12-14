@@ -74,11 +74,11 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    // 1. Authenticate user
-    const { dbUser } = await requireDbUser();
-
-    // 2. Parse and validate request body
-    const body = await req.json();
+    // OPTIMIZATION: Parallelize authentication and request body parsing
+    const [{ dbUser }, body] = await Promise.all([
+      requireDbUser(),
+      req.json(),
+    ]);
     
     // Merge details and profile into metadata if they exist separately
     // This handles the case where frontend sends details and profile separately

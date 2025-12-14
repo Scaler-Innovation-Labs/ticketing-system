@@ -111,10 +111,14 @@ export default async function StudentTicketPage({
 }: {
   params: Promise<{ ticketId: string }>;
 }) {
-  const { userId } = await auth();
+  // OPTIMIZATION: Parallelize auth and params parsing
+  const [{ userId }, { ticketId }] = await Promise.all([
+    auth(),
+    params,
+  ]);
+  
   if (!userId) throw new Error("Unauthorized"); // Should never happen due to layout protection
 
-  const { ticketId } = await params;
   const id = Number(ticketId);
   if (!Number.isFinite(id)) notFound();
 

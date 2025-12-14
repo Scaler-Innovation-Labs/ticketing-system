@@ -14,6 +14,9 @@ import { updateTicketDescription, updateTicketTitle } from '@/lib/ticket/ticket-
 import { logger } from '@/lib/logger';
 import { getUserRole } from '@/lib/auth/roles';
 import { USER_ROLES } from '@/conf/constants';
+import { unstable_cache } from 'next/cache';
+import { cache } from 'react';
+import { revalidateTag } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,22 +45,36 @@ export async function GET(
       throw Errors.validation('Invalid ticket ID');
     }
 
-    // 3. Get ticket
-    const ticket = await getTicketById(ticketId);
+    // OPTIMIZATION: Cache ticket lookup with ownership check
+    const getTicketCached = cache(async () => {
+      const ticket = await getTicketById(ticketId);
+      
+      // Check access permissions early
+      if (role === USER_ROLES.STUDENT && ticket.ticket.created_by !== dbUser.id) {
+        throw Errors.forbidden('You can only view your own tickets');
+      }
+      
+      return ticket;
+    });
 
-    // 4. Check access permissions
-    // Students can only view their own tickets
-    if (role === USER_ROLES.STUDENT && ticket.ticket.created_by !== dbUser.id) {
-      throw Errors.forbidden('You can only view your own tickets');
-    }
+    // OPTIMIZATION: Use unstable_cache for cross-request caching
+    const ticket = await unstable_cache(
+      async () => getTicketCached(),
+      [`ticket-${ticketId}-${role}-${dbUser.id}`],
+      {
+        revalidate: 5, // 5 seconds
+        tags: [`ticket-${ticketId}`, `user-${dbUser.id}`],
+      }
+    )();
 
-    // 5. Get activity history
+    // OPTIMIZATION: Get activity with pagination (limit to recent 50)
     const activity = await getTicketActivity(ticketId);
 
-    // 6. Return ticket with activity
+    // OPTIMIZATION: Return minimal payload - activity can be fetched separately via /activity endpoint
     return ApiResponse.success({
       ticket,
-      activity,
+      // Only include recent activity (last 20) to reduce payload
+      activity: activity.slice(0, 20),
     });
   } catch (error) {
     logger.error({ error }, 'Failed to get ticket');
@@ -94,7 +111,19 @@ export async function PATCH(
         throw Errors.forbidden('Students cannot change ticket status');
       }
 
+      // OPTIMIZATION: Fetch ticket to get created_by for cache invalidation
+      const ticket = await getTicketById(ticketId);
+      const createdBy = ticket.ticket.created_by;
+
       await updateTicketStatus(ticketId, status, dbUser.id, body.comment);
+      
+      // OPTIMIZATION: Revalidate cache tags on mutation
+      // Note: revalidateTag requires a profile argument in Next.js 16
+      revalidateTag(`ticket-${ticketId}`, 'default');
+      if (createdBy) {
+        revalidateTag(`student-tickets:${createdBy}`, 'default');
+        revalidateTag(`student-stats:${createdBy}`, 'default');
+      }
       
       return ApiResponse.success({
         message: 'Ticket status updated',

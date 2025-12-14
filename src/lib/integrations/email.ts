@@ -243,7 +243,6 @@ export function buildNewTicketEmail(ticket: TicketEmailData): string {
       <span style="color: white; font-size: 14px; font-weight: 600; letter-spacing: 0.5px;">✓ TICKET CREATED</span>
     </div>
     <h1 style="color: white; margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Ticket #${ticket.ticketId}</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px; font-family: 'Courier New', monospace;">${ticket.ticketNumber}</p>
   </div>
   
   <!-- Content -->
@@ -408,12 +407,12 @@ export async function notifyNewTicketEmail(
 
     return sendEmail({
         to: recipients,
-        subject: `[${ticket.ticketNumber}] ${ticket.title}`,
+        subject: `Ticket #${ticket.ticketId}: ${ticket.title}`,
         html: emailBody,
         messageId, // Set the Message ID for threading
         text: `Ticket Created Successfully
 
-Ticket Number: ${ticket.ticketNumber}
+Ticket #${ticket.ticketId}
 Title: ${ticket.title}
 Description: ${ticket.description}
 Category: ${ticket.category}
@@ -459,11 +458,11 @@ export async function notifyStatusUpdateEmail(
         );
     }
 
-    const textContent = `Ticket ${ticketNumber} status changed from ${oldStatus} to ${newStatus}${comment ? `\n\nMessage:\n${comment}` : ''}\n\nUpdated by: ${updatedBy}\n\nView: ${link}`;
+    const textContent = `Ticket #${ticketId} status changed from ${oldStatus} to ${newStatus}${comment ? `\n\nMessage:\n${comment}` : ''}\n\nUpdated by: ${updatedBy}\n\nView: ${link}`;
     
     return sendEmail({
         to: recipients,
-        subject: `Re: [${ticketNumber}] ${title}`, // Re: prefix for threaded emails
+        subject: `Re: Ticket #${ticketId}: ${title}`, // Re: prefix for threaded emails
         html: emailBody,
         text: textContent,
         inReplyTo,
@@ -475,7 +474,7 @@ export async function notifyStatusUpdateEmail(
  * Generate HTML for ticket comment/question notification
  */
 export function buildCommentEmail(
-    ticketNumber: string,
+    ticketId: number,
     title: string,
     comment: string,
     commentedBy: string,
@@ -487,12 +486,12 @@ export function buildCommentEmail(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Update on Ticket: ${ticketNumber}</title>
+  <title>Update on Ticket #${ticketId}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
   <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
     <h2 style="margin-top: 0; color: #212529;">Update on Your Ticket</h2>
-    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    <p style="color: #495057; font-size: 16px; margin: 5px 0 20px 0;"><strong>Ticket #${ticketId}:</strong> ${title}</p>
     
     <div style="background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
       <p style="margin: 0; color: #495057; white-space: pre-wrap;">${comment}</p>
@@ -516,7 +515,7 @@ export function buildCommentEmail(
  * Generate HTML for ticket reassignment/forward notification
  */
 export function buildReassignmentEmail(
-    ticketNumber: string,
+    ticketId: number,
     title: string,
     action: 'reassigned' | 'forwarded',
     assignedTo: string,
@@ -533,12 +532,12 @@ export function buildReassignmentEmail(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${actionTitle}: ${ticketNumber}</title>
+  <title>${actionTitle}: Ticket #${ticketId}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
   <div style="background: #ffffff; padding: 30px; border: 1px solid #e9ecef; border-radius: 10px;">
     <h2 style="margin-top: 0; color: #212529;">${actionTitle}</h2>
-    <p style="color: #495057; font-size: 16px;"><strong>Ticket:</strong> ${ticketNumber} - ${title}</p>
+    <p style="color: #495057; font-size: 16px; margin: 5px 0 20px 0;"><strong>Ticket #${ticketId}:</strong> ${title}</p>
     
     <div style="background: #e7f3ff; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; border-radius: 4px;">
       <p style="margin: 0; color: #495057;">Your ticket has been ${actionText} to <strong>${assignedTo}</strong>.</p>
@@ -563,7 +562,7 @@ export function buildReassignmentEmail(
  * Send notification for ticket comment/question (threaded to student)
  */
 export async function notifyCommentEmail(
-    ticketNumber: string,
+    ticketId: number,
     title: string,
     comment: string,
     commentedBy: string,
@@ -573,7 +572,7 @@ export async function notifyCommentEmail(
     references?: string
 ): Promise<string | null> {
     const recipients = getRecipients([recipientEmail]);
-    let emailBody = buildCommentEmail(ticketNumber, title, comment, commentedBy, link);
+    let emailBody = buildCommentEmail(ticketId, title, comment, commentedBy, link);
 
     // Add debug note only in non-production
     if (!IS_PRODUCTION) {
@@ -587,9 +586,9 @@ export async function notifyCommentEmail(
 
     return sendEmail({
         to: recipients,
-        subject: `Re: [${ticketNumber}] ${title}`,
+        subject: `Re: Ticket #${ticketId}: ${title}`,
         html: emailBody,
-        text: `Update on ticket ${ticketNumber}: ${title}\n\n${comment}\n\nFrom: ${commentedBy}\n\nView: ${link}`,
+        text: `Update on Ticket #${ticketId}: ${title}\n\n${comment}\n\nFrom: ${commentedBy}\n\nView: ${link}`,
         inReplyTo,
         references,
     });
@@ -599,7 +598,7 @@ export async function notifyCommentEmail(
  * Send notification for ticket reassignment/forward (threaded to student)
  */
 export async function notifyReassignmentEmail(
-    ticketNumber: string,
+    ticketId: number,
     title: string,
     action: 'reassigned' | 'forwarded',
     assignedTo: string,
@@ -611,7 +610,7 @@ export async function notifyReassignmentEmail(
     references?: string
 ): Promise<string | null> {
     const recipients = getRecipients([recipientEmail]);
-    let emailBody = buildReassignmentEmail(ticketNumber, title, action, assignedTo, assignedBy, link, reason);
+    let emailBody = buildReassignmentEmail(ticketId, title, action, assignedTo, assignedBy, link, reason);
 
     // Add debug note only in non-production
     if (!IS_PRODUCTION) {
@@ -626,9 +625,9 @@ export async function notifyReassignmentEmail(
     const actionText = action === 'forwarded' ? 'forwarded' : 'reassigned';
     return sendEmail({
         to: recipients,
-        subject: `Re: [${ticketNumber}] ${title}`,
+        subject: `Re: Ticket #${ticketId}: ${title}`,
         html: emailBody,
-        text: `Your ticket ${ticketNumber} has been ${actionText} to ${assignedTo}${reason ? `\nReason: ${reason}` : ''}\n\n${assignedBy} ${actionText} this ticket.\n\nView: ${link}`,
+        text: `Your Ticket #${ticketId} has been ${actionText} to ${assignedTo}${reason ? `\nReason: ${reason}` : ''}\n\n${assignedBy} ${actionText} this ticket.\n\nView: ${link}`,
         inReplyTo,
         references,
     });

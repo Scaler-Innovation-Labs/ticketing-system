@@ -385,7 +385,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
       if (student?.email && isEmailConfigured()) {
         try {
           await notifyReassignmentEmail(
-            ticket.ticket_number || `TKT-${ticketId}`,
+            ticketId,
             ticket.title || '',
             isForward ? 'forwarded' : 'reassigned',
             assignee.full_name || 'Unknown',
@@ -465,7 +465,7 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
       if (isEmailConfigured()) {
         try {
           await notifyCommentEmail(
-            ticket.ticket_number || `TKT-${ticketId}`,
+            ticketId,
             ticket.title || '',
             comment,
             commenter?.full_name || 'Admin',

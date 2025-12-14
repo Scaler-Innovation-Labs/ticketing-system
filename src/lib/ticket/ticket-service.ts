@@ -194,7 +194,7 @@ async function findDomainScopeAssignee(
   }
 
   try {
-    // Determine the scope to use:
+    // OPTIMIZATION: Determine scope efficiently
     // Priority order:
     // 1. Student-submitted location (ticketLocation) - ALWAYS takes precedence over profile
     // 2. Pre-resolved ticketScopeId (from resolveTicketScope, which uses profile)
@@ -202,8 +202,9 @@ async function findDomainScopeAssignee(
     // 4. Otherwise use null (no scope)
     let scopeId: number | null = null;
     
-    // PRIORITY 1: Always check student-submitted location first (overrides profile)
+    // OPTIMIZATION: Parallelize scope resolution queries when needed
     if (ticketLocation && categoryDomainId) {
+      // PRIORITY 1: Always check student-submitted location first (overrides profile)
       const [scope] = await db
         .select({ id: scopes.id })
         .from(scopes)
@@ -218,47 +219,45 @@ async function findDomainScopeAssignee(
       if (scope) {
         scopeId = scope.id;
       }
-    }
-    
-    // PRIORITY 2: Use pre-resolved ticketScopeId (from profile) if no location was provided
-    if (!scopeId && ticketScopeId) {
+    } else if (ticketScopeId) {
+      // PRIORITY 2: Use pre-resolved ticketScopeId (from profile) if no location was provided
+      // OPTIMIZATION: Skip query if already resolved
       scopeId = ticketScopeId;
-    }
-    
-    // PRIORITY 3: Only fetch from student profile if location is NOT in ticket and userId is provided
-    if (!scopeId && categoryScopeMode === 'dynamic' && userId && !ticketLocation) {
-      if (categoryScopeId) {
-        const [scopeConfig] = await db
+    } else if (categoryScopeMode === 'dynamic' && userId && !ticketLocation && categoryScopeId) {
+      // PRIORITY 3: Only fetch from student profile if location is NOT in ticket and userId is provided
+      // OPTIMIZATION: Parallelize scope config and student profile queries
+      const [scopeConfigResult, studentResult] = await Promise.all([
+        db
           .select({ student_field_key: scopes.student_field_key })
           .from(scopes)
           .where(eq(scopes.id, categoryScopeId))
-          .limit(1);
-        
-        if (scopeConfig?.student_field_key) {
-          const [student] = await db
-            .select({
-              hostel_id: students.hostel_id,
-              class_section_id: students.class_section_id,
-              batch_id: students.batch_id,
-            })
-            .from(students)
-            .where(eq(students.user_id, userId))
-            .limit(1);
-          
-          if (student) {
-            const fieldKey = scopeConfig.student_field_key;
-            switch (fieldKey) {
-              case 'hostel_id':
-                scopeId = student.hostel_id;
-                break;
-              case 'class_section_id':
-                scopeId = student.class_section_id;
-                break;
-              case 'batch_id':
-                scopeId = student.batch_id;
-                break;
-            }
-          }
+          .limit(1),
+        db
+          .select({
+            hostel_id: students.hostel_id,
+            class_section_id: students.class_section_id,
+            batch_id: students.batch_id,
+          })
+          .from(students)
+          .where(eq(students.user_id, userId))
+          .limit(1),
+      ]);
+      
+      const scopeConfig = scopeConfigResult[0];
+      const student = studentResult[0];
+      
+      if (scopeConfig?.student_field_key && student) {
+        const fieldKey = scopeConfig.student_field_key;
+        switch (fieldKey) {
+          case 'hostel_id':
+            scopeId = student.hostel_id;
+            break;
+          case 'class_section_id':
+            scopeId = student.class_section_id;
+            break;
+          case 'batch_id':
+            scopeId = student.batch_id;
+            break;
         }
       }
     }

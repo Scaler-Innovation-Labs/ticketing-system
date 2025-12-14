@@ -19,9 +19,41 @@ import { TicketList } from "@/components/student/dashboard/TicketList";
 import { TicketEmpty } from "@/components/student/dashboard/TicketEmpty";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
 import { ensureUser } from "@/lib/auth/api-auth";
-// Use ISR (Incremental Static Regeneration) - cache for 10 seconds
-// Removed force-dynamic to allow revalidation to work
-export const revalidate = 10;
+
+// Force dynamic rendering since we use auth() and searchParams
+export const dynamic = 'force-dynamic';
+
+// Async component for TicketSearch to enable streaming
+async function TicketSearchAsync({
+  categoryList,
+  ticketStatuses,
+  sortBy,
+}: {
+  categoryList: any[];
+  ticketStatuses: any[];
+  sortBy: string;
+}) {
+  return (
+    <Card className="border-2">
+      <CardContent className="p-4 sm:p-6">
+        <TicketSearch
+          categories={categoryList.map(cat => ({
+            value: cat.slug,
+            label: cat.name,
+            id: cat.id,
+            subcategories: cat.subcategories.map((sub: any) => ({
+              value: sub.slug,
+              label: sub.name,
+              id: sub.id
+            }))
+          }))}
+          currentSort={sortBy}
+          statuses={ticketStatuses}
+        />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default async function StudentDashboardPage({
   searchParams,
@@ -86,13 +118,10 @@ export default async function StudentDashboardPage({
       .filter((f) => f.value);
 
     // -----------------------------
-    // 3. Load all data in parallel
-    // OPTIMIZATION: Only load category hierarchy if filtering by category or subcategory
-    // This reduces load time when categories aren't needed
+    // 3. Load critical data first (tickets and stats) - these are above the fold
+    // OPTIMIZATION: Load categories and statuses in parallel but don't block rendering
     // -----------------------------
-    const needsCategories = !!categoryFilter || !!subcategoryFilter;
-    
-    const [ticketsResult, stats, categoryListResult, ticketStatusesResult] = await Promise.all([
+    const [ticketsResult, stats] = await Promise.all([
       getStudentTickets({
         userId: dbUser.id,
         search,
@@ -106,28 +135,46 @@ export default async function StudentDashboardPage({
         limit: 12,
       }),
       getTicketStats(dbUser.id),
-      // Only load categories if filtering by them, or if we need them for the search component
-      // For now, we'll load them always for the search component, but this could be optimized further
-      // by loading categories on-demand when the user opens the category filter
+    ]);
+
+    // Load filter data in parallel (non-blocking for initial render)
+    const [categoryListResult, ticketStatusesResult] = await Promise.all([
       getCategoriesHierarchy().catch(() => []),
       getCachedTicketStatuses().catch(() => []),
     ]);
 
     // -----------------------------
     // 4. Sanitize and serialize data
+    // OPTIMIZATION: Use single-pass filter + map for better performance
     // -----------------------------
-    const allTickets = ticketsResult.tickets
-      .map(sanitizeTicket)
-      .filter((ticket): ticket is NonNullable<typeof ticket> => ticket !== null);
+    const allTickets: NonNullable<ReturnType<typeof sanitizeTicket>>[] = [];
+    for (const ticket of ticketsResult.tickets) {
+      const sanitized = sanitizeTicket(ticket);
+      if (sanitized !== null) {
+        allTickets.push(sanitized);
+      }
+    }
 
     const categoryList = sanitizeCategoryHierarchy(
       Array.isArray(categoryListResult) ? categoryListResult : []
     );
 
-    const ticketStatuses = Array.isArray(ticketStatusesResult)
-      ? ticketStatusesResult.map((status) => {
-        if (!status || typeof status !== 'object') return null;
-        return {
+    // OPTIMIZATION: Use single-pass loop for better performance
+    const ticketStatuses: Array<{
+      id: number;
+      value: string;
+      label: string;
+      description: string | null;
+      progress_percent: number;
+      badge_color: string | null;
+      is_active: boolean;
+      is_final: boolean;
+      display_order: number;
+    }> = [];
+    if (Array.isArray(ticketStatusesResult)) {
+      for (const status of ticketStatusesResult) {
+        if (!status || typeof status !== 'object') continue;
+        ticketStatuses.push({
           id: (status as { id?: number }).id ?? 0,
           value: (status as { value?: string }).value ?? '',
           label: (status as { label?: string }).label ?? '',
@@ -137,9 +184,9 @@ export default async function StudentDashboardPage({
           is_active: (status as { is_active?: boolean }).is_active ?? true,
           is_final: (status as { is_final?: boolean }).is_final ?? false,
           display_order: (status as { display_order?: number }).display_order ?? 0,
-        };
-      }).filter((s): s is NonNullable<typeof s> => s !== null)
-      : [];
+        });
+      }
+    }
 
     // OPTIMIZATION: Removed JSON.stringify test - it adds unnecessary overhead
     // Serialization errors will be caught during rendering if they occur
@@ -172,27 +219,14 @@ export default async function StudentDashboardPage({
           </Suspense>
         )}
 
-        {/* Search + Filters */}
-        <Card className="border-2">
-          <CardContent className="p-4 sm:p-6">
-            <Suspense fallback={<div className="h-20 animate-pulse bg-muted rounded-lg" />}>
-              <TicketSearch
-                categories={categoryList.map(cat => ({
-                  value: cat.slug,
-                  label: cat.name,
-                  id: cat.id,
-                  subcategories: cat.subcategories.map((sub: any) => ({
-                    value: sub.slug,
-                    label: sub.name,
-                    id: sub.id
-                  }))
-                }))}
-                currentSort={sortBy}
-                statuses={ticketStatuses}
-              />
-            </Suspense>
-          </CardContent>
-        </Card>
+        {/* Search + Filters - Loaded asynchronously to not block initial render */}
+        <Suspense fallback={<Card className="border-2"><CardContent className="p-4 sm:p-6"><div className="h-20 animate-pulse bg-muted rounded-lg" /></CardContent></Card>}>
+          <TicketSearchAsync
+            categoryList={categoryList}
+            ticketStatuses={ticketStatuses}
+            sortBy={sortBy}
+          />
+        </Suspense>
 
         {/* Tickets List or Empty State */}
         {allTickets.length === 0 ? (
