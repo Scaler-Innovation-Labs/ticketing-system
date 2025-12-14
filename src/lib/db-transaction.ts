@@ -93,10 +93,29 @@ export async function withRetry<T>(
     delayMs = 100,
     retryIf = (error) => {
       // Retry on transient errors only
-      if (error && typeof error === 'object' && 'code' in error) {
-        const code = (error as any).code;
-        // Retry on deadlocks and connection errors
-        return ['40001', '40P01', '08000', '08003', '08006'].includes(code);
+      if (error && typeof error === 'object') {
+        // Check for connection timeout errors (Neon pooler)
+        if ('code' in error) {
+          const code = (error as any).code;
+          // Retry on deadlocks and connection errors
+          if (['40001', '40P01', '08000', '08003', '08006', 'CONNECT_TIMEOUT'].includes(code)) {
+            return true;
+          }
+        }
+        // Check for errno-based connection errors
+        if ('errno' in error) {
+          const errno = (error as any).errno;
+          if (errno === 'CONNECT_TIMEOUT' || errno === 'ETIMEDOUT') {
+            return true;
+          }
+        }
+        // Check error message for connection timeout
+        if (error instanceof Error) {
+          const message = error.message.toLowerCase();
+          if (message.includes('connect_timeout') || message.includes('connection timeout')) {
+            return true;
+          }
+        }
       }
       return false;
     },

@@ -113,39 +113,46 @@ export async function POST(req: NextRequest) {
     // 3. Create ticket
     const ticket = await createTicket(dbUser.id, validatedData);
 
-    // 4. Revalidate cache tags to immediately update dashboards
+    // 4. Revalidate cache tags to immediately update dashboards (fire-and-forget)
     // This ensures the new ticket appears instantly without waiting for cache expiration
     // Note: revalidateTag requires a profile argument in Next.js 16
-    try {
-      // Revalidate user-specific caches
-      revalidateTag(`student-tickets:${dbUser.id}`, 'default');
-      revalidateTag(`student-stats:${dbUser.id}`, 'default');
-      revalidateTag(`user-${dbUser.id}`, 'default');
-      
-      // Revalidate ticket-specific cache
-      revalidateTag(`ticket-${ticket.id}`, 'default');
-      
-      // Revalidate global tickets cache (affects all users)
-      revalidateTag('tickets', 'default');
-      
-      logger.debug(
-        {
-          ticketId: ticket.id,
-          userId: dbUser.id,
-        },
-        'Cache tags revalidated after ticket creation'
-      );
-    } catch (cacheError) {
-      // Don't fail ticket creation if cache revalidation fails
-      logger.warn(
-        {
-          error: cacheError,
-          ticketId: ticket.id,
-          userId: dbUser.id,
-        },
-        'Failed to revalidate cache tags (non-critical)'
-      );
-    }
+    // We don't await this to avoid blocking the response if cache revalidation is slow
+    Promise.resolve().then(async () => {
+      try {
+        // Revalidate user-specific caches
+        revalidateTag(`student-tickets:${dbUser.id}`, 'default');
+        revalidateTag(`student-stats:${dbUser.id}`, 'default');
+        revalidateTag(`user-${dbUser.id}`, 'default');
+        
+        // Revalidate ticket-specific cache
+        revalidateTag(`ticket-${ticket.id}`, 'default');
+        
+        // Revalidate global tickets cache (affects all users)
+        revalidateTag('tickets', 'default');
+        
+        logger.debug(
+          {
+            ticketId: ticket.id,
+            userId: dbUser.id,
+          },
+          'Cache tags revalidated after ticket creation'
+        );
+      } catch (cacheError) {
+        // Don't fail ticket creation if cache revalidation fails
+        // This is fire-and-forget, so errors are logged but don't affect the response
+        logger.warn(
+          {
+            error: cacheError,
+            ticketId: ticket.id,
+            userId: dbUser.id,
+          },
+          'Failed to revalidate cache tags (non-critical, fire-and-forget)'
+        );
+      }
+    }).catch(() => {
+      // Swallow any errors from the promise chain itself
+      // This ensures cache revalidation never blocks or fails ticket creation
+    });
 
     // 5. Return created ticket (status is always 'open' for new tickets)
     return ApiResponse.created({
