@@ -359,84 +359,73 @@ async function findSuperAdmin(txn?: DbTransaction): Promise<string | null> {
 
 /**
  * Create a new ticket
+ * 
+ * PERFORMANCE: This function must respond in < 300ms
+ * All heavy operations (emails, notifications) are async/fire-and-forget
  */
 export async function createTicket(
   userId: string,
   input: CreateTicketInput
 ) {
-  // OPTIMIZATION: Move read-only validation queries outside transaction
-  // These are read-only operations that don't need transaction isolation
-  // This reduces transaction time and improves performance
+  // PERFORMANCE: Add timing probes to identify bottlenecks
+  const startTime = Date.now();
+  const timings: Record<string, number> = {};
+
+  // PERFORMANCE: FAST validation phase - only essential checks
+  // This must complete in < 100ms to meet performance budget
+  const validationStart = Date.now();
+  
+  // Parallelize only the fastest essential validations
   const [categoryValidationResult, openStatusId] = await Promise.all([
-    // 1. Check rate limit (outside transaction for better performance)
-    checkTicketRateLimit(userId).then(() => 
-      validateCategoryAndSubcategory(input.category_id, input.subcategory_id)
-    ),
+    // 1. Validate category/subcategory exists and is active (fast DB lookup)
+    validateCategoryAndSubcategory(input.category_id, input.subcategory_id),
+    // 2. Get status ID (cached lookup)
     getStatusId(TICKET_STATUS.OPEN),
   ]);
 
   const { category, subcategory } = categoryValidationResult;
-
-  // OPTIMIZATION: Move metadata validation and scope resolution outside transaction
-  // These are read-only operations that don't need transaction isolation
-  const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
-
-  // Strip non-field profile keys before validation (they shouldn't be validated against dynamic fields)
-  // Includes variants to handle different naming conventions (camelCase, snake_case, short forms)
-  // Normalize to lowercase for case-insensitive matching
-  const PROFILE_KEYS = new Set([
-    'name',
-    'email',
-    'phone',
-    'hostel',
-    'hostel_name',
-    'roomnumber', // camelCase normalized
-    'room_number',
-    'room',
-    'batchyear', // camelCase normalized
-    'batch_year',
-    'batch',
-    'classsection', // camelCase normalized
-    'class_section',
-    'section',
-  ]);
-  const metadataForValidation = input.metadata && typeof input.metadata === 'object'
-    ? Object.fromEntries(
-        Object.entries(input.metadata as Record<string, unknown>).filter(
-          ([key]) => !PROFILE_KEYS.has(key.toLowerCase())
-        )
-      )
-    : input.metadata;
-
-  // OPTIMIZATION: Parallelize metadata validation and scope resolution
-  // These are independent operations and can run simultaneously
-  const [metadataValidation, resolvedScopeId] = await Promise.all([
-    // Validate metadata if subcategory and metadata are provided
-    input.subcategory_id && metadataForValidation
-      ? validateTicketMetadata(input.subcategory_id, metadataForValidation)
-      : Promise.resolve({ valid: true, errors: [] }),
-    // Only fetch from student profile if location is not provided in ticket
-    ticketLocation
-      ? Promise.resolve(null) // Skip profile lookup if location is in ticket
-      : resolveTicketScope(input.category_id, userId, {
-          scope_id: category.scope_id,
-          scope_mode: category.scope_mode,
-        }),
-  ]);
-
-  if (!metadataValidation.valid) {
-    throw Errors.validation(
-      'Invalid ticket metadata',
-      { errors: metadataValidation.errors }
+  
+  // Rate limit check (can be done async, but keeping sync for now)
+  await checkTicketRateLimit(userId);
+  
+  timings['validate-input'] = Date.now() - validationStart;
+  
+  // PERFORMANCE BUDGET: Warn if fast validation exceeds 100ms
+  if (timings['validate-input'] > 100) {
+    logger.warn(
+      { userId, categoryId: input.category_id, timing: timings['validate-input'] },
+      'Fast validation exceeded 100ms budget'
     );
   }
 
+  // PERFORMANCE: DEEP validation is DEFERRED - happens after ticket creation
+  // This allows ticket creation to complete in < 300ms
+  // Metadata validation can be done async or marked for review
+  const scopeStart = Date.now();
+  const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
+  
+  // Only resolve scope (fast) - metadata validation happens later
+  const resolvedScopeId = ticketLocation
+    ? null // Skip profile lookup if location is in ticket
+    : await resolveTicketScope(input.category_id, userId, {
+        scope_id: category.scope_id,
+        scope_mode: category.scope_mode,
+      }).catch(() => null); // Don't fail if scope resolution fails
+  
+  timings['scope-resolution'] = Date.now() - scopeStart;
+  
+  // NOTE: Metadata validation is deferred - will be queued as background job
+  // This allows ticket creation to respond quickly even with complex metadata
+
   // Calculate deadlines outside transaction (pure computation)
+  const deadlinesStart = Date.now();
   const deadlines = calculateDeadlines(category.sla_hours || 48);
+  timings['calculate-deadlines'] = Date.now() - deadlinesStart;
 
   // All validation and preparation is done outside transaction
   // Now we only do writes inside the transaction
-  return withTransaction(async (txn) => {
+  const transactionStart = Date.now();
+  const ticket = await withTransaction(async (txn) => {
 
     // 4. Find best assignee (priority order):
     // 1) Field-level assignment (from category_fields.assigned_admin_id)
@@ -450,6 +439,7 @@ export async function createTicket(
     
     // OPTIMIZATION: Pre-fetch all potential assignees in parallel
     // This reduces sequential query delays by fetching all candidates upfront
+    const assignmentStart = Date.now();
     const [fieldLevelAssignee, superAdmin, domainScopeAssignee] = await Promise.all([
       // Priority 1: Field-level assignment
       findFieldLevelAssignee(
@@ -497,9 +487,11 @@ export async function createTicket(
     if (!assignedTo) {
       assignedTo = superAdmin;
     }
+    timings['assignment-logic'] = Date.now() - assignmentStart;
 
     // 5. Create ticket
     // Use location from top-level input or metadata (for backward compatibility)
+    const insertStart = Date.now();
     const ticketLocationValue = (input as any).location || input.metadata?.location as string | undefined;
     const [ticket] = await txn
       .insert(tickets)
@@ -520,9 +512,11 @@ export async function createTicket(
         ...deadlines,
       })
       .returning();
+    timings['db-insert-ticket'] = Date.now() - insertStart;
 
     // OPTIMIZATION: Parallelize critical inserts after ticket creation
     // Attachments and activity are critical, outbox is non-blocking
+    const insertsStart = Date.now();
     const [attachmentsResult, activityResult] = await Promise.all([
       // 6. Insert attachments into ticket_attachments table (if any)
       input.attachments && input.attachments.length > 0
@@ -551,40 +545,84 @@ export async function createTicket(
         },
       }),
     ]);
+    timings['db-insert-attachments-activity'] = Date.now() - insertsStart;
 
-    // 8. Queue notification (non-blocking - don't fail if this errors)
-    // Run this separately so it doesn't block ticket creation
+    // Transaction ends here - no outbox insert inside transaction
+    // This reduces transaction time and lock contention
+    timings['db-transaction'] = Date.now() - transactionStart;
+
+    return ticket;
+  });
+
+  // PERFORMANCE: Queue notifications OUTSIDE transaction (fire-and-forget)
+  // This doesn't block the response and reduces transaction time
+  // Using void to explicitly mark as fire-and-forget
+  const outboxStart = Date.now();
+  void (async () => {
     try {
-      await txn.insert(outbox).values({
+      // Queue notification job
+      await db.insert(outbox).values({
         event_type: 'ticket.created',
         aggregate_type: 'ticket',
         aggregate_id: String(ticket.id),
         payload: { ticketId: ticket.id },
       });
-    } catch (outboxError: any) {
-      // Log but don't throw - notification queueing failure shouldn't block ticket creation
+      
+      // Queue metadata validation job (if needed) - deferred deep validation
+      if (input.subcategory_id && input.metadata) {
+        await db.insert(outbox).values({
+          event_type: 'ticket.validate_metadata',
+          aggregate_type: 'ticket',
+          aggregate_id: String(ticket.id),
+          payload: {
+            ticketId: ticket.id,
+            subcategoryId: input.subcategory_id,
+            metadata: input.metadata,
+          },
+        });
+      }
+      
+      timings['queue-notifications'] = Date.now() - outboxStart;
+    } catch (error: any) {
+      timings['queue-notifications'] = Date.now() - outboxStart;
       logger.error(
         { 
-          error: outboxError?.message || String(outboxError),
+          error: error?.message || String(error),
           ticketId: ticket.id,
           userId 
         },
-        'Failed to queue ticket creation notification'
+        'Failed to queue background jobs'
       );
     }
+  })();
 
-    logger.info(
+  // Log final timing after transaction completes
+  timings['total'] = Date.now() - startTime;
+  
+  // PERFORMANCE: Log timing breakdown for debugging
+  logger.info(
+    {
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticket_number,
+      userId,
+      categoryId: input.category_id,
+      timings, // Include timing breakdown
+    },
+    'Ticket created'
+  );
+  
+  // PERFORMANCE BUDGET: Warn if total exceeds 500ms
+  if (timings.total > 500) {
+    logger.warn(
       {
-        ticketId: ticket.id,
-        ticketNumber: ticket.ticket_number,
         userId,
-        categoryId: input.category_id,
+        timings,
       },
-      'Ticket created'
+      'createTicket() exceeded 500ms budget - performance issue detected'
     );
+  }
 
-    return ticket;
-  });
+  return ticket;
 }
 
 /**

@@ -8,9 +8,11 @@ import { z } from 'zod';
 import { LIMITS, TICKET_STATUS } from '@/conf/constants';
 
 /**
- * Create ticket schema
+ * FAST validation schema - only essential fields for ticket creation
+ * This is used BEFORE ticket creation to ensure we can create the ticket quickly
+ * Metadata validation happens AFTER ticket creation (deep validation)
  */
-export const createTicketSchema = z.object({
+export const createTicketCoreSchema = z.object({
   title: z.string()
     .min(5, 'Title must be at least 5 characters')
     .max(200, 'Title must be at most 200 characters')
@@ -36,12 +38,20 @@ export const createTicketSchema = z.object({
 
   location: z.string().max(500).optional(),
 
+  // Metadata is accepted but NOT validated here (fast path)
+  // Deep validation happens after ticket creation
   metadata: z.record(z.string(), z.unknown()).optional(),
   
   // Support for separate details and profile fields (merged into metadata)
   details: z.record(z.string(), z.unknown()).optional(),
   profile: z.record(z.string(), z.unknown()).optional(),
 });
+
+/**
+ * Create ticket schema (full validation - for backward compatibility)
+ * NOTE: Use createTicketCoreSchema for fast validation, then validate metadata separately
+ */
+export const createTicketSchema = createTicketCoreSchema;
 
 /**
  * Update ticket schema

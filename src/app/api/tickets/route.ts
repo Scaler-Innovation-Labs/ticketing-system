@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { requireDbUser, ApiResponse, getPaginationParams } from '@/lib/auth/helpers';
 import { handleApiError } from '@/lib/errors';
-import { createTicketSchema, ticketFiltersSchema } from '@/schemas/ticket';
+import { createTicketCoreSchema, ticketFiltersSchema } from '@/schemas/ticket';
 import { createTicket } from '@/lib/ticket/ticket-service';
 import { listTickets } from '@/lib/ticket/ticket-list-service';
 import { logger } from '@/lib/logger';
@@ -96,7 +96,9 @@ export async function POST(req: NextRequest) {
       };
     }
     
-    const validatedData = createTicketSchema.parse(body);
+    // PERFORMANCE: Use fast core validation schema
+    // Metadata validation happens async after ticket creation
+    const validatedData = createTicketCoreSchema.parse(body);
 
     logger.info(
       {

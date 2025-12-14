@@ -61,15 +61,17 @@ export default async function StudentDashboardPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
-    // OPTIMIZATION: Parallelize auth() and searchParams parsing
-    const [session, resolvedParams] = await Promise.all([
-      auth(),
-      searchParams,
-    ]);
+    // OPTIMIZATION: Middleware already called auth.protect(), so userId is guaranteed
+    // We still need userId for queries, but auth() is cached per request by Clerk
+    // This is the minimal auth call - just to get userId (no verification overhead)
+    const resolvedParams = await searchParams;
     
-    const userId = session?.userId;
+    // Get userId - auth() is cached by Clerk per request, so this is fast
+    // Middleware already verified authentication, so this is just reading cached session
+    const { userId } = await auth();
 
-    // This should never happen - layout.tsx already verified, but type safety
+    // This should never happen - middleware already protected the route
+    // But we check for type safety and graceful error handling
     if (!userId) {
       return (
         <Alert variant="destructive" className="m-6">
@@ -82,14 +84,19 @@ export default async function StudentDashboardPage({
       );
     }
 
-    // OPTIMIZATION: Parallelize user lookup and ensureUser if needed
+    // OPTIMIZATION: Get user from cache first (fast path)
+    // If user doesn't exist, ensureUser() will sync from Clerk (only happens once per user)
+    // This is the ONLY place ensureUser() is called - not in layouts!
     let dbUser = await getCachedUser(userId);
     if (!dbUser) {
       try {
+        // User doesn't exist - sync from Clerk (first hit only)
+        // This is expensive but only happens once per user
         await ensureUser(userId);
         dbUser = await getCachedUser(userId);
       } catch (err) {
-        // ignore, will handle below
+        console.error("[StudentDashboardPage] Failed to ensure user:", err);
+        // Continue - will show error below
       }
     }
     if (!dbUser) {
@@ -120,7 +127,10 @@ export default async function StudentDashboardPage({
     // -----------------------------
     // 3. Load critical data first (tickets and stats) - these are above the fold
     // OPTIMIZATION: Load categories and statuses in parallel but don't block rendering
+    // OPTIMIZATION: Categories and statuses are cached for 4h and 1h respectively
+    // PERFORMANCE: Log timing for debugging (remove in production if needed)
     // -----------------------------
+    const startTime = Date.now();
     const [ticketsResult, stats] = await Promise.all([
       getStudentTickets({
         userId: dbUser.id,
@@ -136,12 +146,23 @@ export default async function StudentDashboardPage({
       }),
       getTicketStats(dbUser.id),
     ]);
+    const ticketsTime = Date.now() - startTime;
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[StudentDashboard] Tickets + Stats loaded in ${ticketsTime}ms`);
+    }
 
     // Load filter data in parallel (non-blocking for initial render)
+    // OPTIMIZATION: These are cached with long TTLs (4h for categories, 1h for statuses)
+    // So they should be very fast on subsequent requests
+    const filterStartTime = Date.now();
     const [categoryListResult, ticketStatusesResult] = await Promise.all([
       getCategoriesHierarchy().catch(() => []),
       getCachedTicketStatuses().catch(() => []),
     ]);
+    const filterTime = Date.now() - filterStartTime;
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[StudentDashboard] Filters loaded in ${filterTime}ms`);
+    }
 
     // -----------------------------
     // 4. Sanitize and serialize data

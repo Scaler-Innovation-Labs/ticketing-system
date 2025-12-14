@@ -118,27 +118,27 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
 
     // Build count query
     const buildCountQuery = () => {
-        if (needsAnyJoin) {
-            let countQuery: any = db
-                .select({ count: sql<number>`count(*)` })
-                .from(tickets);
-            
-            if (needsStatusJoin) {
-                countQuery = countQuery.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
-            }
-            if (needsCategoryJoin) {
-                countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
-            }
-            if (needsSubcategoryJoin) {
-                countQuery = countQuery.leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id));
-            }
-            
+    if (needsAnyJoin) {
+        let countQuery: any = db
+            .select({ count: sql<number>`count(*)` })
+            .from(tickets);
+        
+        if (needsStatusJoin) {
+            countQuery = countQuery.leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id));
+        }
+        if (needsCategoryJoin) {
+            countQuery = countQuery.leftJoin(categories, eq(tickets.category_id, categories.id));
+        }
+        if (needsSubcategoryJoin) {
+            countQuery = countQuery.leftJoin(subcategories, eq(tickets.subcategory_id, subcategories.id));
+        }
+        
             return countQuery.where(and(...conditions));
-        } else {
+    } else {
             return db
-                .select({ count: sql<number>`count(*)` })
-                .from(tickets)
-                .where(and(...conditions));
+            .select({ count: sql<number>`count(*)` })
+            .from(tickets)
+            .where(and(...conditions));
         }
     };
 
@@ -227,22 +227,22 @@ const getTicketStatsCached = cache(async (userId: string) => {
     const [result, escalatedResult] = await Promise.all([
         // Get status counts
         db
-            .select({
-                status_value: ticket_statuses.value,
-                count: sql<number>`count(*)`,
-            })
-            .from(tickets)
-            .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-            .where(eq(tickets.created_by, userId))
+        .select({
+            status_value: ticket_statuses.value,
+            count: sql<number>`count(*)`,
+        })
+        .from(tickets)
+        .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+        .where(eq(tickets.created_by, userId))
             .groupBy(ticket_statuses.value),
-        
+
         // Get escalated count (parallelized)
         db
-            .select({ count: sql<number>`count(*)` })
-            .from(tickets)
-            .where(and(
-                eq(tickets.created_by, userId),
-                sql`${tickets.escalation_level} > 0`
+        .select({ count: sql<number>`count(*)` })
+        .from(tickets)
+        .where(and(
+            eq(tickets.created_by, userId),
+            sql`${tickets.escalation_level} > 0`
             )),
     ]);
 

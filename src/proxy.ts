@@ -32,6 +32,13 @@ export default clerkMiddleware(async (auth, req) => {
 
   // Verify cron secret for cron routes
   if (isCronRoute(req)) {
+    // OPTIMIZATION: Check for CRON_SECRET existence first to prevent silent failures
+    if (!process.env.CRON_SECRET) {
+      return NextResponse.json(
+        { error: 'Server misconfigured: CRON_SECRET not set' },
+        { status: 500 }
+      );
+    }
     
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;

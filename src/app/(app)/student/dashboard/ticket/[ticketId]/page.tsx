@@ -3,56 +3,23 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import nextDynamic from "next/dynamic";
-import { db, tickets } from "@/db";
-import { desc } from "drizzle-orm";
 
 // Data loading
 import { getCachedUser } from "@/lib/cache/cached-queries";
 import { ensureUser } from "@/lib/auth/api-auth";
 import { getStudentTicketViewModel } from "@/lib/ticket/data/viewModel";
 
-// UI Components - Static imports for above-the-fold content
+// UI Components - All server components, so direct imports are optimal
+// OPTIMIZATION: Removed next/dynamic - these are server components in App Router
 import { TicketHeader } from "@/components/features/tickets/display/StudentTicket/TicketHeader";
 import { TicketQuickInfo } from "@/components/features/tickets/display/StudentTicket/TicketQuickInfo";
 import { TicketSubmittedInfo } from "@/components/features/tickets/display/StudentTicket/TicketSubmittedInfo";
 import { StudentActions } from "@/components/features/tickets/actions/StudentActions";
-
-// Lazy-load only heavy, below-the-fold sections using dynamic imports
-const TicketTimeline = nextDynamic(() =>
-  import("@/components/features/tickets/display/StudentTicket/TicketTimeline").then(
-    (mod) => mod.TicketTimeline
-  ),
-  { ssr: true }
-);
-
-const TicketConversation = nextDynamic(() =>
-  import("@/components/features/tickets/display/StudentTicket/TicketConversation").then(
-    (mod) => mod.TicketConversation
-  ),
-  { ssr: true }
-);
-
-const TicketRating = nextDynamic(() =>
-  import("@/components/features/tickets/display/StudentTicket/TicketRating").then(
-    (mod) => mod.TicketRating
-  ),
-  { ssr: true }
-);
-
-const TicketTATInfo = nextDynamic(() =>
-  import("@/components/features/tickets/display/StudentTicket/TicketTATInfo").then(
-    (mod) => mod.TicketTATInfo
-  ),
-  { ssr: true }
-);
-
-const TicketStudentInfo = nextDynamic(() =>
-  import("@/components/features/tickets/display/StudentTicket/TicketStudentInfo").then(
-    (mod) => mod.TicketStudentInfo
-  ),
-  { ssr: true }
-);
+import { TicketTimeline } from "@/components/features/tickets/display/StudentTicket/TicketTimeline";
+import { TicketConversation } from "@/components/features/tickets/display/StudentTicket/TicketConversation";
+import { TicketRating } from "@/components/features/tickets/display/StudentTicket/TicketRating";
+import { TicketTATInfo } from "@/components/features/tickets/display/StudentTicket/TicketTATInfo";
+import { TicketStudentInfo } from "@/components/features/tickets/display/StudentTicket/TicketStudentInfo";
 
 // Loading skeletons for Suspense boundaries
 function TimelineSkeleton() {
@@ -86,17 +53,15 @@ function ConversationSkeleton() {
 }
 
 // Mark as dynamic since we use auth() and user-specific data
+// OPTIMIZATION: force-dynamic disables ISR, so revalidate is ignored - removed it
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // Allow on-demand rendering for tickets not in the static params list
 export const dynamicParams = true;
 
-// ISR: Revalidate every 10 seconds for faster subsequent loads
-export const revalidate = 10;
-
-// Note: generateStaticParams removed since we're using force-dynamic
-// This page requires authentication and user-specific data, so it must be rendered dynamically
+// Note: This page requires authentication and user-specific data, so it must be rendered dynamically
+// ISR (revalidate) is not compatible with force-dynamic - removed to avoid confusion
 
 /**
  * Student Ticket Detail Page

@@ -1,31 +1,33 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getUserRole, ensureUser } from "@/lib/auth/api-auth";
+import { getCachedUserRole } from "@/lib/cache/cached-queries";
 import { RoleNav } from "@/components/nav/RoleNav";
 import { NavLoadingShimmer } from "@/components/nav/NavLoadingShimmer";
 
 /**
  * Student Role Root Layout
- * Handles navigation and layout for all student routes
- * Protects against committee/admin/super_admin access
+ * Handles navigation and role-based routing for all student routes
  * 
- * NOTE: Middleware has already verified userId exists before allowing access to /student/*
- * This layout should NOT redirect based on auth(), as that creates redirect loops.
- * If middleware allowed access, userId exists in Clerk session.
+ * OPTIMIZATION: This layout is LIGHTWEIGHT - no expensive DB operations
+ * - Middleware already verified authentication
+ * - Only checks role (cached with React cache + in-memory cache) and redirects if needed
+ * - ensureUser() is moved to pages (first hit only)
+ * 
+ * NOTE: Layouts run on EVERY navigation, so keep this fast!
  */
 export default async function StudentLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Get userId from Clerk session (should exist since middleware verified)
+  // OPTIMIZATION: Middleware already called auth.protect(), so userId is guaranteed
+  // auth() here is just reading cached session (fast, no verification overhead)
   const { userId } = await auth();
 
   // If userId is somehow null, the middleware should have prevented access
   // Don't throw - just return children and let nested layout/page handle it
   if (!userId) {
-    // Return children - nested page/layout will handle auth errors gracefully
     return (
       <>
         <Suspense fallback={<NavLoadingShimmer />}>
@@ -36,20 +38,12 @@ export default async function StudentLayout({
     );
   }
 
-  // Ensure user exists in database (non-blocking - don't fail if this errors)
-  try {
-    await ensureUser(userId);
-  } catch (error) {
-    console.error("[Student Layout] Failed to create user:", error);
-    // Continue anyway - will default to student role
-  }
-
-  // Get role from API (single source of truth)
-  // If this fails, default to student and don't redirect
+  // OPTIMIZATION: getCachedUserRole uses React cache() for request-level deduplication
+  // This is the ONLY DB operation in layout - everything else moved to pages
+  // Returns 'student' by default if user not found (safe fallback)
   let role: string = "student";
   try {
-    const dbRole = await getUserRole(userId);
-    role = dbRole || "student";
+    role = await getCachedUserRole(userId);
   } catch (error) {
     console.error("[Student Layout] Failed to get role:", error);
     // Default to student - don't redirect
