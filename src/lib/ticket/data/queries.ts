@@ -186,15 +186,15 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     
     // OPTIMIZATION: Run count and ticket queries in parallel with retry logic
     const [countResult, ticketList] = await Promise.all([
-        withRetry(
-            () => buildCountQuery(),
+        withRetry<Array<{ count: number }>>(
+            async () => buildCountQuery(),
             {
                 maxAttempts: 3,
                 delayMs: 200,
             }
         ),
         withRetry(
-            () => buildTicketQuery(),
+            async () => buildTicketQuery(),
             {
                 maxAttempts: 3,
                 delayMs: 200,
