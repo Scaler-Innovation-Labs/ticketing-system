@@ -229,7 +229,12 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
 
 // Export with unstable_cache for cross-request caching and tag-based revalidation
 export async function getStudentTickets(filters: TicketFilters) {
-    const cacheKey = `student-tickets-${filters.userId}-${filters.page}-${filters.status}-${filters.category}-${filters.search}`;
+    // Build comprehensive cache key including all filter parameters
+    // This ensures different filter combinations get different cache entries
+    const dynamicFiltersKey = filters.dynamicFilters 
+        ? JSON.stringify(filters.dynamicFilters.sort((a, b) => a.key.localeCompare(b.key)))
+        : '';
+    const cacheKey = `student-tickets-${filters.userId}-${filters.page}-${filters.status || ''}-${filters.category || ''}-${filters.subcategory || ''}-${filters.search || ''}-${filters.sortBy || 'newest'}-${filters.escalated || ''}-${dynamicFiltersKey}`;
     return unstable_cache(
         async () => {
             try {
