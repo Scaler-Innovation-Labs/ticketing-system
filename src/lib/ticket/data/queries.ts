@@ -181,10 +181,25 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
         .limit(limit)
         .offset(offset);
 
-    // OPTIMIZATION: Run count and ticket queries in parallel
+    // Import retry utility for connection timeout handling
+    const { withRetry } = await import('@/lib/db-transaction');
+    
+    // OPTIMIZATION: Run count and ticket queries in parallel with retry logic
     const [countResult, ticketList] = await Promise.all([
-        buildCountQuery(),
-        buildTicketQuery(),
+        withRetry(
+            () => buildCountQuery(),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        ),
+        withRetry(
+            () => buildTicketQuery(),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        ),
     ]);
 
     const totalCount = Number(countResult[0]?.count || 0);
@@ -208,7 +223,37 @@ const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
 export async function getStudentTickets(filters: TicketFilters) {
     const cacheKey = `student-tickets-${filters.userId}-${filters.page}-${filters.status}-${filters.category}-${filters.search}`;
     return unstable_cache(
-        async () => getStudentTicketsCached(filters),
+        async () => {
+            try {
+                return await getStudentTicketsCached(filters);
+            } catch (error: any) {
+                // If query fails after retries, return empty result to prevent page crash
+                const { logger } = await import('@/lib/logger');
+                logger.warn(
+                    { 
+                        error: error?.message || String(error),
+                        userId: filters.userId,
+                        code: error?.code,
+                        errno: error?.errno 
+                    },
+                    'Failed to fetch student tickets, returning empty result'
+                );
+                
+                // Return empty result so the page can still render
+                return {
+                    tickets: [],
+                    pagination: {
+                        currentPage: filters.page || 1,
+                        totalPages: 0,
+                        totalCount: 0,
+                        hasNextPage: false,
+                        hasPrevPage: false,
+                        startIndex: 0,
+                        endIndex: 0,
+                    },
+                };
+            }
+        },
         [cacheKey],
         {
             revalidate: 30, // 30 seconds - balance between freshness and performance for frequently accessed page
@@ -221,29 +266,45 @@ export async function getStudentTickets(filters: TicketFilters) {
  * Get ticket statistics for a user
  * OPTIMIZATION: Parallelize status count and escalated count queries
  * OPTIMIZATION: Wrapped in React cache() for request-level deduplication
+ * OPTIMIZATION: Added retry logic for connection timeout errors
  */
 const getTicketStatsCached = cache(async (userId: string) => {
-    // OPTIMIZATION: Run both queries in parallel
+    // Import retry utility
+    const { withRetry } = await import('@/lib/db-transaction');
+    
+    // OPTIMIZATION: Run both queries in parallel with retry logic
     const [result, escalatedResult] = await Promise.all([
-        // Get status counts
-        db
-        .select({
-            status_value: ticket_statuses.value,
-            count: sql<number>`count(*)`,
-        })
-        .from(tickets)
-        .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
-        .where(eq(tickets.created_by, userId))
-            .groupBy(ticket_statuses.value),
+        // Get status counts (with retry on connection errors)
+        withRetry(
+            () => db
+                .select({
+                    status_value: ticket_statuses.value,
+                    count: sql<number>`count(*)`,
+                })
+                .from(tickets)
+                .leftJoin(ticket_statuses, eq(tickets.status_id, ticket_statuses.id))
+                .where(eq(tickets.created_by, userId))
+                .groupBy(ticket_statuses.value),
+            {
+                maxAttempts: 3,
+                delayMs: 200, // Start with 200ms delay
+            }
+        ),
 
-        // Get escalated count (parallelized)
-        db
-        .select({ count: sql<number>`count(*)` })
-        .from(tickets)
-        .where(and(
-            eq(tickets.created_by, userId),
-            sql`${tickets.escalation_level} > 0`
-            )),
+        // Get escalated count (parallelized, with retry)
+        withRetry(
+            () => db
+                .select({ count: sql<number>`count(*)` })
+                .from(tickets)
+                .where(and(
+                    eq(tickets.created_by, userId),
+                    sql`${tickets.escalation_level} > 0`
+                )),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        ),
     ]);
 
     const escalatedCount = Number(escalatedResult[0]?.count || 0);
@@ -289,7 +350,35 @@ const getTicketStatsCached = cache(async (userId: string) => {
 // Export with unstable_cache for cross-request caching and tag-based revalidation
 export async function getTicketStats(userId: string) {
     return unstable_cache(
-        async () => getTicketStatsCached(userId),
+        async () => {
+            try {
+                return await getTicketStatsCached(userId);
+            } catch (error: any) {
+                // If query fails after retries, return default stats to prevent page crash
+                // This can happen during connection timeouts or database issues
+                const { logger } = await import('@/lib/logger');
+                logger.warn(
+                    { 
+                        error: error?.message || String(error),
+                        userId,
+                        code: error?.code,
+                        errno: error?.errno 
+                    },
+                    'Failed to fetch ticket stats, returning defaults'
+                );
+                
+                // Return default stats so the page can still render
+                return {
+                    total: 0,
+                    open: 0,
+                    inProgress: 0,
+                    resolved: 0,
+                    closed: 0,
+                    awaitingStudent: 0,
+                    escalated: 0,
+                };
+            }
+        },
         [`student-stats-${userId}`],
         {
             revalidate: 30, // 30 seconds - balance between freshness and performance for frequently accessed page

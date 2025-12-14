@@ -140,6 +140,7 @@ export const api = {
         const response = await fetch(url, {
             method: 'POST',
             body: formData,
+            credentials: 'include', // Include cookies for authentication (required for Clerk)
             // Don't set Content-Type - browser will set it with boundary for FormData
         });
 

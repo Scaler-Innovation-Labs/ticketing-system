@@ -198,10 +198,22 @@ export async function validateTicketMetadata(
     }
   }
 
-  // Check for unexpected fields
+  // Check for unexpected fields (excluding known profile/system fields)
   const expectedSlugs = new Set(fields.map(f => f.slug));
   const providedSlugs = Object.keys(metadata);
-  const unexpectedFields = providedSlugs.filter(slug => !expectedSlugs.has(slug));
+  
+  // Known profile fields that are expected in metadata but not part of form fields
+  // These are stored for reference and should not trigger warnings
+  const knownProfileFields = new Set([
+    'name', 'email', 'phone', 'hostel', 'batchYear', 'roomNumber', 'classSection',
+    'rollNo', 'roll_no', 'userNumber', 'fullName', 'full_name',
+    'hostel_name', 'room_number', 'batch_year', 'class_section', 'classSection',
+    'profile_snapshot', 'system_info', // System keys
+  ]);
+  
+  const unexpectedFields = providedSlugs.filter(
+    slug => !expectedSlugs.has(slug) && !knownProfileFields.has(slug)
+  );
   
   if (unexpectedFields.length > 0) {
     logger.warn(
