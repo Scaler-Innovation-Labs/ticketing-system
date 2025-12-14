@@ -481,6 +481,54 @@ async function processEvent(eventType: string, payload: Record<string, any>): Pr
       break;
     }
 
+    case 'ticket.validate_metadata': {
+      const { ticketId, subcategoryId, metadata } = payload;
+
+      if (!subcategoryId || !metadata) {
+        logger.warn({ ticketId, subcategoryId }, 'Missing required fields for metadata validation');
+        return;
+      }
+
+      try {
+        // Import validation function
+        const { validateTicketMetadata } = await import('@/lib/ticket/category-fields-service');
+        
+        // Validate metadata against subcategory fields
+        const result = await validateTicketMetadata(subcategoryId, metadata);
+
+        if (!result.valid) {
+          // Log validation errors but don't fail the ticket
+          // The ticket is already created, so we just mark it for review
+          logger.warn(
+            {
+              ticketId,
+              subcategoryId,
+              errors: result.errors,
+            },
+            'Ticket metadata validation failed - ticket may need review'
+          );
+
+          // Optionally: Update ticket with validation status
+          // This could be used to flag tickets that need review
+          // await db.update(tickets).set({ needs_review: true }).where(eq(tickets.id, ticketId));
+        } else {
+          logger.debug({ ticketId, subcategoryId }, 'Ticket metadata validation passed');
+        }
+      } catch (error: any) {
+        // Don't fail the outbox event if validation errors occur
+        // The ticket is already created, so validation errors are non-critical
+        logger.error(
+          {
+            error: error.message,
+            ticketId,
+            subcategoryId,
+          },
+          'Failed to validate ticket metadata (non-critical)'
+        );
+      }
+      break;
+    }
+
     default:
       logger.warn({ eventType }, 'Unknown event type in outbox');
   }
