@@ -19,9 +19,9 @@ import { TicketList } from "@/components/student/dashboard/TicketList";
 import { TicketEmpty } from "@/components/student/dashboard/TicketEmpty";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
 import { ensureUser } from "@/lib/auth/api-auth";
-// Use ISR (Incremental Static Regeneration) - cache for 30 seconds
+// Use ISR (Incremental Static Regeneration) - cache for 10 seconds
 // Removed force-dynamic to allow revalidation to work
-export const revalidate = 30;
+export const revalidate = 10;
 
 export default async function StudentDashboardPage({
   searchParams,
@@ -29,9 +29,12 @@ export default async function StudentDashboardPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
-    // Get auth from Clerk - layout already verified userId exists
-    // We need to get userId for DB queries, but layout already guarded this page
-    const session = await auth();
+    // OPTIMIZATION: Parallelize auth() and searchParams parsing
+    const [session, resolvedParams] = await Promise.all([
+      auth(),
+      searchParams,
+    ]);
+    
     const userId = session?.userId;
 
     // This should never happen - layout.tsx already verified, but type safety
@@ -47,6 +50,7 @@ export default async function StudentDashboardPage({
       );
     }
 
+    // OPTIMIZATION: Parallelize user lookup and ensureUser if needed
     let dbUser = await getCachedUser(userId);
     if (!dbUser) {
       try {
@@ -61,9 +65,8 @@ export default async function StudentDashboardPage({
     }
 
     // -----------------------------
-    // 2. Parse URL params (await searchParams in Next.js 16)
+    // 2. Parse URL params (already awaited above)
     // -----------------------------
-    const resolvedParams = await searchParams;
     const params = resolvedParams ?? {};
     const getParam = (value: string | string[] | undefined) =>
       Array.isArray(value) ? value[0] ?? "" : value ?? "";

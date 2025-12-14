@@ -6,6 +6,7 @@
 
 import { db, tickets, ticket_statuses, categories, subcategories, users } from '@/db';
 import { eq, and, desc, asc, ilike, sql, or } from 'drizzle-orm';
+import { cache } from 'react';
 
 export interface TicketFilters {
     userId: string;
@@ -32,8 +33,9 @@ export interface PaginationInfo {
 
 /**
  * Get tickets for a student
+ * OPTIMIZATION: Wrapped in React cache() for request-level deduplication
  */
-export async function getStudentTickets(filters: TicketFilters) {
+const getStudentTicketsCached = cache(async (filters: TicketFilters) => {
     const {
         userId,
         search = '',
@@ -198,13 +200,18 @@ export async function getStudentTickets(filters: TicketFilters) {
             endIndex: Math.min(offset + limit, totalCount),
         },
     };
+});
+
+export async function getStudentTickets(filters: TicketFilters) {
+    return getStudentTicketsCached(filters);
 }
 
 /**
  * Get ticket statistics for a user
  * OPTIMIZATION: Parallelize status count and escalated count queries
+ * OPTIMIZATION: Wrapped in React cache() for request-level deduplication
  */
-export async function getTicketStats(userId: string) {
+const getTicketStatsCached = cache(async (userId: string) => {
     // OPTIMIZATION: Run both queries in parallel
     const [result, escalatedResult] = await Promise.all([
         // Get status counts
@@ -266,4 +273,8 @@ export async function getTicketStats(userId: string) {
     });
 
     return stats;
+});
+
+export async function getTicketStats(userId: string) {
+    return getTicketStatsCached(userId);
 }

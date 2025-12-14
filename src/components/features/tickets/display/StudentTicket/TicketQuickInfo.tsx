@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp, UserCheck, Clock } from "lucide-react";
-import { format } from "date-fns";
+import { formatTimelineDate } from "@/lib/utils/date-format";
 import type { TATInfo } from "@/types/ticket";
 
 interface TicketQuickInfoProps {
@@ -92,7 +92,7 @@ export function TicketQuickInfo({
             {ticket.resolved_at && (
               <div className="mt-2 pt-2 border-t border-emerald-200 dark:border-emerald-800">
                 <p className="text-xs text-muted-foreground">
-                  Resolved on {format(new Date(ticket.resolved_at), 'MMM d, yyyy')}
+                  Resolved on {formatTimelineDate(ticket.resolved_at)}
                 </p>
               </div>
             )}
@@ -111,7 +111,7 @@ export function TicketQuickInfo({
             {ticket.closed_at && (
               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
                 <p className="text-xs text-muted-foreground">
-                  Closed on {format(new Date(ticket.closed_at), 'MMM d, yyyy')}
+                  Closed on {formatTimelineDate(ticket.closed_at)}
                 </p>
               </div>
             )}
@@ -130,7 +130,7 @@ export function TicketQuickInfo({
             {(ticket.updated_at) && (
               <div className="mt-2 pt-2 border-t border-indigo-200 dark:border-indigo-800">
                 <p className="text-xs text-muted-foreground">
-                  Reopened on {format(new Date(ticket.updated_at), 'MMM d, yyyy')}
+                  Reopened on {formatTimelineDate(ticket.updated_at)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   New TAT will be set by admin
@@ -147,12 +147,12 @@ export function TicketQuickInfo({
               <span className="text-sm font-medium text-muted-foreground">Expected Resolution</span>
             </div>
             <p className={`text-sm font-semibold break-words ${tatInfo.isOverdue ? 'text-red-700 dark:text-red-400' : ''}`}>
-              {tatInfo.expectedResolution instanceof Date ? format(tatInfo.expectedResolution, 'MMM d, yyyy') : String(tatInfo.expectedResolution)}
+              {formatTimelineDate(tatInfo.expectedResolution)}
             </p>
             {tatInfo.tatSetAt && tatInfo.tatSetBy && (
               <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-800">
                 <p className="text-xs text-muted-foreground">
-                  Set by {tatInfo.tatSetBy} on {format(new Date(tatInfo.tatSetAt), 'MMM d, yyyy')}
+                  Set by {tatInfo.tatSetBy} on {formatTimelineDate(tatInfo.tatSetAt)}
                 </p>
               </div>
             )}

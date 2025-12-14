@@ -1,6 +1,6 @@
 
 import { db, tickets, ticket_statuses, categories, subcategories, users, ticket_activity, ticket_attachments } from '@/db';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { eq, and, or, desc, asc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { buildTimeline } from '@/lib/ticket/formatting/buildTimeline';
 import { addBusinessHours } from '@/lib/ticket/utils/tat-calculator';
@@ -120,6 +120,7 @@ export interface StudentTicketViewModel {
  */
 const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: string): Promise<StudentTicketViewModel | null> => {
     // OPTIMIZATION: Parallelize all database queries to reduce latency
+    // OPTIMIZATION: Select only needed columns to reduce data transfer
     const [ticketResult, activitiesResult, attachmentsResult] = await Promise.all([
         // 1. Fetch Ticket Details
         db
@@ -139,6 +140,7 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
             .limit(1),
 
         // 2. Fetch Activity (includes comments) - parallelized
+        // OPTIMIZATION: Filter visibility in database query instead of in-memory
         db
             .select({
                 id: ticket_activity.id,
@@ -152,12 +154,25 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
             })
             .from(ticket_activity)
             .leftJoin(users, eq(ticket_activity.user_id, users.id))
-            .where(eq(ticket_activity.ticket_id, ticketId))
+            .where(
+                and(
+                    eq(ticket_activity.ticket_id, ticketId),
+                    or(
+                        eq(ticket_activity.visibility, 'public'),
+                        eq(ticket_activity.visibility, 'student_visible')
+                    )
+                )
+            )
             .orderBy(asc(ticket_activity.created_at)),
 
         // 3. Fetch Attachments - parallelized
+        // OPTIMIZATION: Select only needed columns
         db
-            .select()
+            .select({
+                id: ticket_attachments.id,
+                file_name: ticket_attachments.file_name,
+                file_url: ticket_attachments.file_url,
+            })
             .from(ticket_attachments)
             .where(eq(ticket_attachments.ticket_id, ticketId)),
     ]);
@@ -167,13 +182,9 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
 
     const { ticket, status, category, subcategory, assignedTo } = data;
 
-    // Filter activities for student visibility
-    const visibleActivities = activitiesResult.filter(a =>
-        a.visibility === 'public' || a.visibility === 'student_visible'
-    );
-
+    // OPTIMIZATION: Activities are already filtered by visibility in the query
     // Extract comments from activities (action = 'comment')
-    const commentActivities = visibleActivities.filter(a => a.action === 'comment');
+    const commentActivities = activitiesResult.filter(a => a.action === 'comment');
 
     const attachments = attachmentsResult;
 
@@ -371,9 +382,15 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
 });
 
 // Export the cached version wrapped in unstable_cache for cross-request caching
-// Note: We use React cache() for request-level deduplication, and skip unstable_cache
-// since ticket data changes frequently and the cache key would need to include ticketId
-// which makes it less effective. The parallel queries are the main optimization.
+// OPTIMIZATION: Add short TTL (5 seconds) for cross-request caching to reduce database load
+// React cache() handles request-level deduplication, unstable_cache handles cross-request caching
 export async function getStudentTicketViewModel(ticketId: number, userId: string): Promise<StudentTicketViewModel | null> {
-    return getStudentTicketViewModelCached(ticketId, userId);
+    return unstable_cache(
+        async () => getStudentTicketViewModelCached(ticketId, userId),
+        [`student-ticket-${ticketId}-${userId}`],
+        {
+            revalidate: 5, // 5 seconds - short TTL for frequently changing data
+            tags: [`ticket-${ticketId}`, `user-${userId}`],
+        }
+    )();
 }

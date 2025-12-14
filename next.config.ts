@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    // Optimize package imports to reduce bundle size
+    optimizePackageImports: [
+      '@/components',
+      'lucide-react',
+      'date-fns',
+      'date-fns-tz',
+    ],
+  },
 };
 
 export default nextConfig;

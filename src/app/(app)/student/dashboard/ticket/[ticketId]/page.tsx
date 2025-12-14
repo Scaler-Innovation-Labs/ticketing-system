@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import nextDynamic from "next/dynamic";
 import { db, tickets } from "@/db";
 import { desc } from "drizzle-orm";
@@ -10,43 +12,78 @@ import { getCachedUser } from "@/lib/cache/cached-queries";
 import { ensureUser } from "@/lib/auth/api-auth";
 import { getStudentTicketViewModel } from "@/lib/ticket/data/viewModel";
 
-// UI Components
+// UI Components - Static imports for above-the-fold content
 import { TicketHeader } from "@/components/features/tickets/display/StudentTicket/TicketHeader";
 import { TicketQuickInfo } from "@/components/features/tickets/display/StudentTicket/TicketQuickInfo";
 import { TicketSubmittedInfo } from "@/components/features/tickets/display/StudentTicket/TicketSubmittedInfo";
 import { StudentActions } from "@/components/features/tickets/actions/StudentActions";
 
-// Lazy-load heavy, below-the-fold sections using dynamic imports.
-// Note: We don't disable SSR here because this is a Server Component.
+// Lazy-load only heavy, below-the-fold sections using dynamic imports
 const TicketTimeline = nextDynamic(() =>
   import("@/components/features/tickets/display/StudentTicket/TicketTimeline").then(
     (mod) => mod.TicketTimeline
-  )
+  ),
+  { ssr: true }
 );
 
 const TicketConversation = nextDynamic(() =>
   import("@/components/features/tickets/display/StudentTicket/TicketConversation").then(
     (mod) => mod.TicketConversation
-  )
+  ),
+  { ssr: true }
 );
 
 const TicketRating = nextDynamic(() =>
   import("@/components/features/tickets/display/StudentTicket/TicketRating").then(
     (mod) => mod.TicketRating
-  )
+  ),
+  { ssr: true }
 );
 
 const TicketTATInfo = nextDynamic(() =>
   import("@/components/features/tickets/display/StudentTicket/TicketTATInfo").then(
     (mod) => mod.TicketTATInfo
-  )
+  ),
+  { ssr: true }
 );
 
 const TicketStudentInfo = nextDynamic(() =>
   import("@/components/features/tickets/display/StudentTicket/TicketStudentInfo").then(
     (mod) => mod.TicketStudentInfo
-  )
+  ),
+  { ssr: true }
 );
+
+// Loading skeletons for Suspense boundaries
+function TimelineSkeleton() {
+  return (
+    <Card className="border-2">
+      <CardContent className="p-6">
+        <Skeleton className="h-6 w-32 mb-4" />
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConversationSkeleton() {
+  return (
+    <Card className="border-2 shadow-md">
+      <CardContent className="p-6">
+        <Skeleton className="h-6 w-32 mb-4" />
+        <div className="space-y-4">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 // Mark as dynamic since we use auth() and user-specific data
 export const dynamic = 'force-dynamic';
@@ -54,6 +91,9 @@ export const runtime = 'nodejs';
 
 // Allow on-demand rendering for tickets not in the static params list
 export const dynamicParams = true;
+
+// ISR: Revalidate every 10 seconds for faster subsequent loads
+export const revalidate = 10;
 
 // Note: generateStaticParams removed since we're using force-dynamic
 // This page requires authentication and user-specific data, so it must be rendered dynamically
@@ -137,21 +177,27 @@ export default async function StudentTicketPage({
               dynamicFields={vm.normalizedDynamicFields}
             />
 
-            <TicketTimeline entries={vm.timelineEntries} />
+            <Suspense fallback={<TimelineSkeleton />}>
+              <TicketTimeline entries={vm.timelineEntries} />
+            </Suspense>
 
-            <TicketConversation
-              comments={vm.normalizedComments}
-              ticketId={vm.ticket.id}
-              status={vm.statusDisplay}
-              normalizedStatus={vm.normalizedStatus}
-              optimisticComments={[]}
-            />
+            <Suspense fallback={<ConversationSkeleton />}>
+              <TicketConversation
+                comments={vm.normalizedComments}
+                ticketId={vm.ticket.id}
+                status={vm.statusDisplay}
+                normalizedStatus={vm.normalizedStatus}
+                optimisticComments={[]}
+              />
+            </Suspense>
 
             {vm.normalizedStatus === "resolved" && (
-              <TicketRating
-                ticketId={vm.ticket.id}
-                currentRating={vm.ticket.rating ? String(vm.ticket.rating) : undefined}
-              />
+              <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+                <TicketRating
+                  ticketId={vm.ticket.id}
+                  currentRating={vm.ticket.rating ? String(vm.ticket.rating) : undefined}
+                />
+              </Suspense>
             )}
 
             <StudentActions
@@ -159,7 +205,9 @@ export default async function StudentTicketPage({
               currentStatus={vm.statusDisplay?.value || "open"}
             />
 
-            <TicketTATInfo tatInfo={vm.tatInfo} />
+            <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+              <TicketTATInfo tatInfo={vm.tatInfo} />
+            </Suspense>
 
             {(vm.ticket.escalation_level ?? 0) > 0 && (
               <Card className="border-2 bg-muted/30">
@@ -174,7 +222,9 @@ export default async function StudentTicketPage({
               </Card>
             )}
 
-            <TicketStudentInfo profileFields={vm.resolvedProfileFields} />
+            <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+              <TicketStudentInfo profileFields={vm.resolvedProfileFields} />
+            </Suspense>
           </CardContent>
         </Card>
       </div>
