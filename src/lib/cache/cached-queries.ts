@@ -136,7 +136,7 @@ export const getCachedTicketStatuses = unstable_cache(
         return statuses;
     },
     ['ticket-statuses'],
-    { 
+    {
         revalidate: CACHE_TTL.TICKET_STATUS / 1000, // Convert ms to seconds
         tags: ['ticket-statuses']
     }
@@ -401,6 +401,81 @@ export const getCachedScopes = unstable_cache(
 );
 
 // ============================================
+// Admin Assignment Caching (PERFORMANCE CRITICAL)
+// ============================================
+
+import { admin_assignments } from '@/db';
+
+/**
+ * Get ALL admin assignments (cached)
+ * Returns a map: `${domain_id}-${scope_id}` -> user_id[]
+ * This eliminates multiple DB queries during ticket assignment
+ * Cache for 5 minutes since assignments can change
+ */
+export const getCachedAdminAssignments = unstable_cache(
+    async () => {
+        const assignments = await db
+            .select({
+                user_id: admin_assignments.user_id,
+                domain_id: admin_assignments.domain_id,
+                scope_id: admin_assignments.scope_id,
+            })
+            .from(admin_assignments);
+
+        // Build lookup map: domain-scope -> user_ids
+        const assignmentMap = new Map<string, string[]>();
+        for (const a of assignments) {
+            if (a.domain_id && a.scope_id) {
+                const key = `${a.domain_id}-${a.scope_id}`;
+                const existing = assignmentMap.get(key) || [];
+                existing.push(a.user_id);
+                assignmentMap.set(key, existing);
+            }
+        }
+        // Convert to plain object for serialization
+        return Object.fromEntries(assignmentMap);
+    },
+    ['admin-assignments-map'],
+    {
+        revalidate: 300, // 5 minutes
+        tags: ['admin-assignments', 'assignments']
+    }
+);
+
+/**
+ * Get scope lookup by name within a domain (cached)
+ * Returns a map: `${domain_id}-${scope_name}` -> scope_id
+ * This eliminates scope lookup query during assignment
+ */
+export const getCachedScopeLookup = unstable_cache(
+    async () => {
+        const allScopes = await db
+            .select({
+                id: scopes.id,
+                name: scopes.name,
+                domain_id: scopes.domain_id,
+            })
+            .from(scopes)
+            .where(eq(scopes.is_active, true));
+
+        // Build lookup map: domain-name -> scope_id
+        const scopeMap = new Map<string, number>();
+        for (const s of allScopes) {
+            if (s.domain_id && s.name) {
+                const key = `${s.domain_id}-${s.name}`;
+                scopeMap.set(key, s.id);
+            }
+        }
+        return Object.fromEntries(scopeMap);
+    },
+    ['scope-lookup-map'],
+    {
+        revalidate: 3600, // 1 hour
+        tags: ['master-data', 'scopes']
+    }
+);
+
+// ============================================
 // Ticket Data Caching (with short TTL)
 // ============================================
 
@@ -454,9 +529,9 @@ export const getCachedAdminTickets = unstable_cache(
         return rows;
     },
     ['admin-tickets'],
-    { 
+    {
         revalidate: 30, // 30 seconds - tickets change frequently
-        tags: ['tickets'] 
+        tags: ['tickets']
     }
 );
 
@@ -546,25 +621,25 @@ export const getCachedCommitteeTickets = unstable_cache(
                     )
                 )
                 .orderBy(desc(tickets.created_at));
-            
+
             // Deduplicate results (in case a ticket is tagged to multiple committees)
             const uniqueRows = Array.from(
                 new Map(rows.map(row => [row.id, row])).values()
             );
-            
+
             return uniqueRows;
         } else {
             // If user has no committees, only show tickets created by them
             const rows = await baseQuery
                 .where(eq(tickets.created_by, userId))
                 .orderBy(desc(tickets.created_at));
-            
+
             return rows;
         }
     },
     ['committee-tickets'],
-    { 
+    {
         revalidate: 30, // 30 seconds
-        tags: ['tickets'] 
+        tags: ['tickets']
     }
 );

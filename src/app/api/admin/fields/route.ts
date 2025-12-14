@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     // Use provided slug or generate from name using the utility function
     const { generateSlug } = await import('@/lib/utils/slug');
     const slug = parsed.data.slug || generateSlug(parsed.data.name);
-    
+
     // Check for duplicate slug within the same subcategory
     const existing = await db
       .select({ id: category_fields.id })
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
     await db.transaction(async (tx) => {
       // Use validation_rules if provided, otherwise use validation
       const validation = parsed.data.validation_rules || parsed.data.validation || null;
-      
+
       // Create field
       const [field] = await tx
         .insert(category_fields)
@@ -200,11 +200,17 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // CACHE INVALIDATION: Bust the category fields cache immediately
+    // This ensures new fields take effect without waiting for cache expiry
+    const { revalidateTag } = await import('next/cache');
+    revalidateTag('category-fields', 'default');
+    revalidateTag('subcategories', 'default');
+
     logger.info({ id: fieldId! }, 'Field created');
     return NextResponse.json({ id: fieldId! }, { status: 201 });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating field');
-    
+
     // Handle unique constraint violations
     if (error.message?.includes('unique') || error.code === '23505') {
       const slug = body?.slug || body?.name?.toLowerCase().replace(/\s+/g, '-') || 'unknown';
@@ -213,7 +219,7 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    
+
     return NextResponse.json(
       { error: error.message || 'Failed to create field' },
       { status: error.message.includes('Unauthorized') ? 401 : 500 }

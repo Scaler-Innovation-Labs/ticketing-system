@@ -53,6 +53,12 @@ export async function POST(request: NextRequest) {
       scope_id: parsed.data.scope_id,
     });
 
+    // CACHE INVALIDATION: Bust the admin assignments cache immediately
+    // This ensures new assignments take effect without waiting for cache expiry
+    const { revalidateTag } = await import('next/cache');
+    revalidateTag('admin-assignments', 'default');
+    revalidateTag('assignments', 'default');
+
     return NextResponse.json({ id: ruleId }, { status: 201 });
   } catch (error: any) {
     logger.error({ error: error.message }, 'Error creating assignment rule');

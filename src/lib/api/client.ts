@@ -73,6 +73,7 @@ async function request<T>(
     options: RequestInit = {}
 ): Promise<T> {
     const defaultOptions: RequestInit = {
+        credentials: 'include', // Include cookies for session auth
         headers: {
             'Content-Type': 'application/json',
             ...options.headers,

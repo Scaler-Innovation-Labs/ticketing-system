@@ -83,7 +83,7 @@ export async function validateCategoryAndSubcategory(
     const { getCachedCategories } = await import('@/lib/cache/cached-queries');
     const cachedCategories = await getCachedCategories();
     const cachedCategory = cachedCategories.find(c => c.id === categoryId && c.id === categoryId);
-    
+
     if (cachedCategory) {
       // Category found in cache - validate it's active (cache only has active categories)
       // But we need full category object with all fields, so we still need to query
@@ -169,9 +169,9 @@ async function findFieldLevelAssignee(
 
   try {
     const dbInstance = txn || db;
-    
+
     const fields = await dbInstance
-      .select({ 
+      .select({
         id: category_fields.id,
         slug: category_fields.slug,
         assigned_admin_id: category_fields.assigned_admin_id,
@@ -187,7 +187,7 @@ async function findFieldLevelAssignee(
     for (const field of fields) {
       const fieldValue = metadata[field.slug];
       const assignedAdminId = field.assigned_admin_id;
-      
+
       if (fieldValue && assignedAdminId) {
         return assignedAdminId;
       }
@@ -228,24 +228,15 @@ async function findDomainScopeAssignee(
     // 3. If scope_mode is dynamic and no location provided, resolve from student profile
     // 4. Otherwise use null (no scope)
     let scopeId: number | null = null;
-    
-    // OPTIMIZATION: Parallelize scope resolution queries when needed
+
+    // OPTIMIZATION: Use cached scope lookup instead of DB query
     if (ticketLocation && categoryDomainId) {
       // PRIORITY 1: Always check student-submitted location first (overrides profile)
-      const [scope] = await db
-        .select({ id: scopes.id })
-        .from(scopes)
-        .where(
-          and(
-            eq(scopes.domain_id, categoryDomainId),
-            eq(scopes.name, ticketLocation)
-          )
-        )
-        .limit(1);
-      
-      if (scope) {
-        scopeId = scope.id;
-      }
+      // Use cached scope lookup - eliminates ~150ms DB query
+      const { getCachedScopeLookup } = await import('@/lib/cache/cached-queries');
+      const scopeLookup = await getCachedScopeLookup();
+      const cacheKey = `${categoryDomainId}-${ticketLocation}`;
+      scopeId = scopeLookup[cacheKey] || null;
     } else if (ticketScopeId) {
       // PRIORITY 2: Use pre-resolved ticketScopeId (from profile) if no location was provided
       // OPTIMIZATION: Skip query if already resolved
@@ -269,10 +260,10 @@ async function findDomainScopeAssignee(
           .where(eq(students.user_id, userId))
           .limit(1),
       ]);
-      
+
       const scopeConfig = scopeConfigResult[0];
       const student = studentResult[0];
-      
+
       if (scopeConfig?.student_field_key && student) {
         const fieldKey = scopeConfig.student_field_key;
         switch (fieldKey) {
@@ -294,27 +285,23 @@ async function findDomainScopeAssignee(
       return null;
     }
 
-    // Optimize: Combine queries for better performance
-    // Check category_assignments, admin_assignments, and admin_profiles in parallel
-    const [categoryAssignedAdmins, assignmentAdmins, profileAdmins] = await Promise.all([
+    // OPTIMIZATION: Use cached admin assignments instead of DB query
+    // This eliminates one DB round-trip (~150ms)
+    const { getCachedAdminAssignments } = await import('@/lib/cache/cached-queries');
+    const assignmentMap = await getCachedAdminAssignments();
+    const assignmentKey = `${categoryDomainId}-${scopeId}`;
+    const cachedAssignmentAdmins = assignmentMap[assignmentKey] || [];
+
+    // Parallelize remaining queries (category_assignments and admin_profiles)
+    const [categoryAssignedAdmins, profileAdmins] = await Promise.all([
       // Step 1: Get admins assigned to this category (if categoryId provided)
       categoryId
         ? db
-            .select({ user_id: category_assignments.user_id })
-            .from(category_assignments)
-            .where(eq(category_assignments.category_id, categoryId))
+          .select({ user_id: category_assignments.user_id })
+          .from(category_assignments)
+          .where(eq(category_assignments.category_id, categoryId))
         : Promise.resolve([]),
-      // Step 2: Check admin_assignments (secondary)
-      db
-        .select({ user_id: admin_assignments.user_id })
-        .from(admin_assignments)
-        .where(
-          and(
-            eq(admin_assignments.domain_id, categoryDomainId),
-            eq(admin_assignments.scope_id, scopeId)
-          )
-        ),
-      // Step 3: Check admin_profiles (primary)
+      // Step 2: Check admin_profiles (primary)
       db
         .select({ user_id: admin_profiles.user_id })
         .from(admin_profiles)
@@ -329,27 +316,30 @@ async function findDomainScopeAssignee(
           )
         ),
     ]);
-    
+
+    // Convert cached assignment to same format as DB query
+    const assignmentAdmins = cachedAssignmentAdmins.map(user_id => ({ user_id }));
+
     // If category assignments exist, filter profile admins to only those in category assignments
     if (categoryAssignedAdmins.length > 0) {
       const categoryAssignedUserIds = new Set(categoryAssignedAdmins.map(a => a.user_id));
       const matchingCategoryAdmins = profileAdmins.filter(p => categoryAssignedUserIds.has(p.user_id));
-      
+
       if (matchingCategoryAdmins.length === 1) {
         return matchingCategoryAdmins[0].user_id;
       }
     }
-    
+
     // Combine and deduplicate all matching admins
     const allMatchingAdmins = new Set<string>();
     assignmentAdmins.forEach(a => allMatchingAdmins.add(a.user_id));
     profileAdmins.forEach(p => allMatchingAdmins.add(p.user_id));
-    
+
     // Only assign if exactly 1 admin matches
     if (allMatchingAdmins.size === 1) {
       return Array.from(allMatchingAdmins)[0];
     }
-    
+
     // If 0 or 2+ matches, return null to continue to next priority
     return null;
   } catch (error) {
@@ -364,7 +354,7 @@ async function findDomainScopeAssignee(
 async function findSuperAdmin(txn?: DbTransaction): Promise<string | null> {
   try {
     const dbInstance = txn || db;
-    
+
     const [superAdmin] = await dbInstance
       .select({ id: users.id })
       .from(users)
@@ -401,7 +391,7 @@ export async function createTicket(
   // PERFORMANCE: FAST validation phase - only essential checks
   // This must complete in < 100ms to meet performance budget
   const validationStart = Date.now();
-  
+
   // Parallelize only the fastest essential validations
   const [categoryValidationResult, openStatusId] = await Promise.all([
     // 1. Validate category/subcategory exists and is active (fast DB lookup)
@@ -411,12 +401,12 @@ export async function createTicket(
   ]);
 
   const { category, subcategory } = categoryValidationResult;
-  
+
   // Rate limit check (can be done async, but keeping sync for now)
   await checkTicketRateLimit(userId);
-  
+
   timings['validate-input'] = Date.now() - validationStart;
-  
+
   // PERFORMANCE BUDGET: Warn if fast validation exceeds 100ms
   if (timings['validate-input'] > 100) {
     logger.warn(
@@ -430,17 +420,17 @@ export async function createTicket(
   // Metadata validation can be done async or marked for review
   const scopeStart = Date.now();
   const ticketLocation = (input as any).location || input.metadata?.location as string | undefined;
-  
+
   // Only resolve scope (fast) - metadata validation happens later
   const resolvedScopeId = ticketLocation
     ? null // Skip profile lookup if location is in ticket
     : await resolveTicketScope(input.category_id, userId, {
-        scope_id: category.scope_id,
-        scope_mode: category.scope_mode,
-      }).catch(() => null); // Don't fail if scope resolution fails
-  
+      scope_id: category.scope_id,
+      scope_mode: category.scope_mode,
+    }).catch(() => null); // Don't fail if scope resolution fails
+
   timings['scope-resolution'] = Date.now() - scopeStart;
-  
+
   // NOTE: Metadata validation is deferred - will be queued as background job
   // This allows ticket creation to respond quickly even with complex metadata
 
@@ -460,10 +450,10 @@ export async function createTicket(
     // 3) Category default admin (from categories.default_admin_id)
     // 4) Domain/scope-based assignment (only for Hostel/College)
     // 5) Super admin fallback
-    
+
     // Determine the ticket's final scope (resolved scope takes precedence over category scope)
     const ticketScopeId = resolvedScopeId || category.scope_id || null;
-    
+
     // OPTIMIZATION: Pre-fetch all potential assignees in parallel
     // This reduces sequential query delays by fetching all candidates upfront
     const assignmentStart = Date.now();
@@ -480,36 +470,36 @@ export async function createTicket(
       // Only fetch if we have a domain_id (early exit optimization)
       category.domain_id
         ? findDomainScopeAssignee(
-            category.domain_id,
-            ticketScopeId,
-            ticketLocation,
-            category.scope_mode,
-            category.scope_id,
-            ticketLocation ? null : userId, // Skip userId if location is in ticket
-            input.category_id
-          ).catch(() => null) // Don't fail if domain/scope lookup fails
+          category.domain_id,
+          ticketScopeId,
+          ticketLocation,
+          category.scope_mode,
+          category.scope_id,
+          ticketLocation ? null : userId, // Skip userId if location is in ticket
+          input.category_id
+        ).catch(() => null) // Don't fail if domain/scope lookup fails
         : Promise.resolve(null),
     ]);
-    
+
     // Apply assignment priority (using pre-fetched values)
     // Priority 1: Field-level assignment
     let assignedTo: string | null = fieldLevelAssignee;
-    
+
     // Priority 2: Subcategory-level assignment (no query needed, already in memory)
     if (!assignedTo) {
       assignedTo = subcategory?.assigned_admin_id || null;
     }
-    
+
     // Priority 3: Category default admin (no query needed, already in memory)
     if (!assignedTo) {
       assignedTo = category.default_admin_id;
     }
-    
+
     // Priority 4: Domain/scope-based assignment (already fetched)
     if (!assignedTo) {
       assignedTo = domainScopeAssignee;
     }
-    
+
     // Priority 5: Super admin fallback (already fetched)
     if (!assignedTo) {
       assignedTo = superAdmin;
@@ -548,15 +538,15 @@ export async function createTicket(
       // 6. Insert attachments into ticket_attachments table (if any)
       input.attachments && input.attachments.length > 0
         ? txn.insert(ticket_attachments).values(
-            input.attachments.map((attachment) => ({
-              ticket_id: ticket.id,
-              uploaded_by: userId,
-              file_name: attachment.filename,
-              file_url: attachment.url,
-              file_size: attachment.size,
-              mime_type: attachment.mime_type,
-            }))
-          )
+          input.attachments.map((attachment) => ({
+            ticket_id: ticket.id,
+            uploaded_by: userId,
+            file_name: attachment.filename,
+            file_url: attachment.url,
+            file_size: attachment.size,
+            mime_type: attachment.mime_type,
+          }))
+        )
         : Promise.resolve(),
 
       // 7. Log activity (critical - must succeed)
@@ -594,7 +584,7 @@ export async function createTicket(
         aggregate_id: String(ticket.id),
         payload: { ticketId: ticket.id },
       });
-      
+
       // Queue metadata validation job (if needed) - deferred deep validation
       if (input.subcategory_id && input.metadata) {
         await db.insert(outbox).values({
@@ -608,15 +598,15 @@ export async function createTicket(
           },
         });
       }
-      
+
       timings['queue-notifications'] = Date.now() - outboxStart;
     } catch (error: any) {
       timings['queue-notifications'] = Date.now() - outboxStart;
       logger.error(
-        { 
+        {
           error: error?.message || String(error),
           ticketId: ticket.id,
-          userId 
+          userId
         },
         'Failed to queue background jobs'
       );
@@ -625,7 +615,7 @@ export async function createTicket(
 
   // Log final timing after transaction completes
   timings['total'] = Date.now() - startTime;
-  
+
   // PERFORMANCE: Log timing breakdown for debugging
   logger.info(
     {
@@ -637,7 +627,7 @@ export async function createTicket(
     },
     'Ticket created'
   );
-  
+
   // PERFORMANCE BUDGET: Warn if total exceeds 500ms
   if (timings.total > 500) {
     logger.warn(

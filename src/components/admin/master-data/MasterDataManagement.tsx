@@ -387,7 +387,7 @@ export function MasterDataManagement({
 					</CardHeader>
 					<CardContent className="flex justify-end">
 						<Button asChild size="sm">
-							<Link href="/superadmin/students">Open Students</Link>
+							<Link href="/superadmin/dashboard/students">Open Students</Link>
 						</Button>
 					</CardContent>
 				</Card>

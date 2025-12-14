@@ -81,7 +81,7 @@ export function BatchStudentsManagement({
   const router = useRouter();
   const nextRouter = useNextRouter();
   const searchParams = useSearchParams();
-  
+
   const [students, setStudents] = useState<Student[]>(initialStudents);
   const [hostels, setHostels] = useState<Hostel[]>(initialHostels);
   const [pagination, setPagination] = useState<PaginationInfo>(initialPagination);
@@ -193,7 +193,7 @@ export function BatchStudentsManagement({
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
-            onClick={() => router.push("/superadmin/students")}
+            onClick={() => router.push("/superadmin/dashboard/students")}
             className="gap-1"
           >
             <ChevronLeft className="w-4 h-4" />
