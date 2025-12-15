@@ -10,11 +10,17 @@ interface DynamicField {
   type: string;
 }
 
+interface ProfileField {
+  field_name: string;
+  field_value: string | null;
+}
+
 interface TicketSubmittedInfoProps {
   description: string | null;
   location: string | null;
   images: string[];
   dynamicFields: DynamicField[];
+  profileFields?: ProfileField[];
 }
 
 export function TicketSubmittedInfo({
@@ -22,8 +28,8 @@ export function TicketSubmittedInfo({
   location,
   images,
   dynamicFields,
+  profileFields = [],
 }: TicketSubmittedInfoProps) {
-  // Filter out TAT-related fields
   // Filter out TAT-related fields
   const filteredFields = dynamicFields.filter((field) => {
     const keyLower = (field.key || '').toLowerCase();
@@ -80,6 +86,26 @@ export function TicketSubmittedInfo({
           </div>
         )}
 
+        {/* Profile Fields (Name, Email, Phone, Hostel, etc.) */}
+        {profileFields.length > 0 && (
+          <div className="space-y-3">
+            {profileFields.map((field, index) => (
+              <div key={index} className="p-3 sm:p-4 rounded-lg bg-muted/50 border">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm">📝</span>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {field.field_name}
+                  </p>
+                </div>
+                <p className="text-sm font-semibold break-words">
+                  {field.field_value || "Not provided"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Dynamic Fields (non-profile fields) */}
         {filteredFields.length > 0 && (
           <div className="space-y-3">
             {filteredFields.map((field) => (
