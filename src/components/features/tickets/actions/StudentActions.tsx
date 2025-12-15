@@ -16,8 +16,8 @@ export function StudentActions({ ticketId, currentStatus }: { ticketId: number; 
   // Normalize status for comparison (handles both uppercase enum and lowercase constants)
   const normalizedStatus = normalizeStatusForComparison(currentStatus);
 
-  // Students can reopen closed/resolved tickets
-  const canReopen = normalizedStatus === "closed" || normalizedStatus === "resolved";
+  // Students can reopen only resolved tickets (not closed tickets)
+  const canReopen = normalizedStatus === "resolved";
 
   // Students can "close" tickets that are not yet fully resolved/closed
   // (under the hood this maps to RESOLVED status)

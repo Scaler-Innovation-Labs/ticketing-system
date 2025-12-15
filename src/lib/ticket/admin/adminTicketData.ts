@@ -191,7 +191,13 @@ async function _getAdminTicketDataUncached(
       escalation_level: ticket.escalation_level,
       status: status?.value || null,
     },
-    status?.value
+    status?.value,
+    activitiesResult.map(a => ({
+      action: a.action,
+      created_at: a.created_at,
+      details: a.details,
+      user_name: a.user_name,
+    }))
   );
 
   // Enrich timeline with TAT information

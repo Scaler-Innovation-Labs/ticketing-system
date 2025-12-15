@@ -282,6 +282,7 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
     const acknowledgedAt = ticketMetadata.acknowledged_at ? new Date(ticketMetadata.acknowledged_at) : null;
 
     // Build timeline using the same function as superadmin
+    // Pass activities to buildTimeline for more detailed timeline entries
     const timelineEntries = buildTimeline({
         created_at: ticket.created_at,
         acknowledged_at: acknowledgedAt,
@@ -290,53 +291,15 @@ const getStudentTicketViewModelCached = cache(async (ticketId: number, userId: s
         reopened_at: reopenedAt,
         escalation_level: ticket.escalation_level,
         status: status?.value || null,
-    }, normalizedStatus);
+    }, normalizedStatus, sortedActivities.map(a => ({
+        action: a.action,
+        created_at: a.created_at,
+        details: a.details,
+        user_name: a.user_name,
+    })));
     
-    // Add escalation reasons from activities (limited to recent 50)
-    sortedActivities.forEach((activity) => {
-        if (activity.action === 'escalated' && activity.details) {
-            const details = activity.details as { reason?: string; level?: number } | null;
-            if (details?.reason) {
-                const existingEntry = timelineEntries.find(
-                    (e) => e.title.includes('Escalated') && e.date.getTime() === activity.created_at.getTime()
-                );
-                if (existingEntry) {
-                    existingEntry.description = details.reason;
-                }
-            }
-        }
-    });
-
-    // Add TAT set entry if TAT was set
-    const tatSetAt = ticketMetadata?.tatSetAt;
-    if (tatSetAt) {
-        const tatSetDate = new Date(tatSetAt);
-        if (!isNaN(tatSetDate.getTime())) {
-            timelineEntries.push({
-                title: `TAT Set by ${ticketMetadata.tatSetBy || 'Admin'}`,
-                icon: "Sparkles",
-                date: tatSetDate,
-                color: "bg-yellow-100 dark:bg-yellow-900/30",
-                textColor: "text-yellow-600 dark:text-yellow-400",
-            });
-        }
-    }
-
-    // Add TAT Extensions
-    if (Array.isArray(ticketMetadata?.tatExtensions) && ticketMetadata.tatExtensions.length > 0) {
-        ticketMetadata.tatExtensions.forEach((extension: Record<string, unknown>) => {
-            const extendedAt = extension.extendedAt ? new Date(extension.extendedAt as string) : null;
-            if (extendedAt && !isNaN(extendedAt.getTime())) {
-                timelineEntries.push({
-                    title: `TAT Extended(to ${extension.newTAT || 'new date'})`,
-                    icon: "Sparkles",
-                    date: extendedAt,
-                    color: "bg-orange-100 dark:bg-orange-900/30",
-                    textColor: "text-orange-600 dark:text-orange-400",
-                });
-            }
-        });
-    }
+    // Note: Escalation reasons, TAT set/extended entries are now handled in buildTimeline
+    // via activities, so we don't need to add them separately here
 
     // Add Overdue entry if TAT date has passed and ticket is not resolved
     const tatDate = ticket.resolution_due_at || (ticketMetadata?.tatDate ? new Date(ticketMetadata.tatDate) : null);

@@ -48,7 +48,7 @@ export function TicketTimeline({ entries }: TicketTimelineProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="relative">
+        <div className="relative max-h-[600px] overflow-y-auto pr-2">
           {entries.length > 1 && (
             <div className="absolute left-5 top-8 bottom-8 w-0.5 bg-border" />
           )}

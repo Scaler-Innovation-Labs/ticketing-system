@@ -6,7 +6,7 @@
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CalendarCheck, Calendar, CheckCircle2, Clock, AlertCircle, RotateCw, MessageSquare, Sparkles, AlertTriangle } from "lucide-react";
+import { CalendarCheck, Calendar, CheckCircle2, Clock, AlertCircle, RotateCw, RotateCcw, MessageSquare, Sparkles, AlertTriangle, Plus, Loader2, CheckCircle } from "lucide-react";
 import { formatTimelineDate, formatTimelineTime } from "@/lib/utils/date-format";
 import type { TimelineEntry } from "@/lib/ticket/formatting/buildTimeline";
 
@@ -17,12 +17,16 @@ interface TicketTimelineServerProps {
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Calendar,
   CheckCircle2,
+  CheckCircle,
   Clock,
   AlertCircle,
   RotateCw,
+  RotateCcw,
   MessageSquare,
   Sparkles,
   AlertTriangle,
+  Plus,
+  Loader: Loader2,
 };
 
 export function TicketTimelineServer({ entries }: TicketTimelineServerProps) {
@@ -57,7 +61,7 @@ export function TicketTimelineServer({ entries }: TicketTimelineServerProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="relative">
+        <div className="relative max-h-[600px] overflow-y-auto pr-2">
           {entries.length > 1 && (
             <div className="absolute left-5 top-8 bottom-8 w-0.5 bg-border" />
           )}

@@ -25,9 +25,9 @@ Escalation rules automatically reassign tickets to higher-level staff when ticke
    - **Action**: Escalate to next level immediately
 
 3. **Repeated Reopening**
-   - **Trigger**: Student reopens the ticket for the **3rd time** (`reopen_count === 3`)
-   - **Reason**: The solution provided is clearly not satisfying the student or the fix is temporary
-   - **Action**: Escalate to next level (needs oversight)
+   - **Trigger**: Student reopens the ticket for the **3rd, 5th, or 7th time** (`reopen_count` in [3, 5, 7])
+   - **Reason**: Repeated reopenings indicate the solution provided is clearly not satisfying the student or the fix is temporary
+   - **Action**: Escalate to next level immediately
 
 4. **Negative Feedback (Low Rating)**
    - **Trigger**: Student rates a resolved ticket **1 or 2 stars** (`rating <= 2`)
@@ -377,6 +377,32 @@ CREATE TABLE escalation_rules (
    - Reassigns to senior admin
    - Adds 48 business hours to TAT deadlines
    - Logs: "Repeated reopening (3rd time)"
+
+7. **Ticket Resolved Again** (Dec 18, 2:00 PM)
+   - Admin resolves again
+
+8. **4th Reopen** (Dec 19, 10:00 AM)
+   - Student reopens: "Still not working"
+   - `reopen_count = 4` (no escalation)
+
+9. **5th Reopen** (Dec 20, 3:00 PM)
+   - Student reopens: "Issue persists"
+   - `reopen_count = 5` → **TRIGGERS ESCALATION**
+   - Escalates to Level 2 immediately
+   - Logs: "Repeated reopening (5th time)"
+
+10. **Ticket Resolved Again** (Dec 21, 11:00 AM)
+    - Admin resolves again
+
+11. **6th Reopen** (Dec 22, 9:00 AM)
+    - Student reopens: "Still broken"
+    - `reopen_count = 6` (no escalation)
+
+12. **7th Reopen** (Dec 23, 2:00 PM)
+    - Student reopens: "Problem continues"
+    - `reopen_count = 7` → **TRIGGERS ESCALATION**
+    - Escalates to Level 3 immediately
+    - Logs: "Repeated reopening (7th time)"
 
 ### Flow 4: Negative Feedback Escalation
 

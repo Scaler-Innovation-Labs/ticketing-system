@@ -288,8 +288,8 @@ export async function reopenTicket(
     const newReopenCount = (ticket.reopen_count ?? 0) + 1;
     const now = new Date();
 
-    // Escalation threshold: escalate on 3rd reopen
-    const ESCALATION_THRESHOLD = 3;
+    // Escalation thresholds on reopen: 1st at 3, next at 5, then at 7 (same pattern as TAT extensions)
+    const ESCALATION_THRESHOLDS = [3, 5, 7];
     const WARNING_THRESHOLD = 3;
 
     // Get "reopened" status (or fall back to "open")
@@ -340,9 +340,21 @@ export async function reopenTicket(
       'Ticket reopened'
     );
 
-    // Auto-escalate on 3rd reopen
-    if (newReopenCount === ESCALATION_THRESHOLD) {
-      await escalateTicketToNextLevel(txn, updated, 'Repeated reopening (3rd time)');
+    if (newReopenCount > WARNING_THRESHOLD) {
+      logger.warn(
+        {
+          ticketId,
+          ticketNumber: ticket.ticket_number,
+          reopenCount: newReopenCount,
+        },
+        'Ticket reopened multiple times - may trigger escalation'
+      );
+    }
+
+    // Auto-escalate on configured reopen thresholds (3, 5, 7)
+    if (ESCALATION_THRESHOLDS.includes(newReopenCount)) {
+      const ordinalSuffix = newReopenCount === 3 ? 'rd' : 'th';
+      await escalateTicketToNextLevel(txn, updated, `Repeated reopening (${newReopenCount}${ordinalSuffix} time)`);
     }
 
     return {
@@ -350,7 +362,7 @@ export async function reopenTicket(
       reopenCount: newReopenCount,
       warning:
         newReopenCount >= WARNING_THRESHOLD
-          ? `This ticket has been reopened ${newReopenCount} times. Tickets are auto-escalated on the 3rd reopen.`
+          ? `This ticket has been reopened ${newReopenCount} times. Auto-escalations occur at 3, 5, and 7 reopens.`
           : undefined,
     };
   });
