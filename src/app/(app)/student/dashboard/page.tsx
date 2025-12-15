@@ -2,8 +2,10 @@ import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
 // UI Components
-import { DashboardHeader } from "@/components/student/dashboard/DashboardHeader";
 import { StatsCards } from "@/components/dashboard/StatsCards";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import TicketSearch from "@/components/student/TicketSearch";
 import { TicketList } from "@/components/student/dashboard/TicketList";
 import { TicketEmpty } from "@/components/student/dashboard/TicketEmpty";
@@ -23,22 +25,18 @@ import { AlertCircle } from "lucide-react";
 // This allows Vercel to cache HTML per-user and reuse edge responses
 export const dynamic = 'auto';
 
-// FIX #1: Static hero card for LCP - renders immediately, no JS/data needed
+// FIX #1: Static hero section for LCP - renders immediately, no JS/data needed
 // This becomes the LCP element on mobile, ensuring fast LCP
 function DashboardHero() {
   return (
-    <Card className="border-2 shadow-sm">
-      <CardContent className="p-4 sm:p-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-            My Tickets
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Manage and track all your support tickets
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex-1 min-w-0">
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+        My Tickets
+      </h1>
+      <p className="text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2">
+        Manage and track all your support tickets
+      </p>
+    </div>
   );
 }
 
@@ -168,7 +166,7 @@ async function AuthenticatedDashboard({
   return (
     <>
       {/* Stats - non-critical, streams in */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<StatsCardsSkeleton />}>
         <StatsCardsServer userId={userId} />
       </Suspense>
 
@@ -347,10 +345,19 @@ export default function StudentDashboardPage({
     <div className="space-y-4 sm:space-y-6 lg:space-y-8">
       {/* FIX #1: Static hero card - becomes LCP element, renders immediately */}
       {/* This ensures fast LCP on mobile without waiting for auth/DB */}
-      <DashboardHero />
-
-      {/* Header with action button - also static */}
-      <DashboardHeader />
+      {/* Contains "My Tickets" title and "New Ticket" button */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+        <DashboardHero />
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+          <Link href="/student/dashboard/ticket/new" className="flex-1 sm:flex-initial">
+            <Button className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow text-sm sm:text-base">
+              <Plus className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">New Ticket</span>
+              <span className="sm:hidden">New</span>
+            </Button>
+          </Link>
+        </div>
+      </div>
 
       {/* All authenticated content streams in via Suspense */}
       <Suspense fallback={<TicketListSkeleton />}>
