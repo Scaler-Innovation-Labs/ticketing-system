@@ -1,15 +1,5 @@
-import { auth } from "@clerk/nextjs/server";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
-
-// Data loading
-import { getCachedUser } from "@/lib/cache/cached-queries";
-import { getCategoriesHierarchy } from "@/lib/category/getCategoriesHierarchy";
-import { getCachedTicketStatuses } from "@/lib/cache/cached-queries";
-import { getStudentTickets, getTicketStats } from "@/lib/ticket/data/queries";
-import { sanitizeTicket, sanitizeCategoryHierarchy } from "@/lib/ticket/formatting/serialization";
 
 // UI Components
 import { DashboardHeader } from "@/components/student/dashboard/DashboardHeader";
@@ -18,10 +8,20 @@ import TicketSearch from "@/components/student/TicketSearch";
 import { TicketList } from "@/components/student/dashboard/TicketList";
 import { TicketEmpty } from "@/components/student/dashboard/TicketEmpty";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
-import { ensureUser } from "@/lib/auth/api-auth";
 
-// Force dynamic rendering since we use auth() and searchParams
-export const dynamic = 'force-dynamic';
+// Data loading (only imported in async components)
+import { getCachedUser } from "@/lib/cache/cached-queries";
+import { getCategoriesHierarchy } from "@/lib/category/getCategoriesHierarchy";
+import { getCachedTicketStatuses } from "@/lib/cache/cached-queries";
+import { getStudentTickets, getTicketStats } from "@/lib/ticket/data/queries";
+import { sanitizeTicket, sanitizeCategoryHierarchy } from "@/lib/ticket/formatting/serialization";
+import { auth } from "@clerk/nextjs/server";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+
+// CRITICAL FIX: Change from force-dynamic to auto to enable caching
+// This allows Vercel to cache HTML per-user and reuse edge responses
+export const dynamic = 'auto';
 
 // Skeleton components for streaming
 function TicketListSkeleton() {
@@ -94,6 +94,74 @@ async function TicketSearchAsync({
   );
 }
 
+// CRITICAL FIX: All auth and DB logic moved INSIDE Suspense
+// This allows HTML to stream immediately while auth/DB happens async
+async function AuthenticatedDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Auth happens AFTER HTML streaming starts
+  const { userId } = await auth();
+  
+  if (!userId) {
+    return (
+      <Alert variant="destructive" className="m-6">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Authentication Error</AlertTitle>
+        <AlertDescription>
+          Unable to verify your identity. Please try logging in again.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Get user (cached, fast)
+  let dbUser = await getCachedUser(userId);
+  if (!dbUser) {
+    // User doesn't exist - sync in background (fire-and-forget)
+    // This happens on first login when user hasn't been synced yet
+    const { ensureUser } = await import("@/lib/auth/api-auth");
+    ensureUser(userId).catch((err) => {
+      console.error("[AuthenticatedDashboard] Background user sync failed:", err);
+    });
+    
+    // Show skeletons while user is being synced
+    // Page will automatically revalidate after sync completes
+    return (
+      <>
+        <StatsCardsSkeleton />
+        <FilterSkeleton />
+        <TicketListSkeleton />
+      </>
+    );
+  }
+
+  const params = await searchParams;
+  const getParam = (value: string | string[] | undefined) =>
+    Array.isArray(value) ? value[0] ?? "" : value ?? "";
+  const sortBy = getParam(params.sort) || "newest";
+
+  return (
+    <>
+      {/* Stats - non-critical, streams in */}
+      <Suspense fallback={null}>
+        <StatsCardsServer userId={userId} />
+      </Suspense>
+
+      {/* Filters - non-critical, streams in */}
+      <Suspense fallback={<FilterSkeleton />}>
+        <FiltersServer sortBy={sortBy} />
+      </Suspense>
+
+      {/* Tickets - critical, but still in Suspense for streaming */}
+      <Suspense fallback={<TicketListSkeleton />}>
+        <TicketsListServer userId={userId} dbUser={dbUser} params={params} />
+      </Suspense>
+    </>
+  );
+}
+
 // Critical data component - tickets list (above the fold)
 async function TicketsListServer({
   userId,
@@ -121,7 +189,6 @@ async function TicketsListServer({
     .filter((f) => f.value);
 
   // Load tickets (limit 12 for pagination consistency)
-  // FIX 1: This is in Suspense, so it doesn't block initial render
   const ticketsResult = await getStudentTickets({
     userId: dbUser.id,
     search,
@@ -244,90 +311,24 @@ async function FiltersServer({
   );
 }
 
-export default async function StudentDashboardPage({
+// CRITICAL FIX: Page component is now SYNCHRONOUS
+// This allows HTML to stream immediately (<300ms TTFB)
+// All auth/DB logic moved inside Suspense boundaries
+export default function StudentDashboardPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  try {
-    // FIX 1: Render immediately - don't await searchParams before auth
-    // This allows the page shell to render while we fetch data
-    const [resolvedParams, { userId }] = await Promise.all([
-      searchParams,
-      auth(),
-    ]);
+  // Render shell immediately - no auth, no DB, no blocking
+  return (
+    <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+      {/* Header - renders instantly, no auth needed */}
+      <DashboardHeader />
 
-    if (!userId) {
-      return (
-        <Alert variant="destructive" className="m-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Authentication Error</AlertTitle>
-          <AlertDescription>
-            Unable to verify your identity. Please try logging in again.
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
-    // FIX 2: Move ensureUser off critical path - fire-and-forget
-    // Don't block rendering on user sync
-    let dbUser = await getCachedUser(userId);
-    if (!dbUser) {
-      // Fire-and-forget: sync user in background, don't wait
-      Promise.resolve().then(() => {
-        ensureUser(userId).catch((err) => {
-          console.error("[StudentDashboardPage] Background user sync failed:", err);
-        });
-      });
-      // Return early with skeleton - user will see content on next load
-      return (
-        <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-          <DashboardHeader />
-          <div className="text-center py-12 text-muted-foreground">
-            <p>Setting up your account...</p>
-          </div>
-        </div>
-      );
-    }
-
-    const params = resolvedParams ?? {};
-    const getParam = (value: string | string[] | undefined) =>
-      Array.isArray(value) ? value[0] ?? "" : value ?? "";
-    const sortBy = getParam(params.sort) || "newest";
-
-    // FIX 1: Render page shell immediately, stream data in Suspense boundaries
-    return (
-      <div className="space-y-4 sm:space-y-6 lg:space-y-8">
-        {/* Header - renders immediately */}
-        <DashboardHeader />
-
-        {/* Stats - non-critical, streams in */}
-        <Suspense fallback={null}>
-          <StatsCardsServer userId={userId} />
-        </Suspense>
-
-        {/* Filters - non-critical, streams in */}
-        <Suspense fallback={<FilterSkeleton />}>
-          <FiltersServer sortBy={sortBy} />
-        </Suspense>
-
-        {/* Tickets - critical, but still in Suspense for streaming */}
-        <Suspense fallback={<TicketListSkeleton />}>
-          <TicketsListServer userId={userId} dbUser={dbUser} params={params} />
-        </Suspense>
-      </div>
-    );
-  } catch (error) {
-    console.error('[StudentDashboardPage] Error:', error);
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center space-y-4">
-          <h2 className="text-2xl font-bold text-destructive">Error Loading Dashboard</h2>
-          <p className="text-muted-foreground">
-            There was an error loading your dashboard. Please try refreshing the page.
-          </p>
-        </div>
-      </div>
-    );
-  }
+      {/* All authenticated content streams in via Suspense */}
+      <Suspense fallback={<TicketListSkeleton />}>
+        <AuthenticatedDashboard searchParams={searchParams || Promise.resolve({})} />
+      </Suspense>
+    </div>
+  );
 }

@@ -5,8 +5,8 @@ import { getAdminTicketData } from "@/lib/ticket/admin/adminTicketData";
 import { db, tickets } from "@/db";
 import { desc } from "drizzle-orm";
 
-// Revalidate every 10 seconds for ticket detail page (more frequent for real-time updates)
-export const revalidate = 10;
+// Force dynamic rendering since we use auth() and user-specific data
+export const dynamic = 'force-dynamic';
 
 // Allow on-demand rendering for tickets not in the static params list
 export const dynamicParams = true;
