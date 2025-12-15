@@ -134,29 +134,24 @@ export async function withRetry<T>(
       }
       
       // Exponential backoff with max delay cap to prevent negative timeouts
-      const calculatedDelay = delayMs * Math.pow(2, attempt - 1);
-      const delay = Math.min(calculatedDelay, 30000); // Cap at 30 seconds to prevent overflow
+      // Ensure delayMs is positive (default to 100ms if invalid)
+      const safeDelayMs = Math.max(1, delayMs || 100);
+      const calculatedDelay = safeDelayMs * Math.pow(2, attempt - 1);
       
-      if (delay <= 0) {
-        // If delay is invalid, use minimum delay
-        const minDelay = 100;
-        logger.warn({
-          error: error instanceof Error ? error.message : String(error),
-          attempt,
-          maxAttempts,
-          delay: minDelay,
-          calculatedDelay,
-        }, `Retry attempt ${attempt}/${maxAttempts} after ${minDelay}ms (calculated delay was invalid)`);
-        await new Promise(resolve => setTimeout(resolve, minDelay));
-      } else {
-        logger.warn({
-          error: error instanceof Error ? error.message : String(error),
-          attempt,
-          maxAttempts,
-          delay,
-        }, `Retry attempt ${attempt}/${maxAttempts} after ${delay}ms`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      // Clamp delay to valid range: [100ms, 30000ms]
+      // This prevents negative values and overflow
+      const delay = Math.max(100, Math.min(calculatedDelay, 30000));
+      
+      logger.warn({
+        error: error instanceof Error ? error.message : String(error),
+        attempt,
+        maxAttempts,
+        delay,
+        calculatedDelay,
+        safeDelayMs,
+      }, `Retry attempt ${attempt}/${maxAttempts} after ${delay}ms`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   

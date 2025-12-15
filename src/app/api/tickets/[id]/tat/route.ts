@@ -11,8 +11,8 @@ import { handleApiError, Errors } from '@/lib/errors';
 import { extendTAT, setTAT, parseTAT } from '@/lib/ticket/ticket-operations-service';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
-// FIX 5: Move revalidateTag import to module scope (not dynamic)
-import { revalidateTag } from 'next/cache';
+// OPTIMIZATION: Use safe revalidation to prevent connection timeouts
+import { safeRevalidateTags } from '@/lib/cache/revalidate-safe';
 import { db, outbox, tickets, ticket_statuses } from '@/db';
 import { eq } from 'drizzle-orm';
 import { TICKET_STATUS } from '@/conf/constants';
@@ -63,18 +63,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
         const hours = parseTAT(tat);
         const result = await extendTAT(ticketId, dbUser.id, hours, "Manual extension via UI");
 
-        // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-        try {
-          revalidateTag(`ticket-${ticketId}`, 'default');
-          if (result.ticket.created_by) {
-            revalidateTag(`user-${result.ticket.created_by}`, 'default');
-            revalidateTag(`student-tickets:${result.ticket.created_by}`, 'default');
-            revalidateTag(`student-stats:${result.ticket.created_by}`, 'default');
-          }
-          revalidateTag('tickets', 'default');
-        } catch (err) {
-          logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+        // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+        const tagsToRevalidate = [
+          `ticket-${ticketId}`,
+          'tickets',
+        ];
+        
+        if (result.ticket.created_by) {
+          tagsToRevalidate.push(
+            `user-${result.ticket.created_by}`,
+            `student-tickets:${result.ticket.created_by}`,
+            `student-stats:${result.ticket.created_by}`
+          );
         }
+        
+        safeRevalidateTags(tagsToRevalidate);
 
         return ApiResponse.success({
           ticket: {
@@ -90,18 +93,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
       } else {
         const result = await setTAT(ticketId, dbUser.id, tat, markInProgress);
 
-        // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-        try {
-          revalidateTag(`ticket-${ticketId}`, 'default');
-          if (result.created_by) {
-            revalidateTag(`user-${result.created_by}`, 'default');
-            revalidateTag(`student-tickets:${result.created_by}`, 'default');
-            revalidateTag(`student-stats:${result.created_by}`, 'default');
-          }
-          revalidateTag('tickets', 'default');
-        } catch (err) {
-          logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+        // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+        const tagsToRevalidate = [
+          `ticket-${ticketId}`,
+          'tickets',
+        ];
+        
+        if (result.created_by) {
+          tagsToRevalidate.push(
+            `user-${result.created_by}`,
+            `student-tickets:${result.created_by}`,
+            `student-stats:${result.created_by}`
+          );
         }
+        
+        safeRevalidateTags(tagsToRevalidate);
 
         // Queue email notification if status changed (fire-and-forget, after response)
         if (result.statusChanged && markInProgress) {
@@ -179,18 +185,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
       'TAT extended via API'
     );
 
-    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-    try {
-      revalidateTag(`ticket-${ticketId}`, 'default');
-      if (result.ticket.created_by) {
-        revalidateTag(`user-${result.ticket.created_by}`, 'default');
-        revalidateTag(`student-tickets:${result.ticket.created_by}`, 'default');
-        revalidateTag(`student-stats:${result.ticket.created_by}`, 'default');
-      }
-      revalidateTag('tickets', 'default');
-    } catch (err) {
-      logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+    // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+    const tagsToRevalidate = [
+      `ticket-${ticketId}`,
+      'tickets',
+    ];
+    
+    if (result.ticket.created_by) {
+      tagsToRevalidate.push(
+        `user-${result.ticket.created_by}`,
+        `student-tickets:${result.ticket.created_by}`,
+        `student-stats:${result.ticket.created_by}`
+      );
     }
+    
+    safeRevalidateTags(tagsToRevalidate);
 
     return ApiResponse.success({
       ticket: {

@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 /**
  * Student Dashboard Error Page
  * Automatically catches errors in student dashboard routes
+ * 
+ * NOTE: This must be a client component ("use client") to work as an error boundary
+ * The function MUST be named "Error" for Next.js to recognize it as an error boundary
  */
 export default function Error({
 	error,

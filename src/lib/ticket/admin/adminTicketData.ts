@@ -51,8 +51,28 @@ async function _getAdminTicketDataUncached(
   adminType: AdminType,
   userId: string
 ): Promise<AdminTicketData> {
-  const dbUserResult = await getCachedAdminUser(userId);
-  if (!dbUserResult?.dbUser) throw new Error('User not found');
+  // FIX: Handle race condition where user might not be found due to React cache
+  // Even though layout calls ensureUser, React cache() might return stale null
+  let dbUserResult = await getCachedAdminUser(userId);
+  
+  if (!dbUserResult?.dbUser) {
+    // User not found - try syncing and retry (handles race condition)
+    // This can happen if getCachedAdminUser was called before ensureUser completed
+    const { ensureUser } = await import('@/lib/auth/api-auth');
+    try {
+      await ensureUser(userId);
+      // Retry fetching user after sync
+      dbUserResult = await getCachedAdminUser(userId);
+    } catch (syncError) {
+      // If sync fails, throw original error
+      throw new Error('User not found');
+    }
+    
+    if (!dbUserResult?.dbUser) {
+      throw new Error('User not found');
+    }
+  }
+  
   const dbUser = dbUserResult.dbUser;
 
   // Fetch ticket with all necessary relations in parallel
@@ -166,7 +186,25 @@ async function _getAdminTicketDataUncached(
 
   // Status and progress (needed for timeline enrichment)
   const normalizedStatus = normalizeStatusForComparison(status?.value);
-  const ticketStatuses = await getCachedTicketStatuses();
+  
+  // OPTIMIZATION: Parallelize all independent data fetches (statuses, profile fields, category schema, student data)
+  const [ticketStatuses, profileFieldsConfig, categorySchema, studentDataResult] = await Promise.all([
+    getCachedTicketStatuses(),
+    ticket.category_id ? getCategoryProfileFields(ticket.category_id) : Promise.resolve([]),
+    ticket.category_id ? getCategorySchema(ticket.category_id) : Promise.resolve(null),
+    ticket.created_by ? db
+      .select({
+        student_id: students.id,
+        hostel_id: students.hostel_id,
+        room_no: students.room_no,
+        hostel_name: hostels.name,
+      })
+      .from(students)
+      .leftJoin(hostels, eq(students.hostel_id, hostels.id))
+      .where(eq(students.user_id, ticket.created_by))
+      .limit(1) : Promise.resolve([]),
+  ]);
+  
   const progressMap = buildProgressMap(ticketStatuses);
   const ticketProgress = progressMap[normalizedStatus] || 0;
 
@@ -202,23 +240,6 @@ async function _getAdminTicketDataUncached(
 
   // Enrich timeline with TAT information
   const enrichedTimeline = enrichTimelineWithTAT(timelineEntries, ticket, { normalizedStatus, ticketProgress });
-
-  // Get profile fields configuration, category schema, and student data in parallel
-  const [profileFieldsConfig, categorySchema, studentDataResult] = await Promise.all([
-    ticket.category_id ? getCategoryProfileFields(ticket.category_id) : Promise.resolve([]),
-    ticket.category_id ? getCategorySchema(ticket.category_id) : Promise.resolve(null),
-    ticket.created_by ? db
-      .select({
-        student_id: students.id,
-        hostel_id: students.hostel_id,
-        room_no: students.room_no,
-        hostel_name: hostels.name,
-      })
-      .from(students)
-      .leftJoin(hostels, eq(students.hostel_id, hostels.id))
-      .where(eq(students.user_id, ticket.created_by))
-      .limit(1) : Promise.resolve([]),
-  ]);
 
   const [studentRecord] = studentDataResult || [null];
   const userRecord = {

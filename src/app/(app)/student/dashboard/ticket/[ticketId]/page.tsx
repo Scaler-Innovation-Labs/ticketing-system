@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,18 +89,34 @@ export default async function StudentTicketPage({
 
   // Get user (ensure exists; handle Clerk external_id changes)
   // Note: This is cached, so it's fast
+  // OPTIMIZATION: Handle race condition when Clerk external_id changes
+  // If user not found, ensureUser() will sync/link the user, then retry fetch
   let dbUser = await getCachedUser(userId);
   if (!dbUser) {
-    // Try to create/link user and retry once
+    // Try to sync/link user (handles external_id changes)
     try {
       await ensureUser(userId);
+      // Retry fetching user after sync (with a small delay to allow DB propagation)
+      await new Promise(resolve => setTimeout(resolve, 100));
       dbUser = await getCachedUser(userId);
+      
+      // If still not found, try one more time (handles cache invalidation)
+      if (!dbUser) {
+        // Force cache invalidation by using a fresh query
+        const { getCachedUser: freshGetUser } = await import("@/lib/cache/cached-queries");
+        dbUser = await freshGetUser(userId);
+      }
     } catch (err) {
-      // ignore, will handle below
+      console.error('[StudentTicketPage] Failed to sync user:', err);
+      // Don't throw immediately - try one more fetch in case sync succeeded but fetch failed
+      dbUser = await getCachedUser(userId);
     }
   }
+  
   if (!dbUser) {
-    throw new Error("User not found in database");
+    // User still not found after sync attempts - redirect to profile page
+    console.error('[StudentTicketPage] User not found after sync attempts:', userId);
+    redirect("/student/profile");
   }
 
   // Load view model (handles all business logic)

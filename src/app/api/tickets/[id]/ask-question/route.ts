@@ -29,7 +29,7 @@ import { withTransaction } from '@/lib/db-transaction';
 import { TICKET_STATUS } from '@/conf/constants';
 import { getStatusId } from '@/lib/ticket/status-ids';
 import { getStatusValue } from '@/lib/ticket/ticket-status-service';
-import { revalidateTag } from 'next/cache';
+import { safeRevalidateTags } from '@/lib/cache/revalidate-safe';
 // FIX 3: Move dynamic import to module scope (not inside transaction)
 import { calculateRemainingBusinessHours } from '@/lib/ticket/utils/tat-calculator';
 
@@ -172,19 +172,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
       .where(eq(users.id, dbUser.id))
       .limit(1);
 
-    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-    // setTimeout was preventing cache invalidation from working
-    try {
-      revalidateTag(`ticket-${ticketId}`, 'default');
-      if (result.created_by) {
-        revalidateTag(`user-${result.created_by}`, 'default');
-        revalidateTag(`student-tickets:${result.created_by}`, 'default');
-        revalidateTag(`student-stats:${result.created_by}`, 'default');
-      }
-      revalidateTag('tickets', 'default');
-    } catch (err) {
-      logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+    // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+    const tagsToRevalidate = [
+      `ticket-${ticketId}`,
+      'tickets',
+    ];
+    
+    if (result.created_by) {
+      tagsToRevalidate.push(
+        `user-${result.created_by}`,
+        `student-tickets:${result.created_by}`,
+        `student-stats:${result.created_by}`
+      );
     }
+    
+    safeRevalidateTags(tagsToRevalidate);
 
     // Queue email notifications (fire-and-forget, after response)
     queueMicrotask(async () => {

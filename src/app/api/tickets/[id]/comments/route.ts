@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { revalidateTag } from 'next/cache';
+import { safeRevalidateTags } from '@/lib/cache/revalidate-safe';
 import { requireDbUser, ApiResponse } from '@/lib/auth/helpers';
 import { handleApiError, Errors } from '@/lib/errors';
 import { getUserRole } from '@/lib/auth/roles';
@@ -132,28 +132,25 @@ export async function POST(req: NextRequest, context: RouteContext) {
       201
     );
 
-    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-    // setTimeout was preventing cache invalidation from working
-    try {
-      revalidateTag(`ticket-${ticketId}`, 'default');
-      
-      if (ticket.created_by) {
-        revalidateTag(`user-${ticket.created_by}`, 'default');
-        revalidateTag(`student-tickets:${ticket.created_by}`, 'default');
-        revalidateTag(`student-stats:${ticket.created_by}`, 'default');
-      }
-      
-      if (dbUser.id !== ticket.created_by) {
-        revalidateTag(`user-${dbUser.id}`, 'default');
-      }
-      
-      revalidateTag('tickets', 'default');
-    } catch (cacheError) {
-      logger.warn(
-        { error: cacheError, ticketId, userId: dbUser.id },
-        'Cache revalidation failed (non-blocking)'
+    // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+    const tagsToRevalidate = [
+      `ticket-${ticketId}`,
+      'tickets',
+    ];
+    
+    if (ticket.created_by) {
+      tagsToRevalidate.push(
+        `user-${ticket.created_by}`,
+        `student-tickets:${ticket.created_by}`,
+        `student-stats:${ticket.created_by}`
       );
     }
+    
+    if (dbUser.id !== ticket.created_by) {
+      tagsToRevalidate.push(`user-${dbUser.id}`);
+    }
+    
+    safeRevalidateTags(tagsToRevalidate);
 
     return response;
   } catch (error) {

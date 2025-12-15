@@ -63,11 +63,28 @@ export function applyLocationFilter(tickets: AdminTicketRow[], location: string)
     return tickets.filter(t => t.location === location);
 }
 
-export function applyScopeFilter(tickets: AdminTicketRow[], scope: string) {
+export function applyScopeFilter(tickets: AdminTicketRow[], scope: string, scopeNameMap?: Map<number, string>) {
     if (!scope) return tickets;
     const scopeId = Number(scope);
     if (!Number.isFinite(scopeId)) return tickets;
-    return tickets.filter(t => t.scope_id === scopeId);
+    
+    // Get scope name for comparison (if scopeNameMap provided)
+    const scopeName = scopeNameMap?.get(scopeId);
+    
+    return tickets.filter(t => {
+        // First try to match by scope_id
+        if (t.scope_id === scopeId) return true;
+        
+        // If scope_id is null but we have scope name, try matching by location
+        // This handles tickets created before scope_id was properly set
+        if (!t.scope_id && scopeName && t.location) {
+            const ticketLocation = (t.location || "").trim();
+            const normalizedScopeName = (scopeName || "").trim();
+            return ticketLocation.toLowerCase() === normalizedScopeName.toLowerCase();
+        }
+        
+        return false;
+    });
 }
 
 export function applyStatusFilter(tickets: AdminTicketRow[], status: string) {

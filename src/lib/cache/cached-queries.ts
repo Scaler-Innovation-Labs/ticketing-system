@@ -15,6 +15,7 @@ import { unstable_cache } from 'next/cache';
 import { db, users, roles, ticket_statuses, tickets, categories, admin_profiles, hostels, batches, class_sections, domains, scopes, subcategories, category_fields, field_options, committees, ticket_committee_tags } from '@/db';
 import { eq, desc, and, inArray, or, sql } from 'drizzle-orm';
 import { CACHE_TTL } from '@/conf/constants';
+import { withRetry } from '@/lib/db-transaction';
 
 // ============================================
 // User & Role Caching
@@ -149,74 +150,100 @@ export const getCachedTicketStatuses = unstable_cache(
 /**
  * Get all active categories with subcategories and fields (cached)
  * Cache for 1 hour, invalidate with 'categories' tag
+ * 
+ * OPTIMIZATION: Added retry logic for connection timeout errors during cache revalidation
  */
 export const getCachedCategoriesHierarchy = unstable_cache(
     async () => {
-        // Fetch categories
-        const cats = await db
-            .select({
-                id: categories.id,
-                name: categories.name,
-                slug: categories.slug,
-                description: categories.description,
-                icon: categories.icon,
-                color: categories.color,
-                sla_hours: categories.sla_hours,
-                domain_id: categories.domain_id,
-                scope_id: categories.scope_id,
-                display_order: categories.display_order,
-            })
-            .from(categories)
-            .where(eq(categories.is_active, true))
-            .orderBy(categories.display_order);
+        // Fetch categories with retry logic
+        const cats = await withRetry(
+            () => db
+                .select({
+                    id: categories.id,
+                    name: categories.name,
+                    slug: categories.slug,
+                    description: categories.description,
+                    icon: categories.icon,
+                    color: categories.color,
+                    sla_hours: categories.sla_hours,
+                    domain_id: categories.domain_id,
+                    scope_id: categories.scope_id,
+                    display_order: categories.display_order,
+                })
+                .from(categories)
+                .where(eq(categories.is_active, true))
+                .orderBy(categories.display_order),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        );
 
         if (cats.length === 0) return [];
 
-        // Fetch subcategories
-        const subcats = await db
-            .select()
-            .from(subcategories)
-            .where(
-                and(
-                    inArray(subcategories.category_id, cats.map(c => c.id)),
-                    eq(subcategories.is_active, true)
+        // Fetch subcategories with retry logic
+        const subcats = await withRetry(
+            () => db
+                .select()
+                .from(subcategories)
+                .where(
+                    and(
+                        inArray(subcategories.category_id, cats.map(c => c.id)),
+                        eq(subcategories.is_active, true)
+                    )
                 )
-            )
-            .orderBy(subcategories.display_order);
+                .orderBy(subcategories.display_order),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        );
 
-        // Fetch fields
+        // Fetch fields with retry logic
         const subcatIds = subcats.map(s => s.id);
-        const fields = subcatIds.length > 0 ? await db
-            .select({
-                id: category_fields.id,
-                subcategory_id: category_fields.subcategory_id,
-                name: category_fields.name,
-                slug: category_fields.slug,
-                field_type: category_fields.field_type,
-                required: category_fields.required,
-                placeholder: category_fields.placeholder,
-                options: category_fields.options,
-                validation: category_fields.validation,
-                display_order: category_fields.display_order,
-                is_active: category_fields.is_active,
-                // assigned_admin_id is optional - only select if it exists in schema
-            })
-            .from(category_fields)
-            .where(
-                and(
-                    inArray(category_fields.subcategory_id, subcatIds),
-                    eq(category_fields.is_active, true)
+        const fields = subcatIds.length > 0 ? await withRetry(
+            () => db
+                .select({
+                    id: category_fields.id,
+                    subcategory_id: category_fields.subcategory_id,
+                    name: category_fields.name,
+                    slug: category_fields.slug,
+                    field_type: category_fields.field_type,
+                    required: category_fields.required,
+                    placeholder: category_fields.placeholder,
+                    options: category_fields.options,
+                    validation: category_fields.validation,
+                    display_order: category_fields.display_order,
+                    is_active: category_fields.is_active,
+                    // assigned_admin_id is optional - only select if it exists in schema
+                })
+                .from(category_fields)
+                .where(
+                    and(
+                        inArray(category_fields.subcategory_id, subcatIds),
+                        eq(category_fields.is_active, true)
+                    )
                 )
-            )
-            .orderBy(category_fields.display_order) : [];
+                .orderBy(category_fields.display_order),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        ) : [];
 
-        // Fetch field options
+        // Fetch field options with retry logic
         const fieldIds = fields.map(f => f.id);
-        const options = fieldIds.length > 0 ? await db
-            .select()
-            .from(field_options)
-            .where(inArray(field_options.field_id, fieldIds))
-            .orderBy(field_options.display_order) : [];
+        const options = fieldIds.length > 0 ? await withRetry(
+            () => db
+                .select()
+                .from(field_options)
+                .where(inArray(field_options.field_id, fieldIds))
+                .orderBy(field_options.display_order),
+            {
+                maxAttempts: 3,
+                delayMs: 200,
+            }
+        ) : [];
 
         // Build nested structure
         return cats.map(cat => ({

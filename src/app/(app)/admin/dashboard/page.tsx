@@ -135,7 +135,12 @@ async function AuthenticatedDashboard({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { userId } = await auth();
+  // OPTIMIZATION: Parallelize auth and searchParams parsing
+  const [{ userId }, resolvedSearchParams] = await Promise.all([
+    auth(),
+    searchParams,
+  ]);
+  
   if (!userId) return null;
 
   // Use cached functions for better performance (request-scoped deduplication)
@@ -161,8 +166,7 @@ async function AuthenticatedDashboard({
 
   const adminUserId = adminDbUser.id;
 
-  // Parse search params
-  const resolvedSearchParams = await searchParams;
+  // Parse search params (already resolved above)
   const params = resolvedSearchParams || {};
   const searchQuery = (typeof params["search"] === "string" ? params["search"] : params["search"]?.[0]) || "";
   const category = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
@@ -248,25 +252,30 @@ async function AdminDashboardData({
   buildViewHref: (mode: string) => string;
   isListView: boolean;
 }) {
-  // Get admin's domain/scope assignment (cached)
-  const adminAssignment = await getCachedAdminAssignment(userId);
+  // OPTIMIZATION: Parallelize all independent data fetches
+  // This reduces waterfall delays significantly
+  const [adminAssignment, ticketStatusesData, filtersData, categoryMapData] = await Promise.all([
+    getCachedAdminAssignment(userId),
+    getCachedTicketStatuses(),
+    getAdminFilters(),
+    getCachedCategoryMap(),
+  ]);
+  
   const hasAssignment = !!adminAssignment.domain;
 
   // Fetch tickets using cached function (optimized query with request-scoped caching)
   const ticketRows = await getCachedAdminTickets(adminUserId, adminAssignment);
 
-  // Get ticket statuses for final status check
-  const ticketStatuses = await getCachedTicketStatuses();
+  // Process ticket statuses
   const finalStatusValues = new Set<TicketStatusValue>(
-    ticketStatuses
+    ticketStatusesData
       .filter((s) => s.is_final)
       .map((s) => normalizeStatus(s.value))
       .filter((s): s is TicketStatusValue => s !== null)
   );
 
-  // Fetch filter options server-side (parallel, cached)
-  // This replaces client-side API calls and eliminates waterfall
-  const filters = await getAdminFilters();
+  // Use filters data (already fetched above)
+  const filters = filtersData;
 
   // Transform to AdminTicketRow format (properly typed)
   let allTickets: AdminTicketRow[] = ticketRows.map(ticket => ({
@@ -276,10 +285,8 @@ async function AdminDashboardData({
     subcategory_name: (ticket as any).subcategory_name || null,
   }));
 
-  // UPGRADE #1: Use cached category map (doesn't change per admin)
-  // This reduces DB queries and improves cold start performance
+  // UPGRADE #1: Use cached category map (already fetched above in parallel)
   // Convert plain object to Map for efficient lookups
-  const categoryMapData = await getCachedCategoryMap();
   const categoryMap = new Map<number, { name: string; domain: string | null }>(
     Object.entries(categoryMapData).map(([id, data]) => [Number(id), data])
   );
@@ -364,12 +371,18 @@ async function AdminDashboardData({
     allTickets = [];
   }
 
+  // Build scope name map for fallback filtering (when scope_id is null)
+  const scopeNameMap = new Map<number, string>();
+  filters.scopes.forEach(scope => {
+    scopeNameMap.set(scope.id, scope.name);
+  });
+
   // Apply filters using centralized helper functions
   allTickets = applySearchFilter(allTickets, searchParams.searchQuery);
   allTickets = applyCategoryFilter(allTickets, searchParams.category, categoryMap);
   allTickets = applySubcategoryFilter(allTickets, searchParams.subcategory);
   allTickets = applyLocationFilter(allTickets, searchParams.location);
-  allTickets = applyScopeFilter(allTickets, searchParams.scope);
+  allTickets = applyScopeFilter(allTickets, searchParams.scope, scopeNameMap);
   allTickets = applyStatusFilter(allTickets, searchParams.status);
   allTickets = applyEscalatedFilter(allTickets, searchParams.escalated);
   allTickets = applyUserFilter(allTickets, searchParams.user);

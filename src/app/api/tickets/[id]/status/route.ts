@@ -16,7 +16,7 @@ import { z } from 'zod';
 // FIX 5: Move imports to module scope
 import { db, tickets } from '@/db';
 import { eq } from 'drizzle-orm';
-import { revalidateTag } from 'next/cache';
+import { safeRevalidateTags } from '@/lib/cache/revalidate-safe';
 
 // Force dynamic and Node runtime to avoid edge/SSR fetch issues
 export const dynamic = 'force-dynamic';
@@ -86,19 +86,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // Update ticket status
     const updatedTicket = await updateTicketStatus(ticketId, status, dbUser.id, comment);
 
-    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
-    // setTimeout was preventing cache invalidation from working
-    try {
-      revalidateTag(`ticket-${ticketId}`, 'default');
-      if (updatedTicket?.created_by) {
-        revalidateTag(`user-${updatedTicket.created_by}`, 'default');
-        revalidateTag(`student-tickets:${updatedTicket.created_by}`, 'default');
-        revalidateTag(`student-stats:${updatedTicket.created_by}`, 'default');
-      }
-      revalidateTag('tickets', 'default');
-    } catch (err) {
-      logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+    // OPTIMIZATION: Fire-and-forget cache revalidation to prevent connection timeouts
+    const tagsToRevalidate = [
+      `ticket-${ticketId}`,
+      'tickets',
+    ];
+    
+    if (updatedTicket?.created_by) {
+      tagsToRevalidate.push(
+        `user-${updatedTicket.created_by}`,
+        `student-tickets:${updatedTicket.created_by}`,
+        `student-stats:${updatedTicket.created_by}`
+      );
     }
+    
+    safeRevalidateTags(tagsToRevalidate);
 
     const response = ApiResponse.success({
       message: `Status updated to ${status}`,
