@@ -49,8 +49,9 @@ export async function getAdminTicketData(
   adminType: AdminType,
   userId: string
 ): Promise<AdminTicketData> {
-  const dbUser = await getCachedAdminUser(userId);
-  if (!dbUser) throw new Error('User not found');
+  const dbUserResult = await getCachedAdminUser(userId);
+  if (!dbUserResult?.dbUser) throw new Error('User not found');
+  const dbUser = dbUserResult.dbUser;
 
   // Fetch ticket with all necessary relations in parallel
   const [ticketResult, activitiesResult, attachmentsResult, commentActivities] = await Promise.all([
@@ -161,19 +162,38 @@ export async function getAdminTicketData(
   const metadata = parseTicketMetadata(ticket.metadata);
   const images = extractImagesFromMetadata(metadata);
 
-  // Build timeline with activities
+  // Status and progress (needed for timeline enrichment)
+  const normalizedStatus = normalizeStatusForComparison(status?.value);
+  const ticketStatuses = await getCachedTicketStatuses();
+  const progressMap = buildProgressMap(ticketStatuses);
+  const ticketProgress = progressMap[normalizedStatus] || 0;
+
+  // Build timeline - extract dates from ticket and metadata
+  const acknowledgedAt = metadata.acknowledged_at 
+    ? (typeof metadata.acknowledged_at === 'string' ? new Date(metadata.acknowledged_at) : metadata.acknowledged_at instanceof Date ? metadata.acknowledged_at : null)
+    : null;
+  const resolvedAt = metadata.resolved_at 
+    ? (typeof metadata.resolved_at === 'string' ? new Date(metadata.resolved_at) : metadata.resolved_at instanceof Date ? metadata.resolved_at : null)
+    : (ticket.resolved_at ? new Date(ticket.resolved_at) : null);
+  const reopenedAt = metadata.reopened_at 
+    ? (typeof metadata.reopened_at === 'string' ? new Date(metadata.reopened_at) : metadata.reopened_at instanceof Date ? metadata.reopened_at : null)
+    : (ticket.reopened_at ? new Date(ticket.reopened_at) : null);
+
   const timelineEntries = buildTimeline(
     {
-      ticket,
-      activities: activitiesResult,
-      statuses: [],
-      attachments: attachmentsResult,
+      created_at: ticket.created_at,
+      acknowledged_at: acknowledgedAt,
+      updated_at: ticket.updated_at,
+      resolved_at: resolvedAt,
+      reopened_at: reopenedAt,
+      escalation_level: ticket.escalation_level,
+      status: status?.value || null,
     },
     status?.value
   );
 
   // Enrich timeline with TAT information
-  const enrichedTimeline = enrichTimelineWithTAT(timelineEntries, metadata);
+  const enrichedTimeline = enrichTimelineWithTAT(timelineEntries, ticket, { normalizedStatus, ticketProgress });
 
   // Get profile fields configuration, category schema, and student data in parallel
   const [profileFieldsConfig, categorySchema, studentDataResult] = await Promise.all([
@@ -208,14 +228,8 @@ export async function getAdminTicketData(
   // Extract dynamic fields with proper schema
   const dynamicFields = extractDynamicFields(metadata, categorySchema || {});
 
-  // Calculate TAT info
-  const tatInfo = calculateTATInfo(ticket, metadata);
-
-  // Status and progress
-  const normalizedStatus = normalizeStatusForComparison(status?.value);
-  const ticketStatuses = await getCachedTicketStatuses();
-  const progressMap = buildProgressMap(ticketStatuses);
-  const ticketProgress = progressMap[normalizedStatus] || 0;
+  // Calculate TAT info (using normalizedStatus and ticketProgress already calculated above)
+  const tatInfo = calculateTATInfo(ticket, { normalizedStatus, ticketProgress });
   const statusDisplay = status ? {
     value: status.value,
     label: status.label || status.value,
@@ -243,11 +257,12 @@ export async function getAdminTicketData(
   });
 
   // Assignment info - return object for TicketQuickInfo component
-  const assignedStaffString = assignedTo ? `${assignedTo.full_name}${assignedToProfile?.designation ? ` (${assignedToProfile.designation})` : ''}` : 'Unassigned';
+  // Note: designation was removed from admin_profiles schema
+  const assignedStaffString = assignedTo ? assignedTo.full_name || 'Unassigned' : 'Unassigned';
   const assignedStaff = assignedTo ? {
-    name: assignedTo.full_name,
+    name: assignedTo.full_name || 'Unknown',
     email: assignedTo.email,
-    role: assignedToProfile?.designation || undefined,
+    role: undefined, // designation field removed
     avatar_url: assignedTo.avatar_url || null,
   } : null;
 
@@ -287,7 +302,7 @@ export async function getAdminTicketData(
     updated_at: ticket.updated_at,
     resolved_at: ticket.resolved_at,
     closed_at: ticket.closed_at,
-    rating: ticket.rating,
+    rating: null, // Rating is stored in ticket_feedback table, not tickets
     escalation_level: ticket.escalation_level,
     due_at: ticket.resolution_due_at,
     creator_name: creator?.full_name || null,
@@ -391,37 +406,37 @@ export async function getCommitteeTicketData(
   // Extract dynamic fields with proper schema
   const normalizedDynamicFields = extractDynamicFields(metadata, categorySchema || {});
 
-  // Calculate TAT info
-  const ticketStatuses = await getCachedTicketStatuses();
-  const progressMap = buildProgressMap(ticketStatuses);
-  const ticketProgress = progressMap[normalizedStatus] || 0;
-  const tatInfo = calculateTATInfo(ticket, { normalizedStatus, ticketProgress });
+  // Calculate TAT info - need to calculate ticketProgress first
+  const ticketStatusesForTAT = await getCachedTicketStatuses();
+  const progressMapForTAT = buildProgressMap(ticketStatusesForTAT);
+  const ticketProgressForTAT = progressMapForTAT[normalizedStatus] || 0;
+  const tatInfo = calculateTATInfo(ticket, { normalizedStatus, ticketProgress: ticketProgressForTAT });
 
-  // Fetch full ticket to get ticket_number
+  // Fetch full ticket to get ticket_number and other fields not in committee ticket data structure
   const [fullTicket] = await db
     .select({
       ticket_number: tickets.ticket_number,
       priority: tickets.priority,
-      rating: tickets.rating,
+      resolved_at: tickets.resolved_at,
       closed_at: tickets.closed_at,
     })
     .from(tickets)
     .where(eq(tickets.id, ticketId))
     .limit(1);
 
-  // Build ticket object
+  // Build ticket object - committee ticket data doesn't have all fields, so fetch from DB
   const ticketObj = {
     ...ticket,
     ticket_number: fullTicket?.ticket_number || `TKT-${ticket.id}`,
     title: ticket.title,
     description: ticket.description,
     location: ticket.location,
-    priority: fullTicket?.priority || ticket.priority || 'medium',
+    priority: fullTicket?.priority || 'medium', // Fetch from DB since not in committee ticket data structure
     created_at: ticket.created_at,
     updated_at: ticket.updated_at,
-    resolved_at: ticket.resolution_due_at || null,
-    closed_at: fullTicket?.closed_at || null,
-    rating: fullTicket?.rating || ticket.rating || null,
+    resolved_at: fullTicket?.resolved_at || null, // Fetch from DB since not in committee ticket data structure
+    closed_at: fullTicket?.closed_at || null, // Fetch from DB since not in committee ticket data structure
+    rating: null, // Rating is stored in ticket_feedback table, fetch separately if needed
     escalation_level: ticket.escalation_level || 0,
     due_at: ticket.resolution_due_at,
     creator_name: creator?.full_name || null,
@@ -438,7 +453,7 @@ export async function getCommitteeTicketData(
     comments,
     tatInfo,
     normalizedStatus,
-    ticketProgress,
+    ticketProgress: ticketProgressForTAT,
     statusDisplay: ticket.status ? {
       value: ticket.status.value,
       label: ticket.status.label || ticket.status.value,

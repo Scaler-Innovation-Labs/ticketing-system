@@ -269,7 +269,7 @@ export async function getStudentTickets(filters: TicketFilters) {
         },
         [cacheKey],
         {
-            revalidate: 30, // 30 seconds - balance between freshness and performance for frequently accessed page
+            revalidate: 30, // FIX 3: 30 seconds - student doesn't need millisecond freshness
             tags: [`student-tickets:${filters.userId}`, `tickets`],
         }
     )();
