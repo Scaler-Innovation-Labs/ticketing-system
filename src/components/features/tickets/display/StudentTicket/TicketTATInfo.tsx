@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, TrendingUp } from "lucide-react";
-import { format } from "date-fns";
+import { formatTimelineDate, formatTimelineDateTime } from "@/lib/utils/date-format";
 import type { TATInfo } from "@/types/ticket";
 
 interface TicketTATInfoProps {
@@ -31,7 +31,7 @@ export function TicketTATInfo({ tatInfo }: TicketTATInfoProps) {
                 <div className="p-3 rounded-lg bg-muted/50 border">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">TAT Set At</p>
                   <p className="text-sm font-semibold break-words">
-                    {format(new Date(tatInfo.tatSetAt), 'MMM d, yyyy h:mm a')}
+                    {formatTimelineDateTime(tatInfo.tatSetAt)}
                   </p>
                 </div>
               )}
@@ -78,7 +78,7 @@ export function TicketTATInfo({ tatInfo }: TicketTATInfoProps) {
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Extension #{index + 1}</p>
                       {extendedAt && (
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(extendedAt), 'MMM d, yyyy')}
+                          {formatTimelineDate(extendedAt)}
                         </p>
                       )}
                     </div>

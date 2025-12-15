@@ -15,11 +15,11 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TicketStatusBadge } from "@/components/features/tickets/display/TicketStatusBadge";
 import { DynamicFieldDisplay } from "@/components/features/tickets/display/DynamicFieldDisplay";
-import { format } from "date-fns";
 import { addBusinessHours } from "@/lib/ticket/utils/tat-calculator";
 import type { TicketMetadata } from "@/db/inferred-types";
 import { ImageLightbox } from "@/components/features/tickets/display/ImageLightbox";
 import { Info } from "lucide-react";
+import { formatTimelineDate, formatTimelineTime, formatTimelineDateTime } from "@/lib/utils/date-format";
 
 // Admin type configuration
 export type AdminType = 'admin' | 'snr-admin' | 'superadmin' | 'committee';
@@ -223,7 +223,7 @@ export function TicketDetailPage({
                 {hasTATDue ? (
                   <span className="text-red-600 dark:text-red-400">Overdue</span>
                 ) : (
-                  format(new Date(tatDate), 'MMM d, yyyy')
+                  formatTimelineDate(tatDate)
                 )}
               </p>
             ) : (
@@ -245,7 +245,7 @@ export function TicketDetailPage({
                 </p>
                 {tatDate && (
                   <p className="text-sm text-muted-foreground">
-                    Target resolution date: {format(new Date(tatDate), 'MMM d, yyyy')}
+                    Target resolution date: {formatTimelineDate(tatDate)}
                   </p>
                 )}
               </div>
@@ -369,9 +369,9 @@ export function TicketDetailPage({
                             {entryDate && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Calendar className="w-3.5 h-3.5" />
-                                <span>{format(entryDate, 'MMM d, yyyy')}</span>
+                                <span>{formatTimelineDate(entryDate)}</span>
                                 <span>•</span>
-                                <span>{format(entryDate, 'h:mm a')}</span>
+                                <span>{formatTimelineTime(entryDate)}</span>
                               </div>
                             )}
                           </div>
@@ -427,9 +427,9 @@ export function TicketDetailPage({
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 {commentCreatedAt ? (
                                   <>
-                                    <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>
+                                    <span className="font-medium">{formatTimelineDate(commentCreatedAt)}</span>
                                     <span>•</span>
-                                    <span className="font-medium">{format(new Date(commentCreatedAt), 'h:mm a')}</span>
+                                    <span className="font-medium">{formatTimelineTime(commentCreatedAt)}</span>
                                     {commentAuthor && (
                                       <>
                                         <span>•</span>
@@ -465,9 +465,9 @@ export function TicketDetailPage({
                               <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${isAdmin ? 'flex-row-reverse' : ''}`}>
                                 {commentCreatedAt ? (
                                   <>
-                                    <span className="font-medium">{format(new Date(commentCreatedAt), 'MMM d, yyyy')}</span>
+                                    <span className="font-medium">{formatTimelineDate(commentCreatedAt)}</span>
                                     <span>•</span>
-                                    <span className="font-medium">{format(new Date(commentCreatedAt), 'h:mm a')}</span>
+                                    <span className="font-medium">{formatTimelineTime(commentCreatedAt)}</span>
                                     {commentAuthor && (
                                       <>
                                         <span>•</span>
@@ -581,10 +581,10 @@ export function TicketDetailPage({
                       Created
                     </label>
                     <p className="text-base font-medium">
-                      {format(new Date(ticket.created_at), 'MMM d, yyyy')}
+                      {formatTimelineDate(ticket.created_at)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(ticket.created_at), 'h:mm a')}
+                      {formatTimelineTime(ticket.created_at)}
                     </p>
                   </div>
                 </>
@@ -597,7 +597,7 @@ export function TicketDetailPage({
                       <Clock className="w-4 h-4" />
                       TAT Due Date
                     </label>
-                    <p className="text-base font-medium">{format(new Date(tatDate), 'MMM d, yyyy')}</p>
+                    <p className="text-base font-medium">{formatTimelineDate(tatDate)}</p>
                     {hasTATDue && (
                       <p className="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">
                         Overdue

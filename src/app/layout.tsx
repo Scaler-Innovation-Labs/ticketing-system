@@ -11,16 +11,19 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 
+// FIX #5: Optimize font loading for better LCP
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  display: "swap",
+  display: "swap", // Prevents FOIT (Flash of Invisible Text)
+  preload: true, // Preloads font for faster rendering
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {
