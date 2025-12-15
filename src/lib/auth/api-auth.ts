@@ -22,7 +22,7 @@ export { getUserRole, getUserRoleFromDB } from './roles';
  */
 export async function ensureUser(clerkUserId: string): Promise<string> {
     try {
-        // Check if user exists in our database
+        // Check if user exists in our database by external_id
         const [existingUser] = await db
             .select({ id: users.id })
             .from(users)
@@ -60,8 +60,15 @@ export async function ensureUser(clerkUserId: string): Promise<string> {
     };
 
     // Sync user to database
+    // syncUser handles external_id changes by finding user by email and updating external_id
     try {
-        return await syncUser(userData);
+        const userId = await syncUser(userData);
+        
+        // OPTIMIZATION: Wait a bit for DB write to propagate before returning
+        // This helps prevent race conditions when external_id changes
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        return userId;
     } catch (e) {
         console.error('ensureUser sync failed:', e);
         // As a last resort, return the Clerk ID so callers don't crash

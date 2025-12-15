@@ -88,23 +88,54 @@ export default async function StudentTicketPage({
   if (!Number.isFinite(id)) notFound();
 
   // Get user (ensure exists; handle Clerk external_id changes)
-  // Note: This is cached, so it's fast
   // OPTIMIZATION: Handle race condition when Clerk external_id changes
-  // If user not found, ensureUser() will sync/link the user, then retry fetch
+  // When external_id changes, syncUser updates the DB, but we need retry logic
   let dbUser = await getCachedUser(userId);
   if (!dbUser) {
     // Try to sync/link user (handles external_id changes)
     try {
       await ensureUser(userId);
-      // Retry fetching user after sync (with a small delay to allow DB propagation)
-      await new Promise(resolve => setTimeout(resolve, 100));
-      dbUser = await getCachedUser(userId);
       
-      // If still not found, try one more time (handles cache invalidation)
+      // Retry fetching user with exponential backoff (handles DB propagation delay)
+      // This is critical when Clerk's external_id changes - DB write needs time to propagate
+      let attempts = 0;
+      const maxAttempts = 5;
+      const baseDelayMs = 100;
+      
+      while (attempts < maxAttempts && !dbUser) {
+        attempts++;
+        const delayMs = baseDelayMs * Math.pow(2, attempts - 1); // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        
+        // Try fetching user again (React cache is per-request, so this is a fresh call)
+        dbUser = await getCachedUser(userId);
+        
+        if (dbUser) {
+          break;
+        }
+      }
+      
+      // If still not found after retries, try direct DB query (bypasses React cache)
       if (!dbUser) {
-        // Force cache invalidation by using a fresh query
-        const { getCachedUser: freshGetUser } = await import("@/lib/cache/cached-queries");
-        dbUser = await freshGetUser(userId);
+        const { db, users } = await import("@/db");
+        const { eq } = await import("drizzle-orm");
+        const [directUser] = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            full_name: users.full_name,
+            phone: users.phone,
+            avatar_url: users.avatar_url,
+            role_id: users.role_id,
+            external_id: users.external_id,
+          })
+          .from(users)
+          .where(eq(users.external_id, userId))
+          .limit(1);
+        
+        if (directUser) {
+          dbUser = directUser;
+        }
       }
     } catch (err) {
       console.error('[StudentTicketPage] Failed to sync user:', err);
@@ -115,6 +146,10 @@ export default async function StudentTicketPage({
   
   if (!dbUser) {
     // User still not found after sync attempts - redirect to profile page
+    // This should rarely happen, but can occur if:
+    // 1. Clerk user doesn't exist
+    // 2. Database is unavailable
+    // 3. Race condition persists despite retries
     console.error('[StudentTicketPage] User not found after sync attempts:', userId);
     redirect("/student/profile");
   }

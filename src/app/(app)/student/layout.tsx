@@ -23,6 +23,8 @@ export default async function StudentLayout({
 }) {
   // OPTIMIZATION: Middleware already called auth.protect(), so userId is guaranteed
   // auth() here is just reading cached session (fast, no verification overhead)
+  // NOTE: This auth() call is necessary for role checking and cannot be deferred
+  // However, it's fast because middleware already verified auth (request-scoped cache)
   const { userId } = await auth();
 
   // If userId is somehow null, the middleware should have prevented access
@@ -41,6 +43,7 @@ export default async function StudentLayout({
   // OPTIMIZATION: getCachedUserRole uses React cache() for request-level deduplication
   // This is the ONLY DB operation in layout - everything else moved to pages
   // Returns 'student' by default if user not found (safe fallback)
+  // NOTE: This must be synchronous for redirects to work correctly
   let role: string = "student";
   try {
     role = await getCachedUserRole(userId);
