@@ -23,7 +23,7 @@ import { getUserRole } from '@/lib/auth/roles';
 import { logger } from '@/lib/logger';
 import { USER_ROLES } from '@/conf/constants';
 import { z } from 'zod';
-import { db, tickets, ticket_activity, ticket_statuses, users } from '@/db';
+import { db, tickets, ticket_activity, ticket_statuses, users, outbox } from '@/db';
 import { eq } from 'drizzle-orm';
 import { withTransaction } from '@/lib/db-transaction';
 import { TICKET_STATUS } from '@/conf/constants';
@@ -185,6 +185,46 @@ export async function POST(req: NextRequest, context: RouteContext) {
     } catch (err) {
       logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
     }
+
+    // Queue email notifications (fire-and-forget, after response)
+    queueMicrotask(async () => {
+      try {
+        // Queue status update notification (status changed to AWAITING_STUDENT_RESPONSE)
+        await db.insert(outbox).values({
+          event_type: 'ticket.status_updated',
+          aggregate_type: 'ticket',
+          aggregate_id: String(ticketId),
+          payload: {
+            ticketId: Number(ticketId),
+            oldStatus: ticketWithStatus.status_value || currentStatus,
+            newStatus: TICKET_STATUS.AWAITING_STUDENT_RESPONSE,
+            updatedBy: String(dbUser.id),
+          },
+        });
+
+        // Queue comment notification (question added as comment)
+        await db.insert(outbox).values({
+          event_type: 'ticket.comment_added',
+          aggregate_type: 'ticket',
+          aggregate_id: String(ticketId),
+          payload: {
+            ticketId: Number(ticketId),
+            comment: question.trim(),
+            commentedBy: String(dbUser.id),
+            isInternal: false,
+          },
+        });
+      } catch (outboxError: any) {
+        logger.error(
+          {
+            error: outboxError?.message || String(outboxError),
+            ticketId,
+            userId: dbUser.id,
+          },
+          'Failed to queue question notifications (non-critical)'
+        );
+      }
+    });
 
     const response = ApiResponse.success({
       message: 'Question sent to student successfully',

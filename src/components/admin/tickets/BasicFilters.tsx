@@ -21,6 +21,7 @@ interface BasicFiltersProps {
   category: string;
   subcategory: string;
   location: string;
+  scope: string;
   status: string;
   tat: string;
   createdFrom: string;
@@ -28,6 +29,7 @@ interface BasicFiltersProps {
   onCategoryChange: (value: string) => void;
   onSubcategoryChange: (value: string) => void;
   onLocationChange: (value: string) => void;
+  onScopeChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onTatChange: (value: string) => void;
   onCreatedFromChange: (value: string) => void;
@@ -35,6 +37,7 @@ interface BasicFiltersProps {
   categoryOptions: CategoryOption[];
   subcategoryOptions: Array<{ value: string; label: string; id: number }>;
   locationOptions: string[];
+  scopeOptions: Array<{ value: string; label: string }>;
   statusOptions: StatusOption[];
   loadingFilters: boolean;
 }
@@ -43,6 +46,7 @@ export function BasicFilters({
   category,
   subcategory,
   location,
+  scope,
   status,
   tat,
   createdFrom,
@@ -50,6 +54,7 @@ export function BasicFilters({
   onCategoryChange,
   onSubcategoryChange,
   onLocationChange,
+  onScopeChange,
   onStatusChange,
   onTatChange,
   onCreatedFromChange,
@@ -57,6 +62,7 @@ export function BasicFilters({
   categoryOptions,
   subcategoryOptions,
   locationOptions,
+  scopeOptions,
   statusOptions,
   loadingFilters,
 }: BasicFiltersProps) {
@@ -110,6 +116,54 @@ export function BasicFilters({
               placeholder="Select a category first"
               className="h-9 text-sm"
               disabled
+            />
+          )}
+        </div>
+        <div>
+          <Label htmlFor="location" className="text-xs mb-1.5 block">Location</Label>
+          {locationOptions.length > 0 ? (
+            <Select value={location || "all"} onValueChange={(value) => onLocationChange(value === "all" ? "" : value)}>
+              <SelectTrigger id="location" className="w-full h-9 text-sm">
+                <SelectValue placeholder="All Locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Locations</SelectItem>
+                {locationOptions.map(opt => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="location"
+              value={location}
+              onChange={(e) => onLocationChange(e.target.value)}
+              placeholder="Enter location"
+              className="h-9 text-sm"
+            />
+          )}
+        </div>
+        <div>
+          <Label htmlFor="scope" className="text-xs mb-1.5 block">Scope</Label>
+          {scopeOptions.length > 0 ? (
+            <Select value={scope || "all"} onValueChange={(value) => onScopeChange(value === "all" ? "" : value)}>
+              <SelectTrigger id="scope" className="w-full h-9 text-sm">
+                <SelectValue placeholder="All Scopes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Scopes</SelectItem>
+                {scopeOptions.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="scope"
+              value={scope}
+              onChange={(e) => onScopeChange(e.target.value)}
+              placeholder="Enter scope"
+              className="h-9 text-sm"
             />
           )}
         </div>

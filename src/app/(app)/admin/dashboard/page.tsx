@@ -21,6 +21,7 @@ import {
   applyCategoryFilter,
   applySubcategoryFilter,
   applyLocationFilter,
+  applyScopeFilter,
   applyStatusFilter,
   applyEscalatedFilter,
   applyUserFilter,
@@ -167,6 +168,7 @@ async function AuthenticatedDashboard({
   const category = (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "";
   const subcategory = (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "";
   const location = (typeof params["location"] === "string" ? params["location"] : params["location"]?.[0]) || "";
+  const scope = (typeof params["scope"] === "string" ? params["scope"] : params["scope"]?.[0]) || "";
   const tat = (typeof params["tat"] === "string" ? params["tat"] : params["tat"]?.[0]) || "";
   const status = (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "";
   const createdFrom = (typeof params["from"] === "string" ? params["from"] : params["from"]?.[0]) || "";
@@ -202,6 +204,7 @@ async function AuthenticatedDashboard({
         category,
         subcategory,
         location,
+        scope,
         tat,
         status,
         createdFrom,
@@ -232,6 +235,7 @@ async function AdminDashboardData({
     category: string;
     subcategory: string;
     location: string;
+    scope: string;
     tat: string;
     status: string;
     createdFrom: string;
@@ -365,6 +369,7 @@ async function AdminDashboardData({
   allTickets = applyCategoryFilter(allTickets, searchParams.category, categoryMap);
   allTickets = applySubcategoryFilter(allTickets, searchParams.subcategory);
   allTickets = applyLocationFilter(allTickets, searchParams.location);
+  allTickets = applyScopeFilter(allTickets, searchParams.scope);
   allTickets = applyStatusFilter(allTickets, searchParams.status);
   allTickets = applyEscalatedFilter(allTickets, searchParams.escalated);
   allTickets = applyUserFilter(allTickets, searchParams.user);
@@ -406,6 +411,7 @@ async function AdminDashboardData({
           statuses={filters.statuses}
           categories={filters.categories}
           domains={filters.domains}
+          scopes={filters.scopes}
         />
       </div>
 

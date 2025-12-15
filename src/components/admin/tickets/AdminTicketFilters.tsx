@@ -53,12 +53,19 @@ interface AdminTicketFiltersProps {
     slug?: string | null;
     description?: string | null;
   }>;
+  scopes?: Array<{
+    id: number;
+    name: string;
+    slug?: string | null;
+    domain_id: number;
+  }>;
 }
 
 export function AdminTicketFilters({
   statuses: serverStatuses,
   categories: serverCategories,
   domains: serverDomains,
+  scopes: serverScopes,
 }: AdminTicketFiltersProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -101,8 +108,16 @@ export function AdminTicketFilters({
   const [category, setCategory] = useState<string>(searchParams.get("category") || "");
   const [subcategory, setSubcategory] = useState<string>(searchParams.get("subcategory") || "");
   const [location, setLocation] = useState<string>(searchParams.get("location") || "");
+  const [scope, setScope] = useState<string>(searchParams.get("scope") || "");
   const [tat, setTat] = useState<string>(searchParams.get("tat") || "");
   const [status, setStatus] = useState<string>(searchParams.get("status") || "");
+  
+  const [scopeOptions, setScopeOptions] = useState<Array<{ value: string; label: string }>>(
+    serverScopes?.map(s => ({
+      value: s.id.toString(),
+      label: s.name,
+    })) || []
+  );
   
   // Fallback: client-side fetching only if props not provided (backward compatibility)
   useEffect(() => {
@@ -298,6 +313,10 @@ export function AdminTicketFilters({
     if (category) filters.push({ key: "category", label: "Category", value: formatValue("category", category) });
     if (subcategory) filters.push({ key: "subcategory", label: "Subcategory", value: formatValue("subcategory", subcategory) });
     if (location) filters.push({ key: "location", label: "Location", value: truncate(location, 25) });
+    if (scope) {
+      const scopeOption = scopeOptions.find(s => s.value === scope);
+      filters.push({ key: "scope", label: "Scope", value: scopeOption ? scopeOption.label : truncate(scope, 25) });
+    }
     if (tat) filters.push({ key: "tat", label: "TAT", value: formatValue("tat", tat) });
     if (status) filters.push({ key: "status", label: "Status", value: formatValue("status", status) });
     if (createdFrom) filters.push({ key: "from", label: "From", value: createdFrom });
@@ -305,7 +324,7 @@ export function AdminTicketFilters({
     if (userNumber) filters.push({ key: "user", label: "User", value: truncate(userNumber, 20) });
     if (sort && sort !== "newest") filters.push({ key: "sort", label: "Sort", value: formatValue("sort", sort) });
     return filters;
-  }, [searchQuery, category, subcategory, location, tat, status, createdFrom, createdTo, userNumber, sort, statusOptions, categoryOptions, subcategoryOptions]);
+  }, [searchQuery, category, subcategory, location, scope, tat, status, createdFrom, createdTo, userNumber, sort, statusOptions, categoryOptions, subcategoryOptions, scopeOptions]);
 
   const removeFilter = useCallback((key: string) => {
     const params = new URLSearchParams();
@@ -315,6 +334,7 @@ export function AdminTicketFilters({
     if (key !== "category" && category) params.set("category", category);
     if (key !== "subcategory" && subcategory) params.set("subcategory", subcategory);
     if (key !== "location" && location) params.set("location", location);
+    if (key !== "scope" && scope) params.set("scope", scope);
     if (key !== "tat" && tat) params.set("tat", tat);
     if (key !== "status" && status) params.set("status", status);
     if (key !== "from" && createdFrom) params.set("from", createdFrom);
@@ -328,6 +348,7 @@ export function AdminTicketFilters({
       case "category": setCategory(""); break;
       case "subcategory": setSubcategory(""); break;
       case "location": setLocation(""); break;
+      case "scope": setScope(""); break;
       case "tat": setTat(""); break;
       case "status": setStatus(""); break;
       case "from": setCreatedFrom(""); break;
@@ -347,6 +368,7 @@ export function AdminTicketFilters({
     if (category) params.set("category", category);
     if (subcategory) params.set("subcategory", subcategory);
     if (location) params.set("location", location);
+    if (scope) params.set("scope", scope);
     if (tat) params.set("tat", tat);
     if (status) params.set("status", status);
     if (createdFrom) params.set("from", createdFrom);
@@ -356,13 +378,14 @@ export function AdminTicketFilters({
     router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`);
     // Reset loading state after navigation
     setTimeout(() => setIsApplying(false), 500);
-  }, [searchQuery, category, subcategory, location, tat, status, createdFrom, createdTo, userNumber, sort, pathname, router]);
+  }, [searchQuery, category, subcategory, location, scope, tat, status, createdFrom, createdTo, userNumber, sort, pathname, router]);
 
   const reset = useCallback(() => {
     setSearchQuery("");
     setCategory("");
     setSubcategory("");
     setLocation("");
+    setScope("");
     setTat("");
     setStatus("");
     setCreatedFrom("");
@@ -506,6 +529,7 @@ export function AdminTicketFilters({
                 category={category}
                 subcategory={subcategory}
                 location={location}
+                scope={scope}
                 status={status}
                 tat={tat}
                 createdFrom={createdFrom}
@@ -523,6 +547,7 @@ export function AdminTicketFilters({
                   if (value) params.set("category", value);
                   if (clearedSubcategory) params.set("subcategory", clearedSubcategory);
                   if (location) params.set("location", location);
+                  if (scope) params.set("scope", scope);
                   if (tat) params.set("tat", tat);
                   if (status) params.set("status", status);
                   if (createdFrom) params.set("from", createdFrom);
@@ -539,6 +564,7 @@ export function AdminTicketFilters({
                   if (category) params.set("category", category);
                   if (value) params.set("subcategory", value);
                   if (location) params.set("location", location);
+                  if (scope) params.set("scope", scope);
                   if (tat) params.set("tat", tat);
                   if (status) params.set("status", status);
                   if (createdFrom) params.set("from", createdFrom);
@@ -548,6 +574,7 @@ export function AdminTicketFilters({
                   router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`);
                 }}
                 onLocationChange={setLocation}
+                onScopeChange={setScope}
                 onStatusChange={setStatus}
                 onTatChange={setTat}
                 onCreatedFromChange={setCreatedFrom}
@@ -555,6 +582,7 @@ export function AdminTicketFilters({
                 categoryOptions={categoryOptions}
                 subcategoryOptions={subcategoryOptions}
                 locationOptions={locationOptions}
+                scopeOptions={scopeOptions}
                 statusOptions={statusOptions}
                 loadingFilters={loadingFilters}
               />

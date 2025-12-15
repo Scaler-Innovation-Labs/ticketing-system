@@ -7,7 +7,7 @@
  * This replaces client-side API calls with server-side data fetching.
  */
 
-import { getCachedTicketStatuses, getCachedCategoriesHierarchy, getCachedDomains } from '@/lib/cache/cached-queries';
+import { getCachedTicketStatuses, getCachedCategoriesHierarchy, getCachedDomains, getCachedScopes } from '@/lib/cache/cached-queries';
 import { db, subcategories } from '@/db';
 import { eq, and, inArray } from 'drizzle-orm';
 
@@ -40,10 +40,18 @@ export interface AdminFilterDomain {
   description?: string | null;
 }
 
+export interface AdminFilterScope {
+  id: number;
+  name: string;
+  slug?: string | null;
+  domain_id: number;
+}
+
 export interface AdminFilters {
   statuses: AdminFilterStatus[];
   categories: AdminFilterCategory[];
   domains: AdminFilterDomain[];
+  scopes: AdminFilterScope[];
 }
 
 /**
@@ -54,10 +62,11 @@ export interface AdminFilters {
  */
 export async function getAdminFilters(): Promise<AdminFilters> {
   // Fetch all filters in parallel (all use cached queries)
-  const [statusesData, categoriesData, domainsData] = await Promise.all([
+  const [statusesData, categoriesData, domainsData, scopesData] = await Promise.all([
     getCachedTicketStatuses(),
     getCachedCategoriesHierarchy(),
     getCachedDomains(),
+    getCachedScopes(),
   ]);
 
   // Transform statuses to match expected format
@@ -93,10 +102,19 @@ export async function getAdminFilters(): Promise<AdminFilters> {
     description: d.description || null,
   }));
 
+  // Transform scopes to match expected format
+  const scopes: AdminFilterScope[] = scopesData.map(s => ({
+    id: s.id,
+    name: s.name,
+    slug: s.slug || null,
+    domain_id: s.domain_id,
+  }));
+
   return {
     statuses,
     categories,
     domains,
+    scopes,
   };
 }
 

@@ -63,6 +63,13 @@ export function applyLocationFilter(tickets: AdminTicketRow[], location: string)
     return tickets.filter(t => t.location === location);
 }
 
+export function applyScopeFilter(tickets: AdminTicketRow[], scope: string) {
+    if (!scope) return tickets;
+    const scopeId = Number(scope);
+    if (!Number.isFinite(scopeId)) return tickets;
+    return tickets.filter(t => t.scope_id === scopeId);
+}
+
 export function applyStatusFilter(tickets: AdminTicketRow[], status: string) {
     if (!status) return tickets;
     return tickets.filter(t => getStatusValue(t) === status);

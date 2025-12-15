@@ -660,6 +660,10 @@ export async function setTAT(
       'Ticket TAT set'
     );
 
-    return updated;
+    return {
+      ...updated,
+      statusChanged,
+      oldStatusId: ticket.status_id,
+    };
   });
 }

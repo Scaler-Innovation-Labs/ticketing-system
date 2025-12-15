@@ -13,6 +13,9 @@ import { logger } from '@/lib/logger';
 import { z } from 'zod';
 // FIX 5: Move revalidateTag import to module scope (not dynamic)
 import { revalidateTag } from 'next/cache';
+import { db, outbox, tickets, ticket_statuses } from '@/db';
+import { eq } from 'drizzle-orm';
+import { TICKET_STATUS } from '@/conf/constants';
 
 export const dynamic = 'force-dynamic';
 // Ensure this route runs on Node (for DB/network access)
@@ -98,6 +101,46 @@ export async function POST(req: NextRequest, context: RouteContext) {
           revalidateTag('tickets', 'default');
         } catch (err) {
           logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+        }
+
+        // Queue email notification if status changed (fire-and-forget, after response)
+        if (result.statusChanged && markInProgress) {
+          queueMicrotask(async () => {
+            try {
+              // Fetch old status value for notification
+              const [oldStatusRow] = result.oldStatusId
+                ? await db
+                    .select({ value: ticket_statuses.value })
+                    .from(ticket_statuses)
+                    .where(eq(ticket_statuses.id, result.oldStatusId))
+                    .limit(1)
+                : [null];
+
+              const oldStatus = oldStatusRow?.value || 'unknown';
+
+              // Queue status update notification
+              await db.insert(outbox).values({
+                event_type: 'ticket.status_updated',
+                aggregate_type: 'ticket',
+                aggregate_id: String(ticketId),
+                payload: {
+                  ticketId: Number(ticketId),
+                  oldStatus,
+                  newStatus: TICKET_STATUS.IN_PROGRESS,
+                  updatedBy: String(dbUser.id),
+                },
+              });
+            } catch (outboxError: any) {
+              logger.error(
+                {
+                  error: outboxError?.message || String(outboxError),
+                  ticketId,
+                  userId: dbUser.id,
+                },
+                'Failed to queue TAT status notification (non-critical)'
+              );
+            }
+          });
         }
 
         return ApiResponse.success({
