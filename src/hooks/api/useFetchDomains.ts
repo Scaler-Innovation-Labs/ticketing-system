@@ -24,7 +24,9 @@ export function useFetchDomains() {
     const fetchDomains = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await fetch("/api/domains");
+            const response = await fetch("/api/domains", {
+                credentials: 'include', // Include cookies for Clerk authentication
+            });
             if (response.ok) {
                 const data = await response.json();
                 setDomains(data.domains || []);

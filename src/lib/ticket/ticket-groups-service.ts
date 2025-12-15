@@ -12,7 +12,7 @@ import { withTransaction } from '@/lib/db-transaction';
 import { getUserRole } from '@/lib/auth/roles';
 import { USER_ROLES, TICKET_STATUS } from '@/conf/constants';
 import { parseTAT } from './ticket-operations-service';
-import { getStatusId } from './ticket-service';
+import { getStatusId } from './status-ids';
 
 /**
  * Create a ticket group

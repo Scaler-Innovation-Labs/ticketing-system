@@ -48,6 +48,13 @@ export async function GET() {
       scopes: allScopes,
     });
   } catch (error: any) {
+    if (error instanceof Error && (error.message.includes('Unauthorized') || error.message.includes('Authentication required'))) {
+      logger.warn({ path: '/api/domains' }, 'Unauthorized API access attempt');
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
     logger.error({ error: error.message }, 'Failed to fetch domains');
     return NextResponse.json(
       { error: 'Failed to fetch domains' },

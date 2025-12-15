@@ -1,25 +1,24 @@
-"use client";
-
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, AlertCircle, Image as ImageIcon, MessageSquare, CheckCircle2, Sparkles, RotateCw } from "lucide-react";
+import { Calendar, ArrowLeft, User, MapPin, FileText, Clock, AlertTriangle, Image as ImageIcon, Info } from "lucide-react";
 import { AdminActions } from "@/components/features/tickets/actions/AdminActions";
 import { CommitteeTagging } from "@/components/admin/committees";
 import { AdminCommentComposer } from "@/components/features/tickets/actions/AdminCommentComposer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { TicketStatusBadge } from "@/components/features/tickets/display/TicketStatusBadge";
 import { DynamicFieldDisplay } from "@/components/features/tickets/display/DynamicFieldDisplay";
 import { addBusinessHours } from "@/lib/ticket/utils/tat-calculator";
 import type { TicketMetadata } from "@/db/inferred-types";
-import { ImageLightbox } from "@/components/features/tickets/display/ImageLightbox";
-import { Info } from "lucide-react";
-import { formatTimelineDate, formatTimelineTime, formatTimelineDateTime } from "@/lib/utils/date-format";
+import { LazyImageLightbox } from "@/components/features/tickets/display/LazyImageLightbox";
+import { TicketTimelineServer } from "@/components/features/tickets/display/TicketTimelineServer";
+import { TicketCommentsWithComposer } from "@/components/features/tickets/display/TicketCommentsWithComposer";
+import { TicketCommentsServer } from "@/components/features/tickets/display/TicketCommentsServer";
+import { formatTimelineDate, formatTimelineTime } from "@/lib/utils/date-format";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Admin type configuration
 export type AdminType = 'admin' | 'snr-admin' | 'superadmin' | 'committee';
@@ -47,6 +46,7 @@ export interface TicketDetailPageProps {
   forwardTargets?: any[];
   tatExtensionCount?: number;
   escalationLevel?: number;
+  currentUserName?: string | null; // Current admin's name for optimistic comments
   onStatusChanged?: (newStatus: string) => void;
 }
 
@@ -78,17 +78,7 @@ const ADMIN_CONFIGS = {
   },
 };
 
-// Icon map for timeline
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Calendar,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  RotateCw,
-  MessageSquare,
-  Sparkles,
-  AlertTriangle,
-};
+import { MessageSquare } from "lucide-react";
 
 export function TicketDetailPage({
   adminType,
@@ -113,23 +103,38 @@ export function TicketDetailPage({
   forwardTargets = [],
   tatExtensionCount = 0,
   escalationLevel = 0,
+  currentUserName,
   onStatusChanged,
 }: TicketDetailPageProps) {
   const config = ADMIN_CONFIGS[adminType];
   const ActionsComponent = config.actionsComponent;
 
-  const tatDateRaw = ticket.due_at || (metadata?.tatDate ? new Date(metadata.tatDate) : null);
+  // Ensure tatDateRaw is always a Date object or null
+  // ticket.due_at might be a string from the database, so we need to convert it
+  let tatDateRaw: Date | null = null;
+  if (ticket.due_at) {
+    if (ticket.due_at instanceof Date) {
+      tatDateRaw = ticket.due_at;
+    } else if (typeof ticket.due_at === 'string') {
+      const parsed = new Date(ticket.due_at);
+      tatDateRaw = !isNaN(parsed.getTime()) ? parsed : null;
+    }
+  } else if (metadata?.tatDate) {
+    const parsed = typeof metadata.tatDate === 'string' ? new Date(metadata.tatDate) : null;
+    tatDateRaw = parsed && !isNaN(parsed.getTime()) ? parsed : null;
+  }
+
   const isTatPaused = normalizedStatus === "awaiting_student_response" && !!metadata?.tatPausedAt;
   const remainingTatHours = metadata?.tatRemainingHours ? Number(metadata.tatRemainingHours) : null;
   const now = new Date();
 
-  let tatDate = tatDateRaw;
-  if (isTatPaused && remainingTatHours && Number.isFinite(remainingTatHours)) {
+  let tatDate: Date | null = tatDateRaw;
+  if (isTatPaused && remainingTatHours && Number.isFinite(remainingTatHours) && tatDateRaw) {
     tatDate = addBusinessHours(now, remainingTatHours);
   }
 
-  const hasTATDue = tatDate && tatDate.getTime() < now.getTime() && !isTatPaused;
-  const isTATToday = tatDate && tatDate.toDateString() === now.toDateString() && !isTatPaused;
+  const hasTATDue = tatDate && tatDate instanceof Date && tatDate.getTime() < now.getTime() && !isTatPaused;
+  const isTATToday = tatDate && tatDate instanceof Date && tatDate.toDateString() === now.toDateString() && !isTatPaused;
 
   // Filter dynamic fields to exclude TAT-related and profile fields
   const filteredDynamicFields = dynamicFields.filter((field) => {
@@ -293,14 +298,14 @@ export function TicketDetailPage({
                 </div>
               )}
 
-              {/* Attachments */}
+              {/* Attachments - Lazy-loaded */}
               {images.length > 0 && (
                 <div className="p-4 rounded-lg bg-muted/50 border">
                   <div className="flex items-center gap-2 mb-3">
                     <ImageIcon className="w-4 h-4 text-muted-foreground" />
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Attachments ({images.length})</p>
                   </div>
-                  <ImageLightbox images={images} />
+                  <LazyImageLightbox images={images} />
                 </div>
               )}
 
@@ -334,177 +339,56 @@ export function TicketDetailPage({
             </CardContent>
           </Card>
 
-          {/* Timeline Section */}
-          <Card className="border-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="relative">
-                {timelineEntries.length > 1 && (
-                  <div className="absolute left-5 top-8 bottom-8 w-0.5 bg-border" />
-                )}
-                <div className="space-y-4 relative">
-                  {timelineEntries.map((entry: any, index: number) => {
-                    const iconKey = typeof entry.icon === 'string' ? entry.icon : '';
-                    const IconComponent = ICON_MAP[iconKey] ?? AlertCircle;
-                    const title = typeof entry.title === 'string' ? entry.title : '';
-                    const color = typeof entry.color === 'string' ? entry.color : '';
-                    const textColor = typeof entry.textColor === 'string' ? entry.textColor : '';
-                    const entryDate = entry.date instanceof Date ? entry.date : (entry.date ? new Date(entry.date) : null);
-                    return (
-                      <div key={index} className="flex items-start gap-4 relative">
-                        <div className={`relative z-10 p-2.5 rounded-full flex-shrink-0 border-2 bg-background ${color}`}>
-                          <IconComponent className={`w-4 h-4 ${textColor}`} />
-                        </div>
-                        <div className="flex-1 min-w-0 pb-4">
-                          <div className="p-3 rounded-lg bg-muted/50 border">
-                            <p className={`text-sm font-semibold mb-1.5 break-words ${textColor}`}>{title}</p>
-                            {entry.description && (
-                              <p className="text-xs text-muted-foreground mb-2 break-words">{entry.description}</p>
-                            )}
-                            {entryDate && (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span>{formatTimelineDate(entryDate)}</span>
-                                <span>•</span>
-                                <span>{formatTimelineTime(entryDate)}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* Timeline Section - Server Component */}
+          <Suspense fallback={
+            <Card className="border-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5" />
+                  Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          }>
+            <TicketTimelineServer entries={timelineEntries} />
+          </Suspense>
 
-          {/* Comments Section */}
-          <Card className="border-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Comments
-                {comments.length > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {comments.length}
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-6">
-              {comments.length > 0 ? (
-                <ScrollArea className="h-[500px] w-full pr-4">
-                  <div className="space-y-4 pb-4">
-                    {comments.map((comment: any, idx: number) => {
-                      if (!comment || typeof comment !== 'object') return null;
-                      const isInternal = comment.isInternal || comment.type === "internal_note" || comment.type === "super_admin_note";
-                      const commentText = (typeof comment.text === 'string' ? comment.text : typeof comment.message === 'string' ? comment.message : '') || '';
-                      const commentAuthor = (typeof comment.author === 'string' ? comment.author : typeof comment.created_by === 'string' ? comment.created_by : 'Unknown') || 'Unknown';
-                      const commentSource = typeof comment.source === 'string' ? comment.source : null;
-                      const rawTimestamp = comment.createdAt || comment.created_at;
-                      const commentCreatedAt = rawTimestamp &&
-                        (typeof rawTimestamp === 'string' || rawTimestamp instanceof Date)
-                        ? rawTimestamp : null;
-
-                      // For internal notes, keep card style
-                      if (isInternal) {
-                        return (
-                          <Card key={idx} className="border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
-                            <CardContent className="p-4">
-                              <Badge variant="outline" className="mb-2 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">
-                                Internal Note
-                              </Badge>
-                              <p className="text-base whitespace-pre-wrap leading-relaxed mb-3">
-                                {commentText}
-                              </p>
-                              <Separator className="my-2" />
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                {commentCreatedAt ? (
-                                  <>
-                                    <span className="font-medium">{formatTimelineDate(commentCreatedAt)}</span>
-                                    <span>•</span>
-                                    <span className="font-medium">{formatTimelineTime(commentCreatedAt)}</span>
-                                    {commentAuthor && (
-                                      <>
-                                        <span>•</span>
-                                        <span className="font-medium">{commentAuthor}</span>
-                                      </>
-                                    )}
-                                  </>
-                                ) : (
-                                  commentAuthor && (
-                                    <span className="font-medium">{commentAuthor}</span>
-                                  )
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      }
-
-                      // Chat-style for regular comments
-                      const isStudent = commentSource === "website";
-                      const isAdmin = !isStudent;
-
-                      return (
-                        <div key={idx} className={`flex gap-3 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`flex gap-3 max-w-[80%] ${isAdmin ? 'flex-row-reverse' : 'flex-row'}`}>
-                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isAdmin ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                              <User className="w-4 h-4" />
-                            </div>
-                            <div className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}>
-                              <div className={`rounded-2xl px-4 py-3 ${isAdmin ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-muted border rounded-tl-sm'}`}>
-                                <p className={`text-sm whitespace-pre-wrap leading-relaxed break-words ${isAdmin ? 'text-primary-foreground' : ''}`}>{commentText}</p>
-                              </div>
-                              <div className={`flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1 ${isAdmin ? 'flex-row-reverse' : ''}`}>
-                                {commentCreatedAt ? (
-                                  <>
-                                    <span className="font-medium">{formatTimelineDate(commentCreatedAt)}</span>
-                                    <span>•</span>
-                                    <span className="font-medium">{formatTimelineTime(commentCreatedAt)}</span>
-                                    {commentAuthor && (
-                                      <>
-                                        <span>•</span>
-                                        <span className="font-medium">{commentAuthor}</span>
-                                      </>
-                                    )}
-                                  </>
-                                ) : (
-                                  commentAuthor && (
-                                    <span className="font-medium">{commentAuthor}</span>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+          {/* Comments Section - Hybrid (Server-rendered + Client state) */}
+          {config.showAdminCommentComposer ? (
+            <TicketCommentsWithComposer
+              initialComments={comments}
+              ticketId={ticketId}
+              currentUserName={currentUserName || undefined}
+              onStatusChanged={onStatusChanged}
+            />
+          ) : (
+            <Suspense fallback={
+              <Card className="border-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5" />
+                    Comments
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-24 w-full" />
+                    ))}
                   </div>
-                </ScrollArea>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
-                    <MessageSquare className="w-8 h-8 opacity-50" />
-                  </div>
-                  <p className="text-sm font-medium mb-1">No comments yet</p>
-                  <p className="text-xs">Updates and responses will appear here</p>
-                </div>
-              )}
-
-              <Separator />
-
-              {config.showAdminCommentComposer && (
-                <AdminCommentComposer ticketId={ticketId} />
-              )}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            }>
+              <TicketCommentsServer comments={comments} />
+            </Suspense>
+          )}
 
           {/* Admin Actions */}
           {config.showAdminActions && ActionsComponent && (

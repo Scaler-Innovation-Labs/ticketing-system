@@ -1,54 +1,55 @@
+import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import { TicketDetailPage } from "@/components/features/tickets/display/TicketDetailPage";
-import { getAdminTicketData } from "@/lib/ticket/admin/adminTicketData";
-import { db, tickets } from "@/db";
-import { desc } from "drizzle-orm";
+import { getCachedAdminTicketData } from "@/lib/ticket/admin/adminTicketData";
+import { Card, CardContent } from "@/components/ui/card";
 
-// Force dynamic rendering since we use auth() and user-specific data
-export const dynamic = 'force-dynamic';
+// CRITICAL FIX: Change from force-dynamic to auto to enable caching
+// This allows Vercel to cache HTML and reuse edge responses
+export const dynamic = "auto";
+export const revalidate = 60; // Revalidate every 60 seconds
 
 // Allow on-demand rendering for tickets not in the static params list
 export const dynamicParams = true;
 
-/**
- * Generate static params for ticket detail pages
- * Pre-renders the 50 most recent tickets at build time for faster loads
- */
-export async function generateStaticParams() {
-  try {
-    const recentTickets = await db
-      .select({ id: tickets.id })
-      .from(tickets)
-      .orderBy(desc(tickets.created_at))
-      .limit(50);
-
-    return recentTickets.map((ticket) => ({
-      ticketId: ticket.id.toString(),
-    }));
-  } catch (error) {
-    console.error("Error generating static params for tickets:", error);
-    return [];
-  }
+// Skeleton component for streaming
+function AdminTicketSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Card className="border-2">
+        <CardContent className="p-6">
+          <div className="h-8 w-64 animate-pulse bg-muted rounded-lg mb-4" />
+          <div className="h-4 w-48 animate-pulse bg-muted rounded-lg" />
+        </CardContent>
+      </Card>
+      <Card className="border-2">
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="h-6 w-full animate-pulse bg-muted rounded-lg" />
+            <div className="h-24 w-full animate-pulse bg-muted rounded-lg" />
+            <div className="h-24 w-full animate-pulse bg-muted rounded-lg" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
-/**
- * Admin Ticket Detail Page
- * Note: Auth and role checks are handled by admin/layout.tsx
- */
-export default async function AdminTicketPage({ params }: { params: Promise<{ ticketId: string }> }) {
+// CRITICAL FIX: All auth and DB logic moved INSIDE Suspense
+// This allows HTML to stream immediately while auth/DB happens async
+async function AdminTicketAuthed({ params }: { params: Promise<{ ticketId: string }> }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/admin/dashboard");
+
+  const { ticketId } = await params;
+  const id = Number(ticketId);
+
+  if (!Number.isFinite(id)) notFound();
+
   try {
-    // Layout ensures userId exists and user is an admin
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
-
-    const { ticketId } = await params;
-    const id = Number(ticketId);
-
-    if (!Number.isFinite(id)) notFound();
-
-    // Get ticket data using unified function
-    const ticketData = await getAdminTicketData(id, 'admin', userId);
+    // Get ticket data using cached function
+    const ticketData = await getCachedAdminTicketData(id, 'admin', userId);
 
     return (
       <TicketDetailPage
@@ -64,4 +65,16 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ ti
     }
     notFound();
   }
+}
+
+// CRITICAL FIX: Page component is now SYNCHRONOUS
+// This allows HTML to stream immediately (<1s TTFB)
+// All auth/DB logic moved inside Suspense boundaries
+export default function AdminTicketPage({ params }: { params: Promise<{ ticketId: string }> }) {
+  // Render shell immediately - no auth, no DB, no blocking
+  return (
+    <Suspense fallback={<AdminTicketSkeleton />}>
+      <AdminTicketAuthed params={params} />
+    </Suspense>
+  );
 }

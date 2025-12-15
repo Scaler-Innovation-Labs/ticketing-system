@@ -41,10 +41,10 @@ export default async function SuperAdminTicketPage({ params }: { params: Promise
     const { userId } = await auth();
     if (!userId) throw new Error("Unauthorized");
 
-    const { ticketId } = await params;
-    const id = Number(ticketId);
+  const { ticketId } = await params;
+  const id = Number(ticketId);
 
-    if (!Number.isFinite(id)) notFound();
+  if (!Number.isFinite(id)) notFound();
 
     // Get ticket data using unified function
     const ticketData = await getAdminTicketData(id, 'superadmin', userId);

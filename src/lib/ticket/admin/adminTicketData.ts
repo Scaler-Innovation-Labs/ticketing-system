@@ -15,6 +15,7 @@ import { ticketMatchesAdminAssignment, getAdminAssignedCategoryDomains } from '@
 import { enrichTimelineWithTAT } from '@/lib/ticket/formatting/enrichTimeline';
 import { parseTicketMetadata, extractImagesFromMetadata } from '@/lib/ticket/validation/parseTicketMetadata';
 import { calculateTATInfo } from '@/lib/ticket/utils/calculateTAT';
+import { unstable_cache } from 'next/cache';
 
 export type AdminType = 'admin' | 'snr-admin' | 'superadmin' | 'committee';
 
@@ -39,12 +40,13 @@ export interface AdminTicketData {
   forwardTargets?: any[];
   tatExtensionCount?: number;
   escalationLevel?: number;
+  currentUserName?: string | null; // Current admin's name for optimistic comments
 }
 
 /**
- * Get ticket data for admin/snr-admin/superadmin pages
+ * Get ticket data for admin/snr-admin/superadmin pages (uncached version)
  */
-export async function getAdminTicketData(
+async function _getAdminTicketDataUncached(
   ticketId: number,
   adminType: AdminType,
   userId: string
@@ -309,6 +311,14 @@ export async function getAdminTicketData(
     creator_email: creator?.email || null,
   };
 
+  // Get current admin's name for optimistic comments
+  // Use dbUser.id (internal UUID) instead of userId (Clerk external ID)
+  const [currentAdmin] = await db
+    .select({ full_name: users.full_name })
+    .from(users)
+    .where(eq(users.id, dbUser.id))
+    .limit(1);
+
   return {
     ticket: ticketObj,
     metadata,
@@ -330,7 +340,41 @@ export async function getAdminTicketData(
     forwardTargets,
     tatExtensionCount: metadata?.tatExtensions?.length || 0,
     escalationLevel: ticket.escalation_level || 0,
+    currentUserName: currentAdmin?.full_name || null, // For optimistic comments
   };
+}
+
+/**
+ * Get ticket data for admin/snr-admin/superadmin pages (cached version)
+ * Wrapped with unstable_cache for better performance
+ */
+export async function getCachedAdminTicketData(
+  ticketId: number,
+  adminType: AdminType,
+  userId: string
+): Promise<AdminTicketData> {
+  return unstable_cache(
+    async () => {
+      return _getAdminTicketDataUncached(ticketId, adminType, userId);
+    },
+    [`admin-ticket-${ticketId}-${adminType}-${userId}`],
+    {
+      revalidate: 60, // Revalidate every 60 seconds
+      tags: [`ticket-${ticketId}`, `tickets`],
+    }
+  )();
+}
+
+/**
+ * Get ticket data for admin/snr-admin/superadmin pages (legacy export for backward compatibility)
+ * @deprecated Use getCachedAdminTicketData instead
+ */
+export async function getAdminTicketData(
+  ticketId: number,
+  adminType: AdminType,
+  userId: string
+): Promise<AdminTicketData> {
+  return getCachedAdminTicketData(ticketId, adminType, userId);
 }
 
 /**

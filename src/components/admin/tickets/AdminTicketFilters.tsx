@@ -26,18 +26,76 @@ interface CategoryOption {
   subcategories: Array<{ value: string; label: string; id: number }>;
 }
 
-export function AdminTicketFilters() {
+interface AdminTicketFiltersProps {
+  statuses?: Array<{
+    id: number;
+    value: string;
+    label: string;
+    color?: string | null;
+    progress_percent?: number | null;
+  }>;
+  categories?: Array<{
+    id: number;
+    name: string;
+    slug?: string | null;
+    icon?: string | null;
+    color?: string | null;
+    subcategories: Array<{
+      id: number;
+      name: string;
+      slug?: string | null;
+      category_id: number;
+    }>;
+  }>;
+  domains?: Array<{
+    id: number;
+    name: string;
+    slug?: string | null;
+    description?: string | null;
+  }>;
+}
+
+export function AdminTicketFilters({
+  statuses: serverStatuses,
+  categories: serverCategories,
+  domains: serverDomains,
+}: AdminTicketFiltersProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   
-  // Fetch filter options from database
-  const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  // Filter options: use server props if provided, otherwise fall back to client-side fetching
+  const [statusOptions, setStatusOptions] = useState<StatusOption[]>(
+    serverStatuses?.map(s => ({
+      value: s.value,
+      label: s.label,
+      enum: s.value,
+    })) || []
+  );
+  
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>(
+    serverCategories?.map(cat => ({
+      id: cat.id,
+      value: cat.id.toString(),
+      label: cat.name,
+      subcategories: cat.subcategories.map(sub => ({
+        id: sub.id,
+        value: sub.id.toString(),
+        label: sub.name,
+      })),
+    })) || []
+  );
+  
+  const [domainOptions, setDomainOptions] = useState<Array<{ value: string; label: string }>>(
+    serverDomains?.map(d => ({
+      value: d.slug || d.id?.toString() || d.name,
+      label: d.name,
+    })) || []
+  );
+
   const [locationOptions, setLocationOptions] = useState<string[]>([]);
-  const [domainOptions, setDomainOptions] = useState<Array<{ value: string; label: string }>>([]);
-  const [loadingFilters, setLoadingFilters] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
+  const [loadingFilters, setLoadingFilters] = useState(!serverStatuses); // Only load if props not provided
   
   const [searchQuery, setSearchQuery] = useState<string>(searchParams.get("search") || "");
   const [category, setCategory] = useState<string>(searchParams.get("category") || "");
@@ -46,18 +104,23 @@ export function AdminTicketFilters() {
   const [tat, setTat] = useState<string>(searchParams.get("tat") || "");
   const [status, setStatus] = useState<string>(searchParams.get("status") || "");
   
-  
-  // Fetch filter options from API
+  // Fallback: client-side fetching only if props not provided (backward compatibility)
   useEffect(() => {
+    // Skip if filters already provided via props (server-side)
+    if (serverStatuses && serverCategories && serverDomains) {
+      return;
+    }
+
     const fetchFilters = async () => {
       try {
         setLoadingFilters(true);
         
         // Fetch statuses
-        const statusRes = await fetch("/api/filters/statuses");
+        const statusRes = await fetch("/api/filters/statuses", {
+          credentials: 'include',
+        });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          // API returns array directly or wrapped in statuses property
           const statuses = Array.isArray(statusData) ? statusData : (statusData.statuses || []);
           setStatusOptions(statuses.map((s: any) => ({
             value: s.value,
@@ -67,25 +130,28 @@ export function AdminTicketFilters() {
         }
         
         // Fetch categories
-        const categoryRes = await fetch("/api/filters/categories");
+        const categoryRes = await fetch("/api/filters/categories", {
+          credentials: 'include',
+        });
         if (categoryRes.ok) {
           const categoryData = await categoryRes.json();
-          // API returns array directly or wrapped in categories property
           const categories = Array.isArray(categoryData) ? categoryData : (categoryData.categories || []);
           setCategoryOptions(categories.map((cat: any) => ({
             id: cat.id,
-            value: cat.id.toString(), // Always use ID for filtering
+            value: cat.id.toString(),
             label: cat.name,
             subcategories: (cat.subcategories || []).map((sub: any) => ({
               id: sub.id,
-              value: sub.id.toString(), // Always use ID for filtering
+              value: sub.id.toString(),
               label: sub.name,
             })),
           })));
         }
         
-        // Fetch domains for quick action buttons
-        const domainRes = await fetch("/api/domains");
+        // Fetch domains
+        const domainRes = await fetch("/api/domains", {
+          credentials: 'include',
+        });
         if (domainRes.ok) {
           const domainData = await domainRes.json();
           const domains = Array.isArray(domainData) ? domainData : (domainData.domains || []);
@@ -102,7 +168,7 @@ export function AdminTicketFilters() {
     };
     
     fetchFilters();
-  }, []);
+  }, [serverStatuses, serverCategories, serverDomains]);
   const [createdFrom, setCreatedFrom] = useState<string>(searchParams.get("from") || "");
   const [createdTo, setCreatedTo] = useState<string>(searchParams.get("to") || "");
   const [userNumber, setUserNumber] = useState<string>(searchParams.get("user") || "");
@@ -145,7 +211,9 @@ export function AdminTicketFilters() {
           params.set("subcategory", subcategory);
         }
 
-        const locationRes = await fetch(`/api/filters/locations?${params.toString()}`);
+        const locationRes = await fetch(`/api/filters/locations?${params.toString()}`, {
+          credentials: 'include', // Include cookies for Clerk authentication
+        });
         if (locationRes.ok) {
           const locationData = await locationRes.json();
           setLocationOptions(locationData.locations || []);

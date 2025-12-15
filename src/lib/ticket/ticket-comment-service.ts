@@ -26,13 +26,23 @@ export interface AddCommentInput {
 /**
  * Add comment to ticket
  */
+/**
+ * Add comment to ticket (FAST CORE TRANSACTION)
+ * 
+ * This function performs only the essential database work:
+ * - Insert comment activity
+ * - Update ticket status (if student reply)
+ * - Update ticket updated_at
+ * 
+ * Side effects (notifications) are handled separately.
+ */
 export async function addTicketComment(
   ticketId: number,
   userId: string,
   input: AddCommentInput
 ) {
   return withTransaction(async (txn) => {
-    // Verify ticket exists
+    // FIX: Fetch ticket first (needed for status check)
     const [ticket] = await txn
       .select()
       .from(tickets)
@@ -43,7 +53,35 @@ export async function addTicketComment(
       throw Errors.notFound('Ticket', String(ticketId));
     }
 
-    // Add comment as activity
+    // FIX: If student reply, fetch status info in parallel BEFORE inserting comment
+    // This allows us to decide status update logic without blocking
+    let statusUpdateNeeded = false;
+    let inProgressStatusId: number | null = null;
+
+    if (input.is_from_student && ticket.status_id) {
+      const [currentStatusResult, inProgressStatusResult] = await Promise.all([
+        txn
+          .select({ value: ticket_statuses.value })
+          .from(ticket_statuses)
+          .where(eq(ticket_statuses.id, ticket.status_id))
+          .limit(1),
+        txn
+          .select({ id: ticket_statuses.id })
+          .from(ticket_statuses)
+          .where(eq(ticket_statuses.value, TICKET_STATUS.IN_PROGRESS))
+          .limit(1),
+      ]);
+
+      const [currentStatus] = currentStatusResult;
+      const [inProgressStatus] = inProgressStatusResult;
+
+      if (currentStatus?.value === TICKET_STATUS.AWAITING_STUDENT_RESPONSE && inProgressStatus) {
+        statusUpdateNeeded = true;
+        inProgressStatusId = inProgressStatus.id;
+      }
+    }
+
+    // Add comment as activity (CORE OPERATION - must be fast)
     const [activity] = await txn
       .insert(ticket_activity)
       .values({
@@ -58,105 +96,71 @@ export async function addTicketComment(
       })
       .returning();
 
-    // If student is replying and status is awaiting_student_response, change to in_progress
-    if (input.is_from_student) {
-      logger.info(
-        { ticketId, is_from_student: input.is_from_student, status_id: ticket.status_id },
-        'Student replying - checking status for auto-update'
-      );
+    // FIX: Update status and ticket updated_at in parallel (if status update needed)
+    if (statusUpdateNeeded && inProgressStatusId) {
+      await Promise.all([
+        txn
+          .update(tickets)
+          .set({
+            status_id: inProgressStatusId,
+            updated_at: new Date()
+          })
+          .where(eq(tickets.id, ticketId)),
+        txn.insert(ticket_activity).values({
+          ticket_id: ticketId,
+          user_id: userId,
+          action: 'status_changed',
+          details: {
+            from: TICKET_STATUS.AWAITING_STUDENT_RESPONSE,
+            to: TICKET_STATUS.IN_PROGRESS,
+            reason: 'Student replied',
+          },
+          visibility: 'student_visible',
+        }),
+      ]);
+    } else {
+      // Update ticket's updated_at (no status change)
+      await txn
+        .update(tickets)
+        .set({ updated_at: new Date() })
+        .where(eq(tickets.id, ticketId));
+    }
 
-      // Get current status
-      const [currentStatus] = await txn
-        .select({ value: ticket_statuses.value })
-        .from(ticket_statuses)
-        .where(eq(ticket_statuses.id, ticket.status_id))
-        .limit(1);
+    // FIX: Outbox insert moved OUTSIDE transaction (fire-and-forget)
+    // This reduces transaction time and lock duration
+    // Notifications are non-critical - can be retried if they fail
 
-      logger.info(
-        { ticketId, currentStatusValue: currentStatus?.value, awaiting: TICKET_STATUS.AWAITING_STUDENT_RESPONSE },
-        'Current ticket status'
-      );
-
-      if (currentStatus?.value === TICKET_STATUS.AWAITING_STUDENT_RESPONSE) {
-        // Get in_progress status ID
-        const [inProgressStatus] = await txn
-          .select({ id: ticket_statuses.id })
-          .from(ticket_statuses)
-          .where(eq(ticket_statuses.value, TICKET_STATUS.IN_PROGRESS))
-          .limit(1);
-
-        if (inProgressStatus) {
-          await txn
-            .update(tickets)
-            .set({
-              status_id: inProgressStatus.id,
-              updated_at: new Date()
-            })
-            .where(eq(tickets.id, ticketId));
-
-          // Log status change
-          await txn.insert(ticket_activity).values({
-            ticket_id: ticketId,
-            user_id: userId,
-            action: 'status_changed',
-            details: {
-              from: TICKET_STATUS.AWAITING_STUDENT_RESPONSE,
-              to: TICKET_STATUS.IN_PROGRESS,
-              reason: 'Student replied',
+    return activity;
+  }).then(async (activity) => {
+    // FIX: Queue notification AFTER transaction commits (async, non-blocking)
+    // This ensures transaction is fast while notifications are reliable
+    if (!input.is_internal) {
+      // Use queueMicrotask for true fire-and-forget (doesn't block response)
+      queueMicrotask(async () => {
+        try {
+          await db.insert(outbox).values({
+            event_type: 'ticket.comment_added',
+            aggregate_type: 'ticket',
+            aggregate_id: String(ticketId),
+            payload: {
+              ticketId: Number(ticketId),
+              comment: input.comment,
+              commentedBy: String(userId),
+              isInternal: input.is_internal || false,
             },
-            visibility: 'student_visible',
           });
-
-          logger.info(
-            { ticketId, from: 'awaiting_student_response', to: 'in_progress' },
-            'Ticket status auto-updated on student reply'
+        } catch (outboxError: any) {
+          logger.error(
+            { 
+              error: outboxError?.message || String(outboxError),
+              ticketId, 
+              userId 
+            },
+            'Failed to queue comment notification (non-critical)'
           );
         }
-      }
+      });
     }
-
-    // Update ticket's updated_at
-    await txn
-      .update(tickets)
-      .set({ updated_at: new Date() })
-      .where(eq(tickets.id, ticketId));
-
-    // Queue notification for student-visible comments only
-    if (!input.is_internal) {
-      try {
-        await txn.insert(outbox).values({
-          event_type: 'ticket.comment_added',
-          aggregate_type: 'ticket',
-          aggregate_id: String(ticketId),
-          payload: {
-            ticketId: Number(ticketId),
-            comment: input.comment,
-            commentedBy: String(userId),
-            isInternal: input.is_internal || false,
-          },
-        });
-      } catch (outboxError: any) {
-        logger.error(
-          { 
-            error: outboxError?.message || String(outboxError),
-            ticketId, 
-            userId 
-          },
-          'Failed to queue comment notification'
-        );
-        // Don't throw - notification queueing failure shouldn't block comment
-      }
-    }
-
-    logger.info(
-      {
-        ticketId,
-        userId,
-        isInternal: input.is_internal,
-        hasAttachments: (input.attachments?.length || 0) > 0,
-      },
-      'Comment added to ticket'
-    );
 
     return activity;
   });

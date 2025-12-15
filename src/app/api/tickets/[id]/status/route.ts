@@ -13,6 +13,10 @@ import { updateTicketStatus } from '@/lib/ticket/ticket-status-service';
 import { logger } from '@/lib/logger';
 import { USER_ROLES } from '@/conf/constants';
 import { z } from 'zod';
+// FIX 5: Move imports to module scope
+import { db, tickets } from '@/db';
+import { eq } from 'drizzle-orm';
+import { revalidateTag } from 'next/cache';
 
 // Force dynamic and Node runtime to avoid edge/SSR fetch issues
 export const dynamic = 'force-dynamic';
@@ -68,9 +72,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }
 
       // OPTIMIZATION: Verify ownership with minimal query (only check created_by)
-      const { db, tickets } = await import('@/db');
-      const { eq } = await import('drizzle-orm');
-
       const [ticket] = await db
         .select({ created_by: tickets.created_by })
         .from(tickets)
@@ -83,17 +84,26 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     // Update ticket status
-    await updateTicketStatus(ticketId, status, dbUser.id, comment);
+    const updatedTicket = await updateTicketStatus(ticketId, status, dbUser.id, comment);
 
-    // OPTIMIZATION: Parallelize cache revalidation (these are independent operations)
-    const { revalidatePath } = await import('next/cache');
-    await Promise.all([
-      revalidatePath(`/student/dashboard/ticket/${ticketId}`),
-      revalidatePath(`/admin/dashboard/ticket/${ticketId}`),
-      revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`),
-      revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`),
-      revalidatePath(`/committee/dashboard/ticket/${ticketId}`),
-    ]);
+    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
+    // setTimeout was preventing cache invalidation from working
+    try {
+      revalidateTag(`ticket-${ticketId}`, 'default');
+      if (updatedTicket?.created_by) {
+        revalidateTag(`user-${updatedTicket.created_by}`, 'default');
+        revalidateTag(`student-tickets:${updatedTicket.created_by}`, 'default');
+        revalidateTag(`student-stats:${updatedTicket.created_by}`, 'default');
+      }
+      revalidateTag('tickets', 'default');
+    } catch (err) {
+      logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+    }
+
+    const response = ApiResponse.success({
+      message: `Status updated to ${status}`,
+      status,
+    });
 
     logger.info(
       {
@@ -106,10 +116,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       'Ticket status updated via API'
     );
 
-    return ApiResponse.success({
-      message: `Status updated to ${status}`,
-      status,
-    });
+    return response;
   } catch (error) {
     logger.error({ 
       error: error instanceof Error ? {

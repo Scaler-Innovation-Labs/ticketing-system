@@ -15,7 +15,8 @@ import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
 import { getUserRole } from '@/lib/auth/roles';
 import { USER_ROLES, TICKET_STATUS } from '@/conf/constants';
-import { getStatusId } from './ticket-service';
+import { getStatusId } from './status-ids';
+// FIX 3: Move import to module scope (not inside transaction)
 import { addBusinessHours } from './utils/tat-calculator';
 
 /**
@@ -409,7 +410,7 @@ export async function extendTAT(
     }
 
     // Extend resolution deadline (excluding weekends)
-    const { addBusinessHours } = require('./utils/tat-calculator');
+    // FIX 3: Use module-scoped import (no dynamic require inside transaction)
     const currentDeadline = new Date(ticket.resolution_due_at);
     const newDeadline = addBusinessHours(currentDeadline, hours);
 
@@ -597,7 +598,7 @@ export async function setTAT(
     }
 
     // Calculate deadline (excluding weekends)
-    const { addBusinessHours } = require('./utils/tat-calculator');
+    // FIX 3: Use module-scoped import (no dynamic require inside transaction)
     const now = new Date();
     const deadline = addBusinessHours(now, hours);
 

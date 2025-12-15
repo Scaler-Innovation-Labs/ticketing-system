@@ -10,7 +10,9 @@ import { TICKET_STATUS } from '@/conf/constants';
 import { logger } from '@/lib/logger';
 import { Errors } from '@/lib/errors';
 import { withTransaction } from '@/lib/db-transaction';
-import { getStatusId } from './ticket-service';
+import { getStatusId } from './status-ids';
+// FIX 3: Move imports to module scope (not inside transaction)
+import { calculateRemainingBusinessHours, addBusinessHours } from './utils/tat-calculator';
 
 // Valid status transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -128,7 +130,7 @@ export async function updateTicketStatus(
     }
 
     // 5. Handle TAT pause/resume for awaiting_student_response
-    const { calculateRemainingBusinessHours, addBusinessHours } = require('./utils/tat-calculator');
+    // FIX 3: Use module-scoped import (no dynamic require inside transaction)
     const metadata = (ticketData.metadata as Record<string, any>) || {};
     const now = new Date();
     let metadataUpdated = false;

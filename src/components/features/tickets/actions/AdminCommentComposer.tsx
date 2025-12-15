@@ -11,11 +11,13 @@ import { AriaLiveRegion } from "@/lib/ui/aria-live-region";
 
 interface AdminCommentComposerProps {
   ticketId: number;
-  onCommentAdded?: (comment: { text: string; source: string; createdAt: Date }) => void;
+  currentUserName?: string; // Current user's name for optimistic comments
+  onCommentAdded?: (comment: { text: string; source: string; createdAt: Date; author?: string }) => void;
   onStatusChanged?: (newStatus: string) => void;
+  onCommentConfirmed?: (response: Response, isQuestion?: boolean) => void;
 }
 
-export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged }: AdminCommentComposerProps) {
+export function AdminCommentComposer({ ticketId, currentUserName, onCommentAdded, onStatusChanged, onCommentConfirmed }: AdminCommentComposerProps) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState<"comment" | "question" | null>(null);
@@ -31,6 +33,7 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
       text: messageText,
       source: "admin",
       createdAt: new Date(),
+      author: currentUserName || 'Unknown', // Include author name for optimistic comment
     };
 
     // Optimistic updates - update UI immediately
@@ -46,44 +49,46 @@ export function AdminCommentComposer({ ticketId, onCommentAdded, onStatusChanged
     setLoading(action);
 
     try {
+      let response: Response;
+
       if (action === "question") {
-        // Try to move to awaiting_student_response; if missing, fall back to in_progress
-        const statusResponse = await fetch(`/api/tickets/${ticketId}/status`, {
+        // Single atomic API call - updates status + adds comment in one transaction
+        response = await fetch(`/api/tickets/${ticketId}/ask-question`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "awaiting_student_response" }),
+          credentials: 'include',
+          body: JSON.stringify({
+            question: messageText,
+          }),
         });
-
-        if (!statusResponse.ok) {
-          const statusError = await statusResponse.json().catch(() => ({ error: "Failed to update status" }));
-          const msg = typeof statusError?.error === "string" ? statusError.error : "Failed to update status";
-          logger.warn({ msg, ticketId, action: "awaiting_student_response" }, "Status transition skipped");
-          // Fallback: set to in_progress to ensure progress state
-          await fetch(`/api/tickets/${ticketId}/status`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "in_progress" }),
-          }).catch((err) => logger.warn({ err, ticketId }, "Fallback status update to in_progress failed"));
-        }
+      } else {
+        // Regular comment (no status change)
+        response = await fetch(`/api/tickets/${ticketId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: 'include',
+          body: JSON.stringify({
+            comment: messageText,
+            is_internal: false, // Admin comments are visible to students
+            attachments: [],
+          }),
+        });
       }
 
-      const response = await fetch(`/api/tickets/${ticketId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          comment: messageText,
-          is_internal: false, // Admin comments are visible to students
-          attachments: [],
-        }),
-      });
-
       if (!response.ok) {
-        // Rollback optimistic comment (will be handled by parent component refresh)
+        // Rollback optimistic comment
         const error = await response.json().catch(() => ({ error: "Failed to send comment" }));
         throw new Error(error.error || "Failed to send comment");
       }
 
-      router.refresh();
+      // FIX: Clone response for onCommentConfirmed (response can only be read once)
+      const responseClone = response.clone();
+      
+      // FIX: Confirm comment with server response (replaces optimistic with real data)
+      if (onCommentConfirmed) {
+        await onCommentConfirmed(responseClone, action === "question");
+      }
+
       toast.success(action === "question" ? "Question sent to student" : "Comment added");
     } catch (error) {
       logger.error({ error, component: "AdminCommentComposer", ticketId }, "Comment composer error");

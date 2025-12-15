@@ -44,10 +44,11 @@ export async function GET() {
     }));
     
     return NextResponse.json(categoriesWithSubs);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Unauthorized')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  } catch (error: any) {
+    if (error instanceof Error && (error.message.includes('Unauthorized') || error.message.includes('Authentication required'))) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+    console.error('[GET /api/filters/categories] Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

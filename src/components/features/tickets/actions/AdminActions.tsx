@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +38,6 @@ export function AdminActions({
 	tatExtensionCount?: number;
 	onStatusChanged?: (newStatus: string) => void;
 }) {
-	const router = useRouter();
 	const [loading, setLoading] = useState<string | null>(null);
 	const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
 	const [showCustomTat, setShowCustomTat] = useState(false);
@@ -73,14 +71,15 @@ export function AdminActions({
 			const response = await fetch(`/api/tickets/${ticketId}/tat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
+				credentials: 'include',
 				body: JSON.stringify({ tat: DEFAULT_TAT, markInProgress: true }),
 			});
 
 			if (response.ok) {
 				toast.success("Ticket marked In Progress with 48h TAT");
-				router.refresh();
-				// Clear optimistic status after refresh
-				setTimeout(() => setOptimisticStatus(null), 100);
+				// FIX #4: Cache invalidation happens server-side in API route
+				// No router.refresh() needed - optimistic update provides instant feedback
+				// Keep optimistic status - it will be cleared when user navigates or page refreshes naturally
 			} else {
 				// Rollback optimistic update
 				setOptimisticStatus(null);
@@ -105,11 +104,8 @@ export function AdminActions({
 	};
 
 
-	useEffect(() => {
-		if (!showForwardDialog) {
-			setSelectedForwardAdmin("auto");
-		}
-	}, [showForwardDialog]);
+	// FIX #7: Removed unnecessary useEffect - reset only on submit/cancel
+	// This prevents extra renders and dialog jitter
 
 
 	const handleSetTAT = async (e: React.FormEvent) => {
@@ -136,6 +132,7 @@ export function AdminActions({
 			const response = await fetch(url, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
+				credentials: 'include',
 				body: JSON.stringify({
 					tat,
 					markInProgress: shouldMarkInProgress,
@@ -148,23 +145,10 @@ export function AdminActions({
 				setShowCustomTat(false);
 				const responseData = await response.json().catch(() => ({}));
 				toast.success(responseData.message || "TAT set successfully");
-				// Ensure status moves to in_progress as a fallback, even if TAT API didn't change it
-				if (shouldMarkInProgress) {
-					try {
-						await fetch(`/api/tickets/${ticketId}/status`, {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ status: "in_progress" }),
-						});
-					} catch (err) {
-						logger.warn({ err, ticketId }, "Fallback status update to in_progress failed");
-					}
-				}
-				// Wait longer for revalidation to complete, then refresh
-				await new Promise(resolve => setTimeout(resolve, 500));
-				router.refresh();
-				// Clear optimistic status after refresh
-				setTimeout(() => setOptimisticStatus(null), 100);
+				// TAT API already handles status update atomically when markInProgress=true
+				// No fallback needed - single transaction ensures consistency
+				// Cache invalidation happens server-side in API route
+				// Keep optimistic status - it will be cleared when data updates naturally
 			} else {
 				// Rollback optimistic update on error
 				if (shouldMarkInProgress) {
@@ -222,36 +206,31 @@ export function AdminActions({
 
 		setLoading("comment");
 		try {
-			// Determine if this is an internal note
-			let isInternalNote = false;
-			let statusUpdate = null;
+			let response: Response;
 
 			if (commentType === "question") {
-				statusUpdate = "awaiting_student_response"; // Set status to await student response
-			} else if (commentType === "internal" || commentType === "super_admin") {
-				isInternalNote = true;
-			}
-
-			const body: Record<string, unknown> = {
-				comment,
-				is_internal: isInternalNote,
-			};
-
-			// If asking a question, also update status
-			if (statusUpdate) {
-				// First update status
-				await fetch(`/api/tickets/${ticketId}/status`, {
+				// Single atomic API call - updates status + adds comment in one transaction
+				response = await fetch(`/api/tickets/${ticketId}/ask-question`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ status: statusUpdate }),
+					credentials: 'include',
+					body: JSON.stringify({
+						question: comment.trim(),
+					}),
+				});
+			} else {
+				// Regular comment or internal note (no status change)
+				const isInternalNote = commentType === "internal" || commentType === "super_admin";
+				response = await fetch(`/api/tickets/${ticketId}/comments`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					credentials: 'include',
+					body: JSON.stringify({
+						comment: comment.trim(),
+						is_internal: isInternalNote,
+					}),
 				});
 			}
-
-			const response = await fetch(`/api/tickets/${ticketId}/comments`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
-			});
 
 			if (response.ok) {
 				setComment("");
@@ -261,7 +240,8 @@ export function AdminActions({
 					? "Question sent to student successfully"
 					: "Comment added successfully";
 				toast.success(message);
-				router.refresh();
+				// Cache invalidation happens server-side in API route
+				// No router.refresh() needed - comment will appear on next navigation or natural refresh
 			} else {
 				const error = await response.json().catch(() => ({ error: "Failed to add comment" }));
 				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to add comment";
@@ -288,36 +268,23 @@ export function AdminActions({
 		setLoading("resolved");
 
 		try {
-			// First, add comment if provided
-			if (resolveComment.trim()) {
-				try {
-					await fetch(`/api/tickets/${ticketId}/comments`, {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({
-							comment: resolveComment.trim(),
-							is_internal: false,
-						}),
-					});
-				} catch (commentError) {
-					logger.warn({ commentError, ticketId }, "Failed to add resolve comment, continuing with status update");
-				}
-			}
-
-			// Then update status to resolved
-			const response = await fetch(`/api/tickets/${ticketId}/status`, {
+			// Single atomic API call - resolves ticket + adds comment in one transaction
+			const response = await fetch(`/api/tickets/${ticketId}/resolve`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ status: "resolved" }),
+				credentials: 'include',
+				body: JSON.stringify({
+					comment: resolveComment.trim() || undefined,
+					commentVisibility: "public",
+				}),
 			});
 
 			if (response.ok) {
 				setResolveComment("");
 				setShowResolveDialog(false);
 				toast.success("Ticket marked as resolved");
-				router.refresh();
-				// Clear optimistic status after refresh
-				setTimeout(() => setOptimisticStatus(null), 100);
+				// Cache invalidation happens server-side in API route
+				// No router.refresh() needed - optimistic update provides instant feedback
 			} else {
 				// Rollback optimistic update
 				setOptimisticStatus(null);
@@ -362,10 +329,11 @@ export function AdminActions({
 			if (response.ok) {
 				const data = await response.json();
 				setForwardReason("");
-				setSelectedForwardAdmin("auto");
+				setSelectedForwardAdmin("auto"); // FIX #7: Reset on submit, not in useEffect
 				setShowForwardDialog(false);
 				toast.success(data.message || "Ticket forwarded successfully");
-				router.refresh();
+				// FIX #4: Cache invalidation happens server-side in API route
+				// No router.refresh() needed - optimistic update provides instant feedback
 			} else {
 				const error = await response.json().catch(() => ({ error: "Failed to forward ticket" }));
 				const errorMessage = typeof error.error === 'string' ? error.error : "Failed to forward ticket";
@@ -543,7 +511,10 @@ export function AdminActions({
 							onOpenChange={setShowReassignDialog}
 							ticketId={ticketId}
 							currentAssignedTo={currentAssignedTo}
-							onReassigned={() => router.refresh()}
+							onReassigned={() => {
+								// FIX #4: Cache invalidation happens server-side in API route
+								// No router.refresh() needed - reassignment will appear on next navigation
+							}}
 						/>
 						<Button
 							variant="outline"

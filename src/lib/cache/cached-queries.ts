@@ -301,6 +301,37 @@ export const getCachedCategories = unstable_cache(
     }
 );
 
+/**
+ * Get category map (id -> { name, domain }) - cached globally
+ * This doesn't change per admin, so cache it globally for 1 hour
+ * Returns a plain object (not Map) because unstable_cache can't serialize Maps
+ */
+export const getCachedCategoryMap = unstable_cache(
+    async () => {
+        const categoryRecords = await db
+            .select({
+                id: categories.id,
+                name: categories.name,
+                domainName: domains.name,
+            })
+            .from(categories)
+            .leftJoin(domains, eq(categories.domain_id, domains.id))
+            .where(eq(categories.is_active, true));
+        
+        // Return plain object instead of Map (unstable_cache can't serialize Maps)
+        const map: Record<number, { name: string; domain: string | null }> = {};
+        for (const cat of categoryRecords) {
+            map[cat.id] = { name: cat.name, domain: cat.domainName || null };
+        }
+        return map;
+    },
+    ['category-map'],
+    {
+        revalidate: 3600, // 1 hour - categories rarely change
+        tags: ['categories', 'domains']
+    }
+);
+
 // ============================================
 // Master Data Caching
 // ============================================

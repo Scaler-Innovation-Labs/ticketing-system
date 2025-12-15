@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Users, Package, CheckCircle2, TrendingUp } from "lucide-react";
 import { getCachedAdminUser, getCachedAdminAssignment } from "@/lib/cache/cached-queries";
-import { ticketMatchesAdminAssignment } from "@/lib/assignment/admin-assignment";
 import type { Ticket, TicketMetadata } from "@/db/types-only";
 import type { AdminTicketRow } from "@/lib/ticket/filters/adminTicketFilters";
 import { applySubcategoryFilter, applyTATFilter } from "@/lib/ticket/filters/adminTicketFilters";
@@ -99,10 +98,14 @@ export default async function AdminGroupsPage({
       );
     }
 
-    // Note: We don't filter by assigned_to here because we want to show:
-    // 1. Tickets explicitly assigned to this admin
-    // 2. Unassigned tickets matching admin's domain/scope (for grouping)
-    // The in-memory filtering below handles domain/scope matching
+    // Only show tickets assigned to this admin
+    // Add assigned_to filter to database query for efficiency
+    conditions.push(eq(tickets.assigned_to, dbUser.id));
+
+    // If admin has a scope restriction, also filter by location
+    if (adminAssignment.scope) {
+      conditions.push(ilike(tickets.location, adminAssignment.scope));
+    }
 
     // Fetch tickets with proper joins for better data
     const allTicketRows = await db
@@ -136,32 +139,8 @@ export default async function AdminGroupsPage({
       .orderBy(desc(tickets.created_at))
       .limit(1000); // Reasonable limit for grouping operations
 
-    // Filter tickets based on admin assignment
-    // Show tickets that are:
-    // 1. Explicitly assigned to this admin, OR
-    // 2. Unassigned tickets matching admin's domain/scope
-    let allTickets: AdminTicketRow[] = allTicketRows.filter(ticket => {
-      // Priority 1: Tickets explicitly assigned to this admin
-      if (ticket.assigned_to === dbUser.id) {
-        // If admin has a scope, filter by scope for assigned tickets too
-        if (adminAssignment.scope && ticket.location) {
-          const ticketLocation = (ticket.location || "").toLowerCase();
-          const assignmentScope = (adminAssignment.scope || "").toLowerCase();
-          return ticketLocation === assignmentScope;
-        }
-        return true; // Always show tickets assigned to this admin (if no scope restriction)
-      }
-
-      // Priority 2: Unassigned tickets matching admin's domain/scope
-      if (!ticket.assigned_to && adminAssignment.domain) {
-        return ticketMatchesAdminAssignment({
-          category: ticket.category_name,
-          location: ticket.location,
-        }, adminAssignment);
-      }
-
-      return false;
-    }) as AdminTicketRow[];
+    // All fetched tickets are already assigned to this admin (filtered at DB level)
+    let allTickets: AdminTicketRow[] = allTicketRows as AdminTicketRow[];
 
     // Apply additional in-memory filters that rely on metadata (subcategory, TAT)
     if (subcategoryFilter) {

@@ -14,34 +14,11 @@ import { validateTicketMetadata, getSubcategoryFields } from './category-fields-
 import { resolveTicketScope } from './scope-service';
 import type { CreateTicketInput } from '@/schemas/ticket';
 import { findBestAssignee, hasMatchingAssignment } from '@/lib/assignment/assignment-service';
+// FIX 1: Import getStatusId from status-ids module (uses static map)
+import { getStatusId } from './status-ids';
 
-// Cache for status IDs
-const statusIdCache = new Map<string, number>();
-
-/**
- * Get status ID by value (with caching)
- */
-export async function getStatusId(statusValue: string): Promise<number> {
-  // Check cache
-  if (statusIdCache.has(statusValue)) {
-    return statusIdCache.get(statusValue)!;
-  }
-
-  // Query database
-  const [status] = await db
-    .select({ id: ticket_statuses.id })
-    .from(ticket_statuses)
-    .where(eq(ticket_statuses.value, statusValue))
-    .limit(1);
-
-  if (!status) {
-    throw Errors.notFound('Status', statusValue);
-  }
-
-  // Cache it
-  statusIdCache.set(statusValue, status.id);
-  return status.id;
-}
+// FIX 1: Re-export getStatusId for backward compatibility
+export { getStatusId };
 
 /**
  * Check if user has exceeded weekly ticket limit

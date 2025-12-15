@@ -11,6 +11,8 @@ import { handleApiError, Errors } from '@/lib/errors';
 import { extendTAT, setTAT, parseTAT } from '@/lib/ticket/ticket-operations-service';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+// FIX 5: Move revalidateTag import to module scope (not dynamic)
+import { revalidateTag } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 // Ensure this route runs on Node (for DB/network access)
@@ -58,13 +60,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
         const hours = parseTAT(tat);
         const result = await extendTAT(ticketId, dbUser.id, hours, "Manual extension via UI");
 
-        // Revalidate ticket pages to show updated TAT
-        const { revalidatePath } = await import('next/cache');
-        revalidatePath(`/student/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
+        // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
+        try {
+          revalidateTag(`ticket-${ticketId}`, 'default');
+          if (result.ticket.created_by) {
+            revalidateTag(`user-${result.ticket.created_by}`, 'default');
+            revalidateTag(`student-tickets:${result.ticket.created_by}`, 'default');
+            revalidateTag(`student-stats:${result.ticket.created_by}`, 'default');
+          }
+          revalidateTag('tickets', 'default');
+        } catch (err) {
+          logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+        }
 
         return ApiResponse.success({
           ticket: {
@@ -80,13 +87,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
       } else {
         const result = await setTAT(ticketId, dbUser.id, tat, markInProgress);
 
-        // Revalidate ticket pages to show updated TAT and status
-        const { revalidatePath } = await import('next/cache');
-        revalidatePath(`/student/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
-        revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
+        // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
+        try {
+          revalidateTag(`ticket-${ticketId}`, 'default');
+          if (result.created_by) {
+            revalidateTag(`user-${result.created_by}`, 'default');
+            revalidateTag(`student-tickets:${result.created_by}`, 'default');
+            revalidateTag(`student-stats:${result.created_by}`, 'default');
+          }
+          revalidateTag('tickets', 'default');
+        } catch (err) {
+          logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+        }
 
         return ApiResponse.success({
           ticket: {
@@ -124,13 +136,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
       'TAT extended via API'
     );
 
-    // Revalidate ticket pages to show updated TAT
-    const { revalidatePath } = await import('next/cache');
-    revalidatePath(`/student/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/admin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/snr-admin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/superadmin/dashboard/ticket/${ticketId}`);
-    revalidatePath(`/committee/dashboard/ticket/${ticketId}`);
+    // CRITICAL FIX: Call revalidateTag BEFORE response (synchronously)
+    try {
+      revalidateTag(`ticket-${ticketId}`, 'default');
+      if (result.ticket.created_by) {
+        revalidateTag(`user-${result.ticket.created_by}`, 'default');
+        revalidateTag(`student-tickets:${result.ticket.created_by}`, 'default');
+        revalidateTag(`student-stats:${result.ticket.created_by}`, 'default');
+      }
+      revalidateTag('tickets', 'default');
+    } catch (err) {
+      logger.warn({ err, ticketId }, 'Cache revalidation failed (non-blocking)');
+    }
 
     return ApiResponse.success({
       ticket: {
