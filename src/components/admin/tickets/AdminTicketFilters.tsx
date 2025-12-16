@@ -122,7 +122,13 @@ export function AdminTicketFilters({
   // Fallback: client-side fetching only if props not provided (backward compatibility)
   useEffect(() => {
     // Skip if filters already provided via props (server-side)
-    if (serverStatuses && serverCategories && serverDomains) {
+    // Check if all required props are provided (even if empty arrays, they're still provided)
+    const hasServerFilters = serverStatuses !== undefined && 
+                             serverCategories !== undefined && 
+                             serverDomains !== undefined;
+    
+    if (hasServerFilters) {
+      // Server-side filters provided, skip client-side fetching
       return;
     }
 
@@ -130,50 +136,54 @@ export function AdminTicketFilters({
       try {
         setLoadingFilters(true);
         
-        // Fetch statuses
-        const statusRes = await fetch("/api/filters/statuses", {
-          credentials: 'include',
-        });
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          const statuses = Array.isArray(statusData) ? statusData : (statusData.statuses || []);
-          setStatusOptions(statuses.map((s: any) => ({
-            value: s.value,
-            label: s.label || s.value,
-            enum: s.value,
-          })));
+        // Only fetch what's missing
+        if (!serverStatuses || serverStatuses.length === 0) {
+          const statusRes = await fetch("/api/filters/statuses", {
+            credentials: 'include',
+          });
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            const statuses = Array.isArray(statusData) ? statusData : (statusData.statuses || []);
+            setStatusOptions(statuses.map((s: any) => ({
+              value: s.value,
+              label: s.label || s.value,
+              enum: s.value,
+            })));
+          }
         }
-        
-        // Fetch categories
-        const categoryRes = await fetch("/api/filters/categories", {
-          credentials: 'include',
-        });
-        if (categoryRes.ok) {
-          const categoryData = await categoryRes.json();
-          const categories = Array.isArray(categoryData) ? categoryData : (categoryData.categories || []);
-          setCategoryOptions(categories.map((cat: any) => ({
-            id: cat.id,
-            value: cat.id.toString(),
-            label: cat.name,
-            subcategories: (cat.subcategories || []).map((sub: any) => ({
-              id: sub.id,
-              value: sub.id.toString(),
-              label: sub.name,
-            })),
-          })));
+
+        if (!serverCategories || serverCategories.length === 0) {
+          const categoryRes = await fetch("/api/filters/categories", {
+            credentials: 'include',
+          });
+          if (categoryRes.ok) {
+            const categoryData = await categoryRes.json();
+            const categories = Array.isArray(categoryData) ? categoryData : (categoryData.categories || []);
+            setCategoryOptions(categories.map((cat: any) => ({
+              id: cat.id,
+              value: cat.id.toString(),
+              label: cat.name,
+              subcategories: (cat.subcategories || []).map((sub: any) => ({
+                id: sub.id,
+                value: sub.id.toString(),
+                label: sub.name,
+              })),
+            })));
+          }
         }
-        
-        // Fetch domains
-        const domainRes = await fetch("/api/domains", {
-          credentials: 'include',
-        });
-        if (domainRes.ok) {
-          const domainData = await domainRes.json();
-          const domains = Array.isArray(domainData) ? domainData : (domainData.domains || []);
-          setDomainOptions(domains.map((d: any) => ({
-            value: d.slug || d.id?.toString?.() || d.name,
-            label: d.name,
-          })));
+
+        if (!serverDomains || serverDomains.length === 0) {
+          const domainRes = await fetch("/api/domains", {
+            credentials: 'include',
+          });
+          if (domainRes.ok) {
+            const domainData = await domainRes.json();
+            const domains = Array.isArray(domainData) ? domainData : (domainData.domains || []);
+            setDomainOptions(domains.map((d: any) => ({
+              value: d.slug || d.id?.toString?.() || d.name,
+              label: d.name,
+            })));
+          }
         }
       } catch (error) {
         console.error("Error fetching filters:", error);

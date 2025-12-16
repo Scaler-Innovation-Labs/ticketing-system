@@ -4,23 +4,33 @@ import { TicketListTable } from "@/components/admin/tickets/TicketListTable";
 import { SuperAdminDashboardHeader } from "./components/SuperAdminDashboardHeader";
 import { SuperAdminDashboardStats } from "./components/SuperAdminDashboardStats";
 import { SuperAdminTicketsList } from "./components/SuperAdminTicketsList";
-import Link from "next/link";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
 import {
-  fetchSuperAdminTickets,
-  filterAndSortTickets,
-  calculateStats,
+  fetchDashboardTickets,
+  parseDashboardFilters,
+  calculateFilteredStats,
+  calculatePagination,
   type DashboardFilters,
-} from "./lib/dashboard-data";
+  type DashboardTicketRow,
+} from "@/lib/dashboard/core";
+import { superadminPolicy } from "@/lib/dashboard/policies";
+import type { Ticket } from "@/db/types-only";
 
-// Force dynamic rendering since we use search params for filtering
-export const dynamic = "force-dynamic";
+// Enable caching for better performance
+export const dynamic = "auto";
+export const revalidate = 60;
 
 
 
 /**
  * Super Admin Dashboard Page
  * Note: Auth and role checks are handled by superadmin/layout.tsx
+ * 
+ * FIXES APPLIED:
+ * - ✅ All filtering moved to DB level (no double filtering)
+ * - ✅ Stats separated into global vs filtered
+ * - ✅ Proper types (no 'as any' casts)
+ * - ✅ Simplified searchParams parsing
  */
 export default async function SuperAdminDashboardPage({
   searchParams
@@ -30,27 +40,15 @@ export default async function SuperAdminDashboardPage({
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const resolvedSearchParams = searchParams ? await searchParams : {};
-  const params = resolvedSearchParams || {};
-
-  const filters: DashboardFilters = {
-    tat: (typeof params["tat"] === "string" ? params["tat"] : params["tat"]?.[0]) || "",
-    status: (typeof params["status"] === "string" ? params["status"] : params["status"]?.[0]) || "",
-    escalated: (typeof params["escalated"] === "string" ? params["escalated"] : params["escalated"]?.[0]) || "",
-    from: (typeof params["from"] === "string" ? params["from"] : params["from"]?.[0]) || "",
-    to: (typeof params["to"] === "string" ? params["to"] : params["to"]?.[0]) || "",
-    user: (typeof params["user"] === "string" ? params["user"] : params["user"]?.[0]) || "",
-    category: (typeof params["category"] === "string" ? params["category"] : params["category"]?.[0]) || "",
-    subcategory: (typeof params["subcategory"] === "string" ? params["subcategory"] : params["subcategory"]?.[0]) || "",
-    sort: (typeof params["sort"] === "string" ? params["sort"] : params["sort"]?.[0]) || "newest",
-    page: (typeof params["page"] === "string" ? params["page"] : params["page"]?.[0]) || "1",
-  };
-  const view = (typeof params["view"] === "string" ? params["view"] : params["view"]?.[0]) || "cards";
+  // FIX: Await searchParams (Next.js 15+ requires this)
+  const resolvedSearchParams = await searchParams;
+  const filters = parseDashboardFilters(resolvedSearchParams || {});
+  const view = (typeof resolvedSearchParams?.view === "string" ? resolvedSearchParams.view : Array.isArray(resolvedSearchParams?.view) ? resolvedSearchParams.view[0] : undefined) || "cards";
   const isListView = view === "list";
 
   const buildViewHref = (mode: string) => {
     const sp = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => {
+    Object.entries(resolvedSearchParams || {}).forEach(([key, val]) => {
       if (key === "view" || val === undefined) return;
       if (Array.isArray(val)) {
         val.forEach((v) => v && sp.append(key, v));
@@ -66,60 +64,82 @@ export default async function SuperAdminDashboardPage({
   const page = parseInt(filters.page || "1", 10);
   const limit = 20;
 
+  // FIX: Fetch tickets with ALL filtering at DB level (no client-side filtering)
+  const { rows, totalCount, globalStats } = await fetchDashboardTickets(
+    userId,
+    filters,
+    limit,
+    superadminPolicy
+  );
 
-
-  // Fetch tickets
-  const { ticketRows, totalCount } = await fetchSuperAdminTickets(userId, filters, limit);
-
-  // Filter and sort tickets
-  const allTickets = filterAndSortTickets(ticketRows, filters);
-
-
-
-  // Calculate pagination metadata
-  // Calculate pagination metadata
-  // Filters are now applied at DB level, so totalCount is accurate for the filters.
-  const displayedCount = allTickets.length; // Number of tickets displayed on this page
-  const totalPages = Math.max(1, Math.ceil(totalCount / limit)); // Ensure at least 1 page
-  const offsetValue = (page - 1) * limit;
-
-  const pagination = {
-    page,
-    totalPages,
-    hasNextPage: page < totalPages && ticketRows.length === limit, // Has next if we got a full page
-    hasPrevPage: page > 1,
-    totalCount,
-    startIndex: displayedCount > 0 ? offsetValue + 1 : 0,
-    endIndex: displayedCount > 0 ? offsetValue + displayedCount : 0,
-    actualCount: displayedCount,
+  // FIX: Calculate filtered stats (for current view) and combine with global stats
+  const filteredStats = calculateFilteredStats(rows);
+  const stats = {
+    overall: globalStats,
+    filtered: filteredStats,
   };
 
-  // Calculate stats
-  const stats = calculateStats(allTickets);
+  // FIX: Calculate pagination correctly (based on DB totalCount, not filtered rows)
+  const pagination = calculatePagination(page, totalCount, limit, rows.length);
 
-  // Count unassigned tickets
-  const unassignedCount = ticketRows.filter((t) => !t.assigned_to).length;
-
-  const listTickets = allTickets.map((t) => ({
-    ...t,
-    category_name: (t as any).category_name || null,
-    creator_full_name: (t as any).creator_full_name || (t as any).creator_name || null,
-    creator_email: (t as any).creator_email || null,
-    metadata: (t as any).metadata || {},
-  })) as unknown as import("@/db/types-only").Ticket[];
+  // FIX: Proper type conversion (no 'as any' or 'as unknown')
+  // Filter out tickets without category_id (shouldn't happen, but safety check)
+  // TicketCard expects Ticket & { status?: string | null; ... }
+  const listTickets = rows
+    .filter((t): t is DashboardTicketRow & { category_id: number } => t.category_id !== null)
+    .map((t) => {
+      const ticket: Ticket = {
+        id: t.id,
+        title: t.title || "",
+        description: t.description || "",
+        location: t.location,
+        status_id: t.status_id ?? 0, // Required field - use 0 as fallback if null
+        category_id: t.category_id, // TypeScript knows this is number due to filter
+        subcategory_id: t.subcategory_id ?? null,
+        scope_id: t.scope_id ?? null, // Add scope_id field
+        created_by: t.created_by ?? "",
+        assigned_to: t.assigned_to ?? null,
+        group_id: t.group_id ?? null,
+        escalation_level: t.escalation_level ?? 0,
+        acknowledgement_due_at: t.acknowledgement_due_at ?? null,
+        resolution_due_at: t.resolution_due_at ?? null,
+        metadata: t.metadata || {},
+        created_at: t.created_at ?? new Date(),
+        updated_at: t.updated_at ?? new Date(),
+        ticket_number: `TKT-${t.id}`,
+        priority: "medium",
+        escalated_at: null,
+        forward_count: 0,
+        reopen_count: 0,
+        reopened_at: null,
+        tat_extensions: 0, // Required field, default 0
+        resolved_at: null,
+        closed_at: null,
+        attachments: [],
+      };
+      // Add extended fields for TicketCard
+      return {
+        ...ticket,
+        status: t.status || "open", // Add status field for TicketCard
+        category_name: t.category_name ?? null,
+        creator_full_name: t.creator_full_name ?? null,
+        creator_email: t.creator_email ?? null,
+      } as Ticket & { status?: string | null; category_name?: string | null; creator_full_name?: string | null; creator_email?: string | null };
+    });
 
   return (
     <div className="space-y-8">
       <div>
         <SuperAdminDashboardHeader
-          unassignedCount={unassignedCount}
-          actualCount={pagination.actualCount}
+          unassignedCount={globalStats.unassigned}
+          actualCount={pagination.totalCount}
           pagination={pagination}
           showViewToggle={true}
           viewToggleBasePath="/superadmin/dashboard"
         />
         <div className="space-y-6">
-          <SuperAdminDashboardStats stats={stats} />
+          {/* FIX: Show filtered stats (current view) */}
+          <SuperAdminDashboardStats stats={stats.filtered} />
           
           {/* Filters - Full width for more space */}
           <div className="w-full">
@@ -141,8 +161,8 @@ export default async function SuperAdminDashboardPage({
             </>
           ) : (
             <SuperAdminTicketsList
-              tickets={allTickets}
-              unassignedCount={unassignedCount}
+              tickets={rows}
+              unassignedCount={globalStats.unassigned}
               pagination={pagination}
             />
           )}

@@ -3,43 +3,12 @@ import { TicketCard } from "@/components/layout/TicketCard";
 import { FileText } from "lucide-react";
 import type { Ticket } from "@/db/types-only";
 import { PaginationControls } from "@/components/dashboard/PaginationControls";
-
-interface TicketRow {
-  id: number;
-  title: string | null;
-  description: string | null;
-  location: string | null;
-  status: string | null;
-  status_id: number | null;
-  category_id: number | null;
-  subcategory_id: number | null;
-  created_by: string | null;
-  assigned_to: string | null;
-  group_id: number | null;
-  escalation_level: number | null;
-  acknowledgement_due_at: Date | null;
-  resolution_due_at: Date | null;
-  metadata: unknown;
-  created_at: Date | null;
-  updated_at: Date | null;
-  category_name: string | null;
-  creator_name: string | null;
-  creator_email: string | null;
-}
+import type { DashboardTicketRow, PaginationInfo } from "@/lib/dashboard/core";
 
 interface SuperAdminTicketsListProps {
-  tickets: TicketRow[];
+  tickets: DashboardTicketRow[];
   unassignedCount: number;
-  pagination: {
-    page: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-    totalCount: number;
-    startIndex: number;
-    endIndex: number;
-    actualCount: number;
-  };
+  pagination: PaginationInfo;
   basePath?: string;
 }
 
@@ -63,18 +32,56 @@ export function SuperAdminTicketsList({ tickets, unassignedCount, pagination, ba
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {tickets.map((ticket) => (
-          <TicketCard
-            key={ticket.id}
-            ticket={{
-              ...ticket,
-              scope_id: null,
-              created_at: ticket.created_at || new Date(),
-              updated_at: ticket.updated_at || new Date(),
-            } as unknown as Ticket & { status?: string | null; category_name?: string | null; creator_name?: string | null; creator_email?: string | null }}
-            basePath={basePath}
-          />
-        ))}
+        {tickets
+          .filter((t): t is DashboardTicketRow & { category_id: number } => t.category_id !== null)
+          .map((ticket) => {
+            // Convert DashboardTicketRow to Ticket format for TicketCard
+            // TicketCard expects Ticket & { status?: string | null; ... }
+            const baseTicket: Ticket = {
+              id: ticket.id,
+              title: ticket.title || "",
+              description: ticket.description || "",
+              location: ticket.location,
+              status_id: ticket.status_id ?? 0, // Required field - use 0 as fallback if null
+              category_id: ticket.category_id, // TypeScript knows this is number due to filter
+              subcategory_id: ticket.subcategory_id ?? null,
+              scope_id: ticket.scope_id ?? null, // Add scope_id field
+              created_by: ticket.created_by ?? "",
+              assigned_to: ticket.assigned_to ?? null,
+              group_id: ticket.group_id ?? null,
+              escalation_level: ticket.escalation_level ?? 0,
+              acknowledgement_due_at: ticket.acknowledgement_due_at ?? null,
+              resolution_due_at: ticket.resolution_due_at ?? null,
+              metadata: ticket.metadata || {},
+              created_at: ticket.created_at ?? new Date(),
+              updated_at: ticket.updated_at ?? new Date(),
+              ticket_number: `TKT-${ticket.id}`,
+              priority: "medium",
+              escalated_at: null,
+              forward_count: 0,
+              reopen_count: 0,
+              reopened_at: null,
+              tat_extensions: 0, // Required field, default 0
+              resolved_at: null,
+              closed_at: null,
+              attachments: [],
+            };
+            // Add extended fields for TicketCard
+            const ticketForCard = {
+              ...baseTicket,
+              status: ticket.status || "open", // Add status field for TicketCard
+              category_name: ticket.category_name ?? null,
+              creator_full_name: ticket.creator_full_name ?? null,
+              creator_email: ticket.creator_email ?? null,
+            } as Ticket & { status?: string | null; category_name?: string | null; creator_full_name?: string | null; creator_email?: string | null };
+            return (
+              <TicketCard
+                key={ticket.id}
+                ticket={ticketForCard}
+                basePath={basePath}
+              />
+            );
+          })}
       </div>
 
       <PaginationControls

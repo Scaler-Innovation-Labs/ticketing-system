@@ -20,7 +20,7 @@ import { getUserRole } from '@/lib/auth/roles';
 import { logger } from '@/lib/logger';
 import { USER_ROLES } from '@/conf/constants';
 import { z } from 'zod';
-import { db, tickets, ticket_activity, ticket_statuses } from '@/db';
+import { db, tickets, ticket_activity, ticket_statuses, outbox } from '@/db';
 import { eq, and } from 'drizzle-orm';
 import { withTransaction } from '@/lib/db-transaction';
 import { TICKET_STATUS } from '@/conf/constants';
@@ -177,12 +177,47 @@ export async function POST(req: NextRequest, context: RouteContext) {
     
     safeRevalidateTags(tagsToRevalidate);
 
-    const response = ApiResponse.success({
-      message: 'Ticket resolved successfully',
-      ...result,
-    });
+    // Queue email notification (fire-and-forget, after response)
+    queueMicrotask(async () => {
+      try {
+        // Queue status update notification
+        await db.insert(outbox).values({
+          event_type: 'ticket.status_updated',
+          aggregate_type: 'ticket',
+          aggregate_id: String(ticketId),
+          payload: {
+            ticketId: Number(ticketId),
+            oldStatus: ticketWithStatus.status_value || currentStatus,
+            newStatus: TICKET_STATUS.RESOLVED,
+            updatedBy: String(dbUser.id),
+          },
+        });
 
-    return response;
+        // Queue comment notification if comment was added
+        if (comment && comment.trim() && !isInternal) {
+          await db.insert(outbox).values({
+            event_type: 'ticket.comment_added',
+            aggregate_type: 'ticket',
+            aggregate_id: String(ticketId),
+            payload: {
+              ticketId: Number(ticketId),
+              comment: comment.trim(),
+              commentedBy: String(dbUser.id),
+              isInternal: false,
+            },
+          });
+        }
+      } catch (outboxError: any) {
+        logger.error(
+          {
+            error: outboxError?.message || String(outboxError),
+            ticketId,
+            userId: dbUser.id,
+          },
+          'Failed to queue resolve notifications (non-critical)'
+        );
+      }
+    });
 
     logger.info(
       {
@@ -194,10 +229,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
       'Ticket resolved atomically'
     );
 
-    return ApiResponse.success({
+    const response = ApiResponse.success({
       message: 'Ticket resolved successfully',
       ...result,
     });
+
+    return response;
   } catch (error) {
     logger.error(
       {
